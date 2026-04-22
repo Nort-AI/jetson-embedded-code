@@ -1,0 +1,35 @@
+﻿# Videos & large media
+videos_1080p/
+*.mp4
+*.avi
+*.mkv
+
+# ML models (large binaries)
+*.onnx
+*.engine
+*.pth
+*.pt
+*.trt
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Runtime data
+data_store/
+reid_gallery/
+*.csv
+
+# Secrets
+device.json
+.env
+.env.local
+
+# IDE & agent worktrees
+.claude/
+.idea/
+.vscode/
+*.swp
+*~

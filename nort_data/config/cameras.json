@@ -1,0 +1,38 @@
+{
+    "camera_1": {
+        "name": "Camera 1",
+        "source": "videos_1080p/CAM00.mp4",
+        "type": "file",
+        "enabled": true
+    },
+    "camera_2": {
+        "name": "Camera 2",
+        "source": "videos_1080p/CAM01.mp4",
+        "type": "file",
+        "enabled": true
+    },
+    "camera_3": {
+        "name": "Camera 3",
+        "source": "videos_1080p/CAM02.mp4",
+        "type": "file",
+        "enabled": true
+    },
+    "camera_4": {
+        "name": "Camera 4",
+        "source": "videos_1080p/CAM03.mp4",
+        "type": "file",
+        "enabled": true
+    },
+    "camera_5": {
+        "name": "Camera 5",
+        "source": "videos_1080p/CAM04.mp4",
+        "type": "file",
+        "enabled": true
+    },
+    "camera_6": {
+        "name": "Camera 6",
+        "source": "videos_1080p/CAM05.mp4",
+        "type": "file",
+        "enabled": true
+    }
+}

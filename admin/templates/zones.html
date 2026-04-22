@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nort — {{ t('page_titles.zones') }} · {{ store_id }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;600;700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      /* verbatim from dashboard.html */
+      --side-bg: hsl(222, 28%, 8%);
+      --side-border: hsl(222, 22%, 14%);
+      --side-fg: hsl(213, 28%, 90%);
+      --side-fg-dim: hsl(213, 18%, 52%);
+      --side-hover-bg: hsl(222, 24%, 14%);
+      --side-active-bg: rgba(59, 130, 246, 0.1);
+      --side-primary: hsl(217, 91%, 60%);
+      --side-primary-dim: rgba(59, 130, 246, 0.2);
+      --side-logo: #ffffff;
+      --bg: #0f1117;
+      --card: #161b27;
+      --card-hover: #1c2333;
+      --border: #212c3f;
+      --primary: #3b82f6;
+      --primary-dim: rgba(59, 130, 246, 0.15);
+      --primary-glow: rgba(59, 130, 246, 0.3);
+      --fg: #f8fafc;
+      --fg-dim: #94a3b8;
+      --fg-muted: #64748b;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --ok-dim: rgba(16, 185, 129, 0.1);
+      --warn-dim: rgba(245, 158, 11, 0.1);
+      --err-dim: rgba(239, 68, 68, 0.1);
+      --sidebar-bg: #10151f;
+      --radius: 8px;
+      --radius-sm: 6px;
+    }
+
+    html[data-theme="light"] {
+      --bg: #f0f3f7;
+      --card: #ffffff;
+      --card-hover: #e8edf4;
+      --border: #cbd5e1;
+      --fg: #1e2d40;
+      --fg-dim: #475569;
+      --fg-muted: #6b7fa0;
+      --side-bg: #ffffff;
+      --side-border: #cbd5e1;
+      --side-fg: #1e2d40;
+      --side-fg-dim: #64748b;
+      --side-hover-bg: #f8fafc;
+      --side-active-bg: rgba(59, 130, 246, 0.1);
+      --side-primary: #3b82f6;
+      --side-primary-dim: rgba(59, 130, 246, 0.15);
+      --side-logo: #0f172a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Inter', system-ui, sans-serif;
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar (Verbatim) ── */
+    .sidebar {
+      width: 224px;
+      background: var(--side-bg);
+      border-right: 1px solid var(--side-border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: relative;
+      transition: width 0.3s ease;
+    }
+
+    .sidebar.collapsed {
+      width: 80px;
+    }
+
+    .sidebar-header {
+      padding: 0 16px;
+      height: 56px;
+      border-bottom: 1px solid var(--side-border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header {
+      justify-content: center;
+      padding: 0 8px;
+    }
+
+    .logo-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .sidebar.collapsed .logo-wrapper {
+      display: none !important;
+    }
+
+    .logo-text {
+      font-family: 'Manrope', sans-serif;
+      font-size: 0.875rem;
+      letter-spacing: 3px;
+      font-weight: 700;
+      color: var(--side-logo);
+    }
+
+    .sidebar nav {
+      flex: 1;
+      padding: 8px;
+      overflow-y: auto;
+    }
+
+    .sidebar.collapsed nav {
+      padding: 8px 6px;
+    }
+
+    .nav-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--side-fg-dim);
+      padding: 16px 12px 4px;
+    }
+
+    .sidebar.collapsed .nav-section-label {
+      display: none;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: var(--side-fg-dim);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.875rem;
+      transition: all 0.15s;
+      margin-bottom: 2px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      position: relative;
+    }
+
+    .sidebar.collapsed .nav-link {
+      justify-content: center;
+      padding-left: 0;
+      padding-right: 0;
+      width: 48px;
+      height: 40px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .sidebar.collapsed .nav-link span {
+      display: none;
+    }
+
+    .nav-link:hover {
+      background: var(--side-hover-bg);
+      border-color: transparent !important;
+      color: var(--side-fg);
+    }
+
+    .nav-link.active {
+      background: var(--side-active-bg);
+      color: var(--side-primary);
+      border-color: var(--side-primary-dim);
+    }
+
+    .nav-link.active::before {
+      content: '';
+      position: absolute;
+      left: -1px;
+      top: 6px;
+      bottom: 6px;
+      width: 2px;
+      border-radius: 0 2px 2px 0;
+      background: var(--side-primary);
+    }
+
+    .nav-icon {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+    }
+
+    .sidebar-footer {
+      padding: 12px;
+      border-top: 1px solid var(--side-border);
+    }
+
+    .sidebar.collapsed .sidebar-footer {
+      padding: 12px 6px;
+    }
+
+    .beta-tag {
+      font-size: 9px;
+      font-weight: 600;
+      background: rgba(59, 130, 246, 0.1);
+      color: hsl(217, 91%, 60%);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 4px;
+      padding: 2px 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+
+    .logout-link:hover {
+      background: rgba(239, 68, 68, 0.1) !important;
+      color: #ef4444 !important;
+    }
+
+    .sidebar-collapse-btn {
+      position: absolute;
+      right: -12px;
+      top: 64px;
+      width: 24px;
+      height: 24px;
+      background: var(--side-bg);
+      border: 1px solid var(--side-border);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--side-fg-dim);
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.2s;
+    }
+
+    .sidebar.collapsed .sidebar-collapse-btn {
+      transform: rotate(180deg);
+    }
+
+    /* ── Main Layout ── */
+    .main-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .top-header {
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .top-header h1 {
+      font-family: 'Manrope', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--fg);
+    }
+
+    .top-header .sub {
+      font-size: 0.78rem;
+      color: var(--fg-dim);
+      font-weight: 400;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .theme-toggle {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--fg-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      transition: all 0.2s;
+      padding: 0;
+      z-index: 100;
+    }
+
+    .theme-toggle:hover {
+      background: var(--side-hover-bg);
+      color: var(--fg);
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    /* ── Zones Specific ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 24px;
+    }
+
+    .ctrl-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .cam-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    .cam-tab {
+      padding: 6px 12px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--fg-dim);
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .cam-tab.active {
+      background: var(--primary-dim);
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .view-container {
+      position: relative;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #000;
+      border: 1px solid var(--border);
+      align-self: start;
+      cursor: crosshair;
+    }
+
+    img#feed {
+      display: block;
+      width: 100%;
+      height: auto;
+      min-height: 480px;
+    }
+
+    canvas#overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .zone-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg);
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      margin-top: 4px;
+      font-size: 0.85rem;
+    }
+
+    .zone-del {
+      cursor: pointer;
+      color: var(--err);
+      font-weight: bold;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+    }
+
+    .btn {
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--fg);
+    }
+
+    input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      padding: 10px;
+      border-radius: 6px;
+      width: 100%;
+      outline: none;
+    }
+
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--fg-muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    /* ── Footer (canonical ─ matches dashboard) ── */
+
+    /* ── Footer (canonical - matches dashboard) ── */
+    .status-footer {
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      padding: 8px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--fg-muted);
+    }
+
+    .status-footer .left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-footer .connected {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status-footer .connected .dot {
+      width: 5px;
+      height: 5px;
+      background: var(--ok);
+      border-radius: 50%;
+      animation: pulse 2s infinite alternate;
+    }
+
+
+    @keyframes pulse {
+      to {
+        opacity: 0.4;
+      }
+    }
+
+    /* ── Lang switcher (canonical) ── */
+    .header-lang-switcher {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding-right: 12px;
+      margin-right: 4px;
+      border-right: 1px solid var(--border);
+    }
+
+    .lang-btn {
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      transition: all .2s;
+      text-decoration: none;
+      background: transparent;
+      color: var(--fg-muted);
+      display: flex;
+      align-items: center;
+      line-height: 1;
+    }
+
+    .lang-btn:hover {
+      background: var(--side-hover-bg);
+      color: var(--fg);
+      border-color: var(--border);
+    }
+
+    .lang-btn.active {
+      color: var(--primary) !important;
+      background: var(--primary-dim) !important;
+      border-color: var(--primary-glow) !important;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: var(--fg-dim);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 10px;
+    }
+
+    .header-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ok);
+    }
+  
+    .sidebar.collapsed .sidebar-header > div {
+      display: none !important;
+    }
+    .sidebar.collapsed .sidebar-header .beta-tag {
+      display: none !important;
+    }
+
+  </style>
+</head>
+
+<body data-theme="dark">
+  <!-- Sidebar (Verbatim from dashboard.html) -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M11.2966 4.12501C11.5853 3.62501 12.307 3.62501 12.5957 4.12501L21.2787 19.1645C21.638 19.7867 21.0013 20.5092 20.3388 20.231L12.2365 16.8289C12.0508 16.751 11.8415 16.751 11.6558 16.8289L3.55346 20.231C2.89106 20.5092 2.25435 19.7867 2.61357 19.1645L11.2966 4.12501Z"
+          fill="var(--primary)" />
+      </svg>
+      <div class="logo-wrapper" style="display: flex; flex-direction: column; gap: 0;">
+        <span class="logo-text" style="letter-spacing: 2px;">NORT</span>
+        <span
+          style="font-size: 9px; font-weight: 700; color: var(--side-primary); opacity: 0.9; margin-top: -2px; letter-spacing: 0.5px;">STORE
+          MANAGER</span>
+      </div>
+      <span class="beta-tag">BETA</span>
+    </div>
+    <nav>
+      <div class="nav-section-label">{{ t('nav.section_platform') }}</div>
+      <a href="/home" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+        <span>{{ t('nav.home') }}</span>
+      </a>
+      <a href="/" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+        </svg>
+        <span>{{ t('nav.dashboard') }}</span>
+      </a>
+      <a href="/streams" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+          <circle cx="12" cy="13" r="3" />
+        </svg>
+        <span>{{ t('nav.streams') }}</span>
+      </a>
+      <a href="/cameras" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <line x1="8" y1="21" x2="16" y2="21" />
+          <line x1="12" y1="17" x2="12" y2="21" />
+        </svg>
+        <span>{{ t('nav.cameras') }}</span>
+      </a>
+      <a href="/zones" class="nav-link active">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 2 7 12 12 22 7 12 2" />
+          <polyline points="2 17 12 22 22 17" />
+          <polyline points="2 12 12 17 22 12" />
+        </svg>
+        <span>{{ t('nav.zones') }}</span>
+      </a>
+      <a href="/floorplan" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="3" y1="9" x2="21" y2="9"></line>
+          <line x1="9" y1="21" x2="9" y2="9"></line>
+        </svg>
+        <span>{{ t('nav.floorplan') }}</span>
+      </a>
+      <a href="/help" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <span>{{ t('nav.help') }}</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="/profile" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+        <span>{{ t('nav.profile') }}</span>
+      </a>
+      <a href="/settings" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        <span>{{ t('nav.settings') }}</span>
+      </a>
+      <a href="#" class="nav-link logout-link" onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='/')">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+        <span>{{ t('nav.logout') }}</span>
+      </a>
+    </div>
+    <button class="sidebar-collapse-btn"
+      onclick="const sb=document.querySelector('.sidebar'); sb.classList.toggle('collapsed'); localStorage.setItem('nort-sidebar-collapsed', sb.classList.contains('collapsed'));">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="m15 18-6-6 6-6" />
+      </svg>
+    </button>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-wrapper">
+    <div class="top-header">
+      <div>
+        <h1>{{ t('zones.header_title') }}</h1>
+        <div class="sub">{{ t('zones.header_sub') }}</div>
+      </div>
+      <div class="header-actions">
+        <button class="theme-toggle" id="themeToggle">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path
+              d="m12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+            <circle cx="12" cy="12" r="5" />
+          </svg>
+        </button>
+        <div class="header-lang-switcher">
+          <a href="/set_lang/pt" class="lang-btn {% if current_lang == 'pt' %}active{% endif %}">PT</a>
+          <a href="/set_lang/en" class="lang-btn {% if current_lang == 'en' %}active{% endif %}">EN</a>
+          <a href="/set_lang/es" class="lang-btn {% if current_lang == 'es' %}active{% endif %}">ES</a>
+        </div>
+        <div class="header-badge"><span class="dot"></span>{{ t('header.active', 'Active') }}</div>
+      </div>
+    </div>
+    <div class="content">
+      <div class="toast-container" id="toast-container"></div>
+      <div class="layout">
+        <div class="ctrl-panel">
+          <div class="cam-tabs">
+            {% for cam_id in cameras %}
+            <button class="cam-tab{% if loop.first %} active{% endif %}" onclick="setCamera('{{ cam_id }}',this)">{{
+              cam_id }}</button>
+            {% endfor %}
+          </div>
+          <div>
+            <label>{{ t('zones.new_zone_label') }}</label>
+            <input type="text" id="zoneName" placeholder="{{ t('zones.new_zone_placeholder') }}" list="zoneSuggestions"
+              autocomplete="off">
+            <datalist id="zoneSuggestions">
+              <option value="{{ t('zones.suggestion_entrance', 'Entrance') }}">
+              <option value="{{ t('zones.suggestion_exit', 'Exit') }}">
+              <option value="{{ t('zones.suggestion_checkout', 'Checkout') }}">
+              <option value="{{ t('zones.suggestion_queue', 'Queue') }}">
+              <option value="{{ t('zones.suggestion_aisle', 'Aisle') }}">
+              <option value="{{ t('zones.suggestion_showroom', 'Showroom') }}">
+            </datalist>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-primary" style="flex:1" onclick="addCurrentPolygon()">{{ t('zones.add_btn')
+              }}</button>
+            <button class="btn btn-outline" style="color:var(--err)" onclick="clearCurrentPolygon()">{{
+              t('zones.clear_btn') }}</button>
+          </div>
+          <div>
+            <label>{{ t('zones.configured_zones_label') }}</label>
+            <div class="zone-list" id="zoneList"></div>
+          </div>
+          <div style="flex:1"></div>
+          <button class="btn btn-primary" onclick="saveZones()">{{ t('zones.save_btn') }}</button>
+        </div>
+        <div class="view-container">
+          <img id="feed" src="" alt="{{ t('zones.cam_alt') }}" draggable="false">
+          <canvas id="overlay"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Footer -->
+    <div class="status-footer">
+      <div class="left">
+        <span>System Online</span>
+        <div class="connected"><span class="dot"></span><span>Connected</span></div>
+      </div>
+      <div>&copy; 2026 NORT Analytics</div>
+    </div>
+  </div>
+  <script>
+    let currentCamera = "{{ cameras|first if cameras else '' }}";
+    let savedZones = []; let currentPolygon = [];
+    const canvas = document.getElementById('overlay'); const ctx = canvas.getContext('2d');
+    const feedEl = document.getElementById('feed');
+    const ZONE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4'];
+
+    async function setCamera(cam, btn) {
+      currentCamera = cam; document.querySelectorAll('.cam-tab').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      feedEl.src = '/api/camera_snapshot/' + cam;
+      try {
+        const res = await fetch('/api/config/zones/' + cam);
+        const raw = res.ok ? await res.json() : [];
+        savedZones = raw.map(z => ({
+          name: z.sector_name || z.name || 'Unnamed',
+          points: z.polygon_vertices || z.points || []
+        }));
+      } catch (e) { savedZones = []; }
+      currentPolygon = []; renderZoneList(); redraw();
+    }
+
+    function renderZoneList() {
+      const list = document.getElementById('zoneList'); list.innerHTML = '';
+      savedZones.forEach((z, idx) => {
+        const item = document.createElement('div'); item.className = 'zone-item';
+        item.innerHTML = `
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="width:10px; height:10px; border-radius:50%; background:${ZONE_COLORS[idx % ZONE_COLORS.length]}"></div>
+                    <span style="font-weight: 600; font-size: 0.8rem;">${z.name}</span>
+                </div>
+                <span class="zone-del" onclick="removeZone(${idx})">×</span>`;
+        list.appendChild(item);
+      });
+    }
+    function removeZone(idx) { savedZones.splice(idx, 1); redraw(); renderZoneList(); }
+    function clearCurrentPolygon() { currentPolygon = []; redraw(); }
+    function addCurrentPolygon() {
+      const name = document.getElementById('zoneName').value.trim();
+      if (!name || currentPolygon.length < 3) return;
+      savedZones.push({ name, points: currentPolygon });
+      currentPolygon = []; document.getElementById('zoneName').value = '';
+      renderZoneList(); redraw();
+    }
+    async function saveZones() {
+      const toSave = savedZones.map(z => ({ sector_name: z.name, polygon_vertices: z.points }));
+      try {
+        const r = await fetch('/api/config/zones/' + currentCamera, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(toSave)
+        });
+        if (r.ok) {
+          showToast('Zones saved successfully!', 'ok');
+        } else {
+          const err = await r.json();
+          showToast('Error saving: ' + (err.error || 'Bad Request'), 'err');
+        }
+      } catch (e) {
+        showToast('Connection error while saving.', 'err');
+      }
+    }
+    function showToast(msg, type) {
+      const container = document.getElementById('toast-container');
+      const t = document.createElement('div'); t.className = `toast toast-${type}`; t.textContent = msg;
+      container.appendChild(t); setTimeout(() => t.remove(), 3000);
+    }
+    function redraw() {
+      if (!feedEl.naturalWidth) return;
+      canvas.width = feedEl.clientWidth; canvas.height = feedEl.clientHeight;
+      const sx = canvas.width / feedEl.naturalWidth; const sy = canvas.height / feedEl.naturalHeight;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      savedZones.forEach((z, i) => drawPoly(z.points, ZONE_COLORS[i % ZONE_COLORS.length], z.name, sx, sy, false));
+      if (currentPolygon.length > 0) drawPoly(currentPolygon, '#fff', "Drawing...", sx, sy, true);
+    }
+    function drawPoly(pts, color, label, sx, sy, isDrawing) {
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+      // Draw polygon
+      pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p[0] * sx, p[1] * sy); else ctx.lineTo(p[0] * sx, p[1] * sy); });
+      if (!isDrawing && pts.length >= 3) { ctx.closePath(); ctx.fillStyle = color + '33'; ctx.fill(); }
+      ctx.stroke();
+
+      // Draw label
+      if (pts.length > 0) {
+        ctx.fillStyle = color;
+        ctx.font = 'bold 14px Manrope, sans-serif';
+        // Put text logic near the first point
+        const textX = (pts[0][0] * sx) + 5;
+        const textY = (pts[0][1] * sy) - 5;
+        ctx.fillText(label, textX, textY);
+      }
+    }
+    canvas.addEventListener('mousedown', e => {
+      const r = canvas.getBoundingClientRect();
+      currentPolygon.push([(e.clientX - r.left) * (feedEl.naturalWidth / canvas.width), (e.clientY - r.top) * (feedEl.naturalHeight / canvas.height)]);
+      redraw();
+    });
+    feedEl.onload = redraw; window.onresize = redraw;
+    if (currentCamera) setCamera(currentCamera, document.querySelector('.cam-tab'));
+
+    // Sidebar & Theme Sync
+    const _sb = document.querySelector('.sidebar');
+    if (_sb && localStorage.getItem('nort-sidebar-collapsed') === 'true') _sb.classList.add('collapsed');
+
+    document.getElementById('themeToggle').onclick = () => {
+      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      document.documentElement.setAttribute('data-theme', isLight ? 'dark' : 'light');
+      localStorage.setItem('nort-theme', isLight ? 'dark' : 'light');
+    };
+    if (localStorage.getItem('nort-theme') === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  </script>
+</body>
+
+</html>

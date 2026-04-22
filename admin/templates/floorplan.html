@@ -1,0 +1,2812 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ t('page_titles.floorplan') }} — NORT Analytics</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            /* Sidebar Dark Tokens */
+            --side-bg: hsl(222, 28%, 8%);
+            --side-border: hsl(222, 22%, 14%);
+            --side-fg: hsl(213, 28%, 90%);
+            --side-fg-dim: hsl(213, 18%, 52%);
+            --side-hover-bg: hsl(222, 24%, 14%);
+            --side-active-bg: rgba(59, 130, 246, 0.1);
+            --side-primary: hsl(217, 91%, 60%);
+            --side-primary-dim: rgba(59, 130, 246, 0.2);
+            --side-logo: #ffffff;
+
+
+            --bg: #0f1117;
+            --card: #161b27;
+            --card-hover: #1c2333;
+            --border: #212c3f;
+            --primary: #3b82f6;
+            --primary-dim: rgba(59, 130, 246, 0.15);
+            --primary-glow: rgba(59, 130, 246, 0.3);
+            --fg: #f8fafc;
+            --fg-dim: #94a3b8;
+            --fg-muted: #64748b;
+            --ok: #10b981;
+            --warn: #f59e0b;
+            --err: #ef4444;
+            --sidebar-bg: #10151f;
+            --radius: 8px;
+            --radius-sm: 6px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: 'Inter', system-ui, sans-serif;
+            font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--fg-muted);
+        }
+
+
+
+
+
+
+
+        /* ── Status Badge override if any ── */
+        .status-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--side-fg-dim);
+            padding: 8px;
+            border-radius: 50%;
+            background: rgba(63, 185, 80, 0.06);
+            border: 1px solid rgba(63, 185, 80, 0.15);
+        }
+
+        .status-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #3fb950;
+            animation: pulse 2s infinite alternate;
+        }
+
+        @keyframes pulse {
+            to {
+                opacity: 0.4;
+            }
+        }
+
+        /* ── Status Badge override if any ── */
+        .status-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--side-fg-dim);
+            padding: 8px;
+            border-radius: 50%;
+            background: rgba(63, 185, 80, 0.06);
+            border: 1px solid rgba(63, 185, 80, 0.15);
+        }
+
+        .status-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #3fb950;
+            animation: pulse 2s infinite alternate;
+        }
+
+        @keyframes pulse {
+            to {
+                opacity: 0.4;
+            }
+        }
+
+        .main-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .top-header {
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .top-header h1 {
+            font-family: 'Manrope', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--fg);
+        }
+
+        .top-header .sub {
+            font-size: 0.78rem;
+            color: var(--fg-dim);
+            font-weight: 400;
+        }
+
+        .mode-toggle {
+            display: flex;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            padding: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .mode-btn {
+            padding: 8px 20px;
+            border: none;
+            background: transparent;
+            color: var(--fg-dim);
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            border-radius: 16px;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .mode-btn.active {
+            background: var(--card);
+            color: var(--primary);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 20px;
+            align-items: start;
+            height: 100%;
+        }
+
+        /* ── Control Panel ── */
+        .ctrl-panel {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-height: calc(100vh - 140px);
+            overflow-y: auto;
+        }
+
+        .cam-tabs {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .cam-tab {
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--fg-dim);
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .cam-tab:hover {
+            background: var(--card-hover);
+            color: var(--fg);
+        }
+
+        .cam-tab.active {
+            background: var(--primary-dim);
+            color: var(--primary);
+            border-color: var(--primary);
+            box-shadow: 0 0 12px var(--primary-glow);
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label {
+            font-size: 0.72rem;
+            color: var(--fg-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .coord-input-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .coord-input-row span {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--primary);
+            width: 20px;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 10px 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-sm);
+            color: var(--fg);
+            font-size: 0.85rem;
+            transition: all 0.2s cubic-bezier(0.1, 0.7, 0.1, 1);
+            font-family: inherit;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(0, 0, 0, 0.5);
+            box-shadow: 0 0 0 3px rgba(36, 182, 252, 0.15);
+        }
+
+        .btn-primary {
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: linear-gradient(135deg, var(--primary), #1188d6);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(36, 182, 252, 0.3);
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s cubic-bezier(0.1, 0.7, 0.1, 1);
+            font-family: inherit;
+            margin-top: auto;
+            letter-spacing: 0.02em;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(36, 182, 252, 0.4);
+            filter: brightness(1.15);
+        }
+
+        .btn-primary:disabled {
+            background: var(--border);
+            color: var(--fg-muted);
+            cursor: not-allowed;
+            filter: none;
+        }
+
+        .btn-secondary {
+            padding: 8px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--fg-dim);
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--fg);
+            border-color: rgba(36, 182, 252, 0.3);
+        }
+
+        .instructions {
+            font-size: 0.8rem;
+            color: var(--fg-dim);
+            line-height: 1.5;
+            background: var(--card-hover);
+            border: 1px solid var(--border);
+            padding: 14px 16px;
+            border-radius: var(--radius-sm);
+        }
+
+        /* ── Viewport ── */
+        .view-container {
+            position: relative;
+            border-radius: var(--radius);
+            overflow: hidden;
+            background: var(--card);
+            border: 1px solid var(--border);
+            align-self: start;
+            cursor: crosshair;
+            user-select: none;
+        }
+
+        .view-container.live-mode {
+            min-height: 600px;
+            height: calc(100vh - 120px);
+        }
+
+        img#feed {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: var(--radius);
+        }
+
+        canvas#overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: var(--radius);
+        }
+
+        canvas#radarCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: var(--radius);
+            background: var(--radar-bg);
+            display: none;
+        }
+
+        .empty-state {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--fg-muted);
+            font-weight: 500;
+            font-size: 1rem;
+            pointer-events: none;
+        }
+
+        .flash {
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 0.82rem;
+            display: none;
+            margin-top: 10px;
+        }
+
+        .flash-ok {
+            background: rgba(63, 185, 80, 0.12);
+            color: var(--ok);
+            border: 1px solid rgba(63, 185, 80, 0.25);
+        }
+
+        .flash-err {
+            background: rgba(248, 81, 73, 0.12);
+            color: var(--err);
+            border: 1px solid rgba(248, 81, 73, 0.25);
+        }
+
+        .point-tag {
+            color: var(--primary);
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        /* ── Footer ── */
+
+        /* ── Footer (canonical - matches dashboard) ── */
+        .status-footer {
+            background: var(--card);
+            border-top: 1px solid var(--border);
+            padding: 8px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--fg-muted);
+        }
+
+        .status-footer .left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-footer .connected {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-footer .connected .dot {
+            width: 5px;
+            height: 5px;
+            background: var(--ok);
+            border-radius: 50%;
+            animation: pulse 2s infinite alternate;
+        }
+
+
+        @keyframes pulse {
+            to {
+                opacity: 0.4;
+            }
+        }
+
+        /* ── Light Theme & Collapse ── */
+
+
+        /* Floating circular toggle — matches webapp DashboardSidebar exactly */
+
+
+
+
+        @keyframes nort-flip-y {
+            0% {
+                transform: rotateY(0deg);
+            }
+
+            100% {
+                transform: rotateY(360deg);
+            }
+        }
+
+        #nort-loader {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: transparent;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s ease;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #nort-loader.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .loader-logo-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .loader-glow {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(36, 182, 252, 0.15) 0%, transparent 70%);
+            filter: blur(10px);
+            pointer-events: none;
+        }
+
+        .loader-logo {
+            width: 48px;
+            height: 48px;
+            animation: nort-flip-y 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        .loader-footer {
+            position: absolute;
+            bottom: 15%;
+            text-align: center;
+        }
+
+        .loader-title {
+            font-family: 'Manrope', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .loader-desc {
+            font-size: 11px;
+            color: #546A7B;
+        }
+
+        /* ── Floating Toasts (Bottom Right) ── */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            pointer-events: none;
+        }
+
+        .toast {
+            pointer-events: auto;
+            min-width: 300px;
+            max-width: 400px;
+            padding: 14px 18px;
+            border-radius: 10px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        @keyframes toast-in {
+            from {
+                transform: translateX(100%) scale(0.9);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        .toast-err {
+            background: #2a1215;
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #ff8080;
+        }
+
+        .toast-ok {
+            background: #0d1a14;
+            border-color: rgba(16, 185, 129, 0.4);
+            color: #80ffc0;
+        }
+
+        .toast-icon {
+            font-size: 1.2rem;
+        }
+
+        .toast-content {
+            flex: 1;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .toast-close {
+            opacity: 0.5;
+            font-size: 1.1rem;
+        }
+
+        .toast:hover .toast-close {
+            opacity: 1;
+        }
+
+        .lang-btn {
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 700;
+            transition: all .2s;
+            text-decoration: none;
+            background: transparent;
+            color: var(--fg-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        .lang-btn:hover {
+            background: var(--side-hover-bg);
+            color: var(--fg);
+            border-color: var(--border);
+        }
+
+        .lang-btn.active {
+            color: var(--primary) !important;
+            background: var(--primary-dim) !important;
+            border-color: var(--primary-glow) !important;
+        }
+
+        .header-lang-switcher {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding-right: 12px;
+            margin-right: 4px;
+            border-right: 1px solid var(--border);
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        /* ── Sidebar CSS ── CANONICAL ── */
+        .sidebar {
+            width: 224px;
+            background: var(--side-bg);
+            border-right: 1px solid var(--side-border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            position: relative;
+            transition: width 0.3s ease;
+        }
+
+        .sidebar.collapsed {
+            width: 80px;
+        }
+
+        .sidebar-header {
+            padding: 0 16px;
+            height: 56px;
+            border-bottom: 1px solid var(--side-border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .sidebar.collapsed .sidebar-header {
+            justify-content: center;
+            padding: 0 8px;
+        }
+
+        .logo-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .sidebar.collapsed .logo-wrapper {
+            display: none !important;
+        }
+
+        .logo-text {
+            font-family: 'Manrope', sans-serif;
+            font-size: 0.875rem;
+            letter-spacing: 3px;
+            font-weight: 700;
+            color: var(--side-logo);
+        }
+
+        .sidebar nav {
+            flex: 1;
+            padding: 8px;
+            overflow-y: auto;
+        }
+
+        .sidebar.collapsed nav {
+            padding: 8px 6px;
+        }
+
+        .nav-section-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--side-fg-dim);
+            padding: 16px 12px 4px;
+        }
+
+        .sidebar.collapsed .nav-section-label {
+            display: none;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: var(--side-fg-dim);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.875rem;
+            transition: all 0.15s;
+            margin-bottom: 2px;
+            border: 1px solid transparent;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .sidebar.collapsed .nav-link {
+            justify-content: center;
+            padding-left: 0;
+            padding-right: 0;
+            width: 48px;
+            height: 40px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .sidebar.collapsed .nav-link span {
+            display: none;
+        }
+
+        .nav-link:hover {
+            background: var(--side-hover-bg);
+            color: var(--side-fg);
+        }
+
+        .nav-link.active {
+            background: var(--side-active-bg);
+            color: var(--side-primary);
+            border-color: var(--side-primary-dim);
+        }
+
+        .nav-link.active::before {
+            content: '';
+            position: absolute;
+            left: -1px;
+            top: 6px;
+            bottom: 6px;
+            width: 2px;
+            border-radius: 0 2px 2px 0;
+            background: var(--side-primary);
+        }
+
+        .nav-icon {
+            flex-shrink: 0;
+            width: 16px;
+            height: 16px;
+        }
+
+        .sidebar-footer {
+            padding: 12px;
+            border-top: 1px solid var(--side-border);
+        }
+
+        .sidebar.collapsed .sidebar-footer {
+            padding: 12px 6px;
+        }
+
+        .sidebar.collapsed .sidebar-footer .nav-link {
+            width: 40px;
+            height: 40px;
+        }
+
+        .beta-tag {
+            font-size: 9px;
+            font-weight: 600;
+            background: rgba(59, 130, 246, 0.1);
+            color: hsl(217, 91%, 60%);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 4px;
+            padding: 2px 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            flex-shrink: 0;
+        }
+
+        .logout-link {
+            margin-top: 4px;
+        }
+
+        .logout-link:hover {
+            background: rgba(239, 68, 68, 0.1) !important;
+            color: #ef4444 !important;
+        }
+
+        /* ── Definitive Light Theme ── */
+        html[data-theme="light"] {
+            --bg: #f0f3f7;
+            --card: #ffffff;
+            --card-hover: #e8edf4;
+            --border: #cbd5e1;
+            --fg: #1e2d40;
+            --fg-dim: #475569;
+            --fg-muted: #6b7fa0;
+
+            --sidebar-bg: #e8edf4;
+            --console-bg: #f1f5f9;
+
+            --side-bg: #ffffff;
+            --side-border: #cbd5e1;
+            --side-fg: #1e2d40;
+            --side-fg-dim: #64748b;
+            --side-hover-bg: #f8fafc;
+            --side-active-bg: rgba(59, 130, 246, 0.1);
+            --side-primary: #3b82f6;
+            --side-primary-dim: rgba(59, 130, 246, 0.15);
+            --side-logo: #0f172a;
+        }
+
+        /* ── UI Controls ── */
+        .theme-toggle {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--fg-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            padding: 0;
+            z-index: 100;
+        }
+
+        .theme-toggle:hover {
+            background: var(--side-hover-bg);
+            color: var(--fg);
+        }
+
+
+
+        .theme-toggle svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .sidebar-collapse-btn {
+            position: absolute;
+            top: 64px;
+            right: -12px;
+            z-index: 101;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--card);
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            color: var(--fg-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .sidebar-collapse-btn:hover {
+            color: var(--fg);
+            border-color: var(--primary);
+            transform: scale(1.1);
+        }
+
+        .header-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--fg-dim);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 4px 10px;
+        }
+
+        .header-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--ok);
+        }
+    
+    .sidebar.collapsed .sidebar-header > div {
+      display: none !important;
+    }
+    .sidebar.collapsed .sidebar-header .beta-tag {
+      display: none !important;
+    }
+
+  </style>
+    <script>
+        if (localStorage.getItem('nort-theme') === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    </script>
+</head>
+
+<body>
+    <!-- Standardized NORT Loader -->
+    <div id="nort-loader">
+        <div class="loader-logo-container">
+            <div class="loader-glow"></div>
+            <img src="/static/favicon.svg" class="loader-logo" alt="NORT Logo" />
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const loader = document.getElementById('nort-loader');
+            const showTimer = setTimeout(() => {
+                if (loader) {
+                    loader.style.opacity = '1';
+                    loader.style.pointerEvents = 'all';
+                }
+            }, 400);
+
+            window.addEventListener('load', () => {
+                clearTimeout(showTimer);
+                if (loader) {
+                    loader.style.opacity = '0';
+                    loader.style.pointerEvents = 'none';
+                    setTimeout(() => loader.remove(), 500);
+                }
+            });
+        })();
+    </script>
+
+    <!-- ── Sidebar ── -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path
+                    d="M11.2966 4.12501C11.5853 3.62501 12.307 3.62501 12.5957 4.12501L21.2787 19.1645C21.638 19.7867 21.0013 20.5092 20.3388 20.231L12.2365 16.8289C12.0508 16.751 11.8415 16.751 11.6558 16.8289L3.55346 20.231C2.89106 20.5092 2.25435 19.7867 2.61357 19.1645L11.2966 4.12501Z"
+                    fill="var(--primary)" />
+            </svg>
+            <div style="display: flex; flex-direction: column; gap: 0;">
+                <span class="logo-text" style="letter-spacing: 2px;">NORT</span>
+                <span
+                    style="font-size: 9px; font-weight: 700; color: var(--side-primary); opacity: 0.9; margin-top: -2px; letter-spacing: 0.5px;">STORE
+                    MANAGER</span>
+            </div>
+            <span class="beta-tag">BETA</span>
+        </div>
+        <nav>
+            <div class="nav-section-label">{{ t('nav.section_platform') }}</div>
+            <a href="/home" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
+                </svg><span>{{ t('nav.home') }}</span></a>
+            <a href="/" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                </svg><span>{{ t('nav.dashboard') }}</span></a>
+            <a href="/streams" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+                    <circle cx="12" cy="13" r="3" />
+                </svg><span>{{ t('nav.streams') }}</span></a>
+            <a href="/cameras" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2" />
+                    <line x1="8" y1="21" x2="16" y2="21" />
+                    <line x1="12" y1="17" x2="12" y2="21" />
+                </svg><span>{{ t('nav.cameras') }}</span></a>
+            <a href="/zones" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                    <polyline points="2 17 12 22 22 17" />
+                    <polyline points="2 12 12 17 22 12" />
+                </svg><span>{{ t('nav.zones') }}</span></a>
+            <a href="/floorplan" class="nav-link active"><svg class="nav-icon" width="16" height="16"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="3" y1="9" x2="21" y2="9"></line>
+                    <line x1="9" y1="21" x2="9" y2="9"></line>
+                </svg><span>{{ t('nav.floorplan') }}</span></a>
+            <a href="/help" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg><span>{{ t('nav.help') }}</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <a href="/profile" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg><span>{{ t('nav.profile') }}</span></a>
+            <a href="/settings" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg><span>{{ t('nav.settings') }}</span></a>
+            <a href="#" class="nav-link logout-link"
+                onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='/')"><svg class="nav-icon" width="16"
+                    height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                </svg><span>{{ t('nav.logout') }}</span></a>
+        </div>
+        <button class="sidebar-collapse-btn" onclick="toggleSidebar()"><svg width="14" height="14" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m15 18-6-6 6-6" />
+            </svg></button>
+    </div>
+    <div class="main-wrapper">
+        <!-- Top Header -->
+        <div class="top-header">
+            <div style="display:flex; align-items:center; gap:20px;">
+                <h1>{{ t('floorplan_title') }}</h1>
+                <div class="mode-toggle">
+                    <button id="btnCalib" class="mode-btn active" onclick="setMode('calibration')">{{
+                        t('btn_calibration') }}</button>
+                    <button id="btnLive" class="mode-btn" onclick="setMode('live')">{{ t('btn_live_radar') }}</button>
+                </div>
+            </div>
+            <div class="header-actions" style="display:flex;align-items:center;gap:10px;">
+                <div class="sub" style="display:flex;align-items:center;gap:6px;"><span>{{ store_id }} &middot; {{
+                        device_id }}</span><span style="opacity:0.5;">&bull;</span><span id="clock"
+                        style="font-variant-numeric:tabular-nums; font-weight:600; color:var(--fg);"></span></div>
+                <button class="theme-toggle" onclick="toggleTheme()"><svg width="16" height="16" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5" />
+                        <line x1="12" y1="1" x2="12" y2="3" />
+                        <line x1="12" y1="21" x2="12" y2="23" />
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                        <line x1="1" y1="12" x2="3" y2="12" />
+                        <line x1="21" y1="12" x2="23" y2="12" />
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                    </svg></button>
+                <div class="header-lang-switcher">
+                    <a href="/set_lang/pt" class="lang-btn {% if current_lang == 'pt' %}active{% endif %}">PT</a>
+                    <a href="/set_lang/en" class="lang-btn {% if current_lang == 'en' %}active{% endif %}">EN</a>
+                    <a href="/set_lang/es" class="lang-btn {% if current_lang == 'es' %}active{% endif %}">ES</a>
+                </div>
+                <div class="header-badge"><span class="dot"></span>{{ t('header.active', 'Active') }}</div>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="content">
+            <div class="toast-container">
+                {% if error_msg %}
+                <div class="toast toast-err" onclick="this.remove()">
+                    <div class="toast-icon">✗</div>
+                    <div class="toast-content">{{ error_msg }}</div>
+                    <div class="toast-close">×</div>
+                </div>
+                {% endif %}
+                {% if flash_msg %}
+                <div class="toast toast-ok" onclick="this.remove()">
+                    <div class="toast-icon">✓</div>
+                    <div class="toast-content">{{ flash_msg }}</div>
+                    <div class="toast-close">×</div>
+                </div>
+                {% endif %}
+            </div>
+            <div class="layout">
+                <!-- Control Panel -->
+                <div class="ctrl-panel">
+                    <div class="cam-tabs" id="camTabs">
+                        {% for cam_id in cameras %}
+                        <button class="cam-tab{% if loop.first %} active{% endif %}"
+                            onclick="setCamera('{{ cam_id }}',this)">{{ cam_id }}</button>
+                        {% endfor %}
+                    </div>
+
+                    <div class="instructions">
+                        {{ t('floorplan_instructions')|safe }}
+                    </div>
+
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn btn-secondary"
+                            style="flex:1; color:var(--err); border-color:rgba(248,81,73,0.25);"
+                            onclick="clearPoints()">{{ t('btn_clear_points') }}</button>
+                    </div>
+
+                    <div>
+                        <label style="margin-bottom:8px; display:block;">{{ t('label_map_coordinates') }}</label>
+                        <div id="coordInputs" style="display:flex; flex-direction:column; gap:8px;">
+                            <!-- Dynamically generated rows -->
+                        </div>
+                    </div>
+
+                    <div id="flashMsg" class="flash"></div>
+
+                    <button class="btn btn-primary" id="saveBtn" onclick="computeHomography()" disabled
+                        style="width:100%; justify-content:center; padding:12px;">{{
+                        t('btn_compute_save') }}</button>
+                </div>
+
+                <!-- Viewport -->
+                <div class="view-container" id="viewContainer" style="display:flex; flex-direction:row;">
+                    <!-- Camera View -->
+                    <div class="pane" id="paneCamera"
+                        style="position:relative; flex:1.5; border-right:1px solid var(--border); display:flex; align-items:flex-start; justify-content:center; overflow:hidden; background:var(--bg);">
+                        <div
+                            style="position:absolute; top:16px; left:16px; background:var(--card); padding:8px 16px; border-radius:30px; color:var(--fg); font-size:0.75rem; font-weight:700; z-index:10; border:1px solid var(--border); box-shadow:0 4px 15px rgba(0,0,0,0.1); letter-spacing:0.02em;">
+                            <span
+                                style="display:inline-block; width:6px; height:6px; background:#24B6FC; border-radius:50%; margin-right:8px; box-shadow:0 0 8px #24B6FC;"></span>{{
+                            t('label_camera_perspective') }}
+                        </div>
+                        <div style="position:relative; width:100%; font-size:0; line-height:0; display:inline-block;">
+                            <img id="feed" src="" alt="Camera Stream" draggable="false"
+                                style="width:100%; height:auto; display:block;">
+                            <canvas id="overlay"
+                                style="position:absolute; top:0; left:0; width:100%; height:100%; border-radius:inherit;"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- 2D Map Preview -->
+                    <div class="pane" id="paneMap"
+                        style="position:relative; background:var(--bg); flex:1; overflow:hidden;">
+                        <div
+                            style="position:absolute; top:16px; left:16px; background:var(--card); padding:8px 16px; border-radius:30px; color:var(--fg); font-size:0.75rem; font-weight:700; z-index:10; border:1px solid var(--border); box-shadow:0 4px 15px rgba(0,0,0,0.1); letter-spacing:0.02em;">
+                            <span
+                                style="display:inline-block; width:6px; height:6px; background:#2eb962; border-radius:50%; margin-right:8px; box-shadow:0 0 8px #2eb962;"></span>{{
+                            t('label_virtual_map_preview') }}
+                        </div>
+                        <canvas id="mapPreviewCanvas"
+                            style="position:absolute; top:0; left:0; width:100%; height:100%;"></canvas>
+                    </div>
+
+                    <canvas id="radarCanvas"></canvas>
+                    <div class="empty-state" id="emptyState"
+                        style="display:none; position:absolute; left:0; top:0; right:0; bottom:0; background:var(--card); align-items:center; justify-content:center; z-index:5;">
+                        <div
+                            style="text-align:center; padding:40px; border:1px solid var(--border); border-radius:20px; background:var(--bg);">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--fg-dim)"
+                                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                                style="margin-bottom:16px;">
+                                <path d="M2 12h3l3 -9l5 18l3 -9h5" />
+                            </svg>
+                            <div style="font-size:1.1rem; color:var(--fg); margin-bottom:8px; font-weight:600;">{{
+                                t('no_cameras_connected') }}</div>
+                            <div style="font-size:0.85rem; color:var(--fg-dim);">{{ t('check_stream_connections') }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="liveRadarControls"
+                        style="display:none; position:absolute; bottom:20px; right:20px; z-index:20; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); border:1px solid rgba(255,255,255,0.1); padding:10px 14px; border-radius:8px;">
+                        <span
+                            style="font-size:0.75rem; color:#fff; font-weight:600; margin-bottom: 8px; display:block;">{{
+                            t('radar_bg_map') }}</span>
+                        <div style="display:flex; gap:8px;">
+                            <input type="file" id="bgUpload" accept="image/*" style="display:none;">
+                            <button class="btn btn-secondary" onclick="document.getElementById('bgUpload').click()"
+                                style="padding: 6px 12px; font-size:0.75rem;">{{ t('btn_upload_floorplan') }}</button>
+                            <button class="btn btn-secondary" onclick="removeRadarBg()"
+                                style="padding: 6px 12px; font-size:0.75rem; color: #ff6b6b; border-color: rgba(255,107,107,0.3); display:none;"
+                                id="btnRemoveBg">{{ t('btn_remove') }}</button>
+                            <button class="btn btn-secondary" onclick="toggleEditBg()"
+                                style="padding: 6px 12px; font-size:0.75rem; border-color: #3fb950; color: #3fb950; display:none;"
+                                id="btnEditBg">{{ t('btn_edit_floorplan') }}</button>
+                            <button class="btn btn-secondary" id="btnBlindspot" onclick="toggleBlindspotMode()"
+                                style="padding: 6px 12px; font-size:0.75rem; border-color: #f0a500; color: #f0a500; margin-left: 8px;">{{
+                                t('btn_draw_blindspot') }}</button>
+                            <button class="btn btn-secondary" id="btnClearBlindspots" onclick="clearBlindspots()"
+                                style="padding: 6px 12px; font-size:0.75rem; border-color: #ff6b6b; color: #ff6b6b; display:none;">{{
+                                t('btn_clear_spots') }}</button>
+                            <button class="btn btn-secondary" id="btnCleanBg" onclick="generateCleanBackgrounds()"
+                                style="padding: 6px 12px; font-size:0.75rem; border-color: #3fb950; color: #3fb950; margin-left: 8px;"><svg
+                                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                    style="margin-right:4px;">
+                                    <path
+                                        d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+                                    <circle cx="12" cy="13" r="3" />
+                                </svg>
+                                {{ t('btn_capture_empty_store') }}</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+
+        <!-- Status Footer -->
+        <div class="status-footer">
+            <div class="left">
+                <span>{{ t('footer.system_online', 'System Online') }}</span>
+                <div class="connected"><span class="dot"></span><span>{{ t('footer.connected', 'Connected') }}</span>
+                </div>
+            </div>
+            <div>{{ t('footer.rights', '&copy; 2026 NORT Analytics') | safe }}</div>
+        </div>
+    </div>
+    <script>
+        const i18n = {
+            enter_coordinates_hint: "{{ t('js_enter_coordinates_hint') }}",
+            homography_success: "{{ t('js_homography_success') }}",
+            homography_registered_alert: "{{ t('js_homography_registered_alert') }}",
+            confirm_remove_floorplan: "{{ t('js_confirm_remove_floorplan') }}",
+            save_floorplan_alignment: "{{ t('js_save_floorplan_alignment') }}",
+            edit_floorplan: "{{ t('btn_edit_floorplan') }}",
+            no_camera_zones_error: "{{ t('js_no_camera_zones_error') }}",
+            capturing_empty_floor: "{{ t('js_capturing_empty_floor') }}",
+            waiting_empty_moments: "{{ t('js_waiting_empty_moments') }}",
+            done: "{{ t('js_done') }}",
+            failed_start_capture: "{{ t('js_failed_start_capture') }}",
+            radar_controls_hint: "{{ t('js_radar_controls_hint') }}",
+            calibrate_hint: "{{ t('js_calibrate_hint') }}",
+            waiting_tracks_hint: "{{ t('js_waiting_tracks_hint') }}",
+            draw_blindspot: "{{ t('btn_draw_blindspot') }}",
+            save_right_click: "{{ t('js_save_right_click') }}"
+        };
+
+        let currentCamera = "{{ cameras|first if cameras else '' }}";
+        let cameraPoints = []; // List of [x, y] coordinates in camera space
+        let currentMode = 'calibration';
+        let radarInterval = null;
+        let mapPreviewScale = 1;
+        let mapPreviewOffX = 0;
+        let mapPreviewOffY = 0;
+        let draggingMapPointIdx = -1;
+
+        const canvas = document.getElementById('overlay');
+        const ctx = canvas.getContext('2d');
+        const mapPreviewCanvas = document.getElementById('mapPreviewCanvas');
+        const mapCtx = mapPreviewCanvas.getContext('2d');
+        const radarCanvas = document.getElementById('radarCanvas');
+        const radarCtx = radarCanvas.getContext('2d');
+
+        const feedEl = document.getElementById('feed');
+        const flashMsg = document.getElementById('flashMsg');
+        const saveBtn = document.getElementById('saveBtn');
+
+        function showFlash(msg, isError = false) {
+            flashMsg.textContent = msg;
+            flashMsg.className = 'flash ' + (isError ? 'flash-err' : 'flash-ok');
+            flashMsg.style.display = 'block';
+            setTimeout(() => { flashMsg.style.display = 'none'; }, 3000);
+        }
+
+        async function setCamera(cam, btn) {
+            currentCamera = cam;
+            document.querySelectorAll('.cam-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            feedEl.src = '/api/camera_snapshot/' + cam;
+            cameraPoints = [];
+            document.getElementById('coordInputs').innerHTML = '';
+
+            try {
+                const res = await fetch('/api/config/homography/' + cam);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.camera_pts && data.camera_pts.length >= 4) {
+                        cameraPoints = data.camera_pts;
+                        for (let i = 0; i < cameraPoints.length; i++) {
+                            addInputRow(i + 1, data.world_pts[i][0], data.world_pts[i][1]);
+                        }
+                    }
+                }
+            } catch (e) { }
+
+            redraw();
+            updateSaveBtn();
+            drawMapPreview();
+        }
+
+        function addInputRow(idx, wx = '', wy = '') {
+            const container = document.getElementById('coordInputs');
+            const row = document.createElement('div');
+            row.className = 'coord-input-row';
+            row.id = `row_${idx}`;
+            row.innerHTML = `
+                <span>${idx}</span>
+                <input type="number" id="p${idx}_x" placeholder="X" value="${wx}">
+                <input type="number" id="p${idx}_y" placeholder="Y" value="${wy}">
+            `;
+            container.appendChild(row);
+        }
+
+        function clearPoints() {
+            cameraPoints = [];
+            document.getElementById('coordInputs').innerHTML = '';
+            redraw();
+            updateSaveBtn();
+        }
+
+        function updateSaveBtn() {
+            let valid = cameraPoints.length >= 4;
+            for (let i = 1; i <= cameraPoints.length; i++) {
+                const elX = document.getElementById(`p${i}_x`);
+                const elY = document.getElementById(`p${i}_y`);
+                if (!elX || !elY || elX.value === '' || elY.value === '') {
+                    valid = false;
+                }
+            }
+            saveBtn.disabled = !valid;
+        }
+
+        function drawMapPreview() {
+            if (currentMode !== 'calibration') return;
+
+            const rect = mapPreviewCanvas.parentElement.getBoundingClientRect();
+            mapPreviewCanvas.width = rect.width;
+            mapPreviewCanvas.height = Math.max(350, rect.height);
+
+            mapCtx.clearRect(0, 0, mapPreviewCanvas.width, mapPreviewCanvas.height);
+
+            // Draw a layered subtle grid
+            mapCtx.lineWidth = 1;
+            const step = 40;
+            for (let x = 0; x < mapPreviewCanvas.width; x += step) {
+                mapCtx.beginPath();
+                mapCtx.strokeStyle = (x % 160 === 0) ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)';
+                mapCtx.moveTo(x, 0); mapCtx.lineTo(x, mapPreviewCanvas.height); mapCtx.stroke();
+            }
+            for (let y = 0; y < mapPreviewCanvas.height; y += step) {
+                mapCtx.beginPath();
+                mapCtx.strokeStyle = (y % 160 === 0) ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)';
+                mapCtx.moveTo(0, y); mapCtx.lineTo(mapPreviewCanvas.width, y); mapCtx.stroke();
+            }
+
+            let pts = [];
+            for (let i = 1; i <= cameraPoints.length; i++) {
+                const elX = document.getElementById(`p${i}_x`);
+                const elY = document.getElementById(`p${i}_y`);
+                if (elX && elY && elX.value !== '' && elY.value !== '') {
+                    pts.push([parseFloat(elX.value), parseFloat(elY.value)]);
+                }
+            }
+
+            if (pts.length === 0) {
+                mapCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                mapCtx.font = '13px Inter';
+                mapCtx.textAlign = 'center';
+                mapCtx.fillText(i18n.enter_coordinates_hint, mapPreviewCanvas.width / 2, mapPreviewCanvas.height / 2);
+                return;
+            }
+
+            if (draggingMapPointIdx === -1) {
+                // Find bounds
+                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                pts.forEach(p => {
+                    minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]);
+                    minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]);
+                });
+
+                // Add some padding to bounds
+                const w = Math.max(10, maxX - minX);
+                const h = Math.max(10, maxY - minY);
+                const cx = minX + w / 2;
+                const cy = minY + h / 2;
+
+                const padding = 50;
+                const scaleX = (mapPreviewCanvas.width - padding * 2) / w;
+                const scaleY = (mapPreviewCanvas.height - padding * 2) / h;
+                mapPreviewScale = Math.min(scaleX, scaleY);
+
+                mapPreviewOffX = mapPreviewCanvas.width / 2 - cx * mapPreviewScale;
+                mapPreviewOffY = mapPreviewCanvas.height / 2 - cy * mapPreviewScale;
+            }
+
+            mapCtx.save();
+            mapCtx.strokeStyle = '#24B6FC';
+            mapCtx.lineWidth = 2;
+            mapCtx.fillStyle = 'rgba(36, 182, 252, 0.15)';
+
+            mapCtx.beginPath();
+            pts.forEach((pt, i) => {
+                const px = pt[0] * mapPreviewScale + mapPreviewOffX;
+                const py = pt[1] * mapPreviewScale + mapPreviewOffY;
+
+                if (i === 0) mapCtx.moveTo(px, py);
+                else mapCtx.lineTo(px, py);
+            });
+
+            if (pts.length >= 4) {
+                mapCtx.closePath();
+                mapCtx.shadowBlur = 20;
+                mapCtx.shadowColor = 'rgba(36, 182, 252, 0.4)';
+                mapCtx.fill();
+            }
+            mapCtx.stroke();
+            mapCtx.shadowBlur = 0;
+
+            // Draw points
+            pts.forEach((pt, i) => {
+                const px = pt[0] * mapPreviewScale + mapPreviewOffX;
+                const py = pt[1] * mapPreviewScale + mapPreviewOffY;
+
+                mapCtx.beginPath();
+                mapCtx.arc(px, py, 6, 0, Math.PI * 2);
+                mapCtx.fillStyle = '#111';
+                mapCtx.fill();
+
+                mapCtx.beginPath();
+                mapCtx.arc(px, py, 4, 0, Math.PI * 2);
+                mapCtx.fillStyle = '#24B6FC';
+                mapCtx.shadowBlur = 10;
+                mapCtx.shadowColor = '#24B6FC';
+                mapCtx.fill();
+                mapCtx.shadowBlur = 0;
+
+                mapCtx.fillStyle = '#FFF';
+                mapCtx.font = 'bold 12px Inter';
+                mapCtx.textAlign = 'center';
+                mapCtx.textBaseline = 'middle';
+                mapCtx.fillText((i + 1).toString(), px, py - 18);
+            });
+
+            mapCtx.restore();
+        }
+
+        document.getElementById('coordInputs').addEventListener('input', () => {
+            updateSaveBtn();
+            drawMapPreview();
+        });
+
+        async function computeHomography() {
+            if (!currentCamera) return;
+            if (cameraPoints.length < 4) return;
+
+            let worldPts = [];
+            for (let i = 1; i <= cameraPoints.length; i++) {
+                const x = parseFloat(document.getElementById(`p${i}_x`).value);
+                const y = parseFloat(document.getElementById(`p${i}_y`).value);
+                worldPts.push([x, y]);
+            }
+
+            try {
+                const res = await fetch('/api/config/homography/' + currentCamera, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        camera_pts: cameraPoints,
+                        world_pts: worldPts
+                    })
+                });
+
+                if (res.ok) {
+                    showFlash(i18n.homography_success);
+                    alert(i18n.homography_registered_alert);
+                } else {
+                    const err = await res.json();
+                    showFlash(err.error || "Failed to save configuration.", true);
+                }
+            } catch (e) {
+                showFlash("Error connecting to server.", true);
+            }
+        }
+
+        function redraw() {
+            canvas.width = feedEl.offsetWidth || 960;
+            canvas.height = feedEl.offsetHeight || 540;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const nw = feedEl.naturalWidth || 1920;
+            const nh = feedEl.naturalHeight || 1080;
+            const scaleX = canvas.width / nw;
+            const scaleY = canvas.height / nh;
+
+            if (cameraPoints.length > 0) {
+                ctx.save();
+                ctx.strokeStyle = '#24B6FC';
+                ctx.lineWidth = 3;
+                ctx.fillStyle = 'rgba(36, 182, 252, 0.2)';
+
+                ctx.beginPath();
+                cameraPoints.forEach((pt, i) => {
+                    const x = pt[0] * scaleX;
+                    const y = pt[1] * scaleY;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+
+                    // Draw handle
+                    ctx.fillStyle = '#24B6FC';
+                    ctx.beginPath();
+                    ctx.arc(x, y, 6, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Draw Number
+                    ctx.fillStyle = '#FFF';
+                    ctx.font = 'bold 12px Inter';
+                    ctx.fillText((i + 1).toString(), x - 4, y + 4);
+                });
+
+                if (cameraPoints.length >= 4) {
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    // draw dashed line between points if not closed
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            updateSaveBtn();
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (currentMode !== 'calibration') return;
+
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            const nw = feedEl.naturalWidth || 1920;
+            const nh = feedEl.naturalHeight || 1080;
+
+            const absX = Math.round(clickX * (nw / canvas.width));
+            const absY = Math.round(clickY * (nh / canvas.height));
+
+            cameraPoints.push([absX, absY]);
+
+            // Auto-populate baseline virtual coordinates
+            const defaults = [[0, 0], [100, 0], [100, 100], [0, 100]];
+            let defaultX = 0, defaultY = 0;
+            if (cameraPoints.length <= 4) {
+                defaultX = defaults[cameraPoints.length - 1][0];
+                defaultY = defaults[cameraPoints.length - 1][1];
+            } else {
+                defaultX = 50 + (cameraPoints.length - 5) * 10;
+                defaultY = 50 + (cameraPoints.length - 5) * 10;
+            }
+
+            addInputRow(cameraPoints.length, defaultX, defaultY);
+            redraw();
+            updateSaveBtn();
+            drawMapPreview();
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (currentMode !== 'calibration') return;
+            if (cameraPoints.length > 0) {
+                cameraPoints.pop();
+                const container = document.getElementById('coordInputs');
+                if (container.lastChild) container.removeChild(container.lastChild);
+                redraw();
+                updateSaveBtn();
+                drawMapPreview();
+            }
+        });
+
+        // ── MAP PREVIEW DRAG CONTROLS ──
+        mapPreviewCanvas.addEventListener('mousedown', (e) => {
+            if (currentMode !== 'calibration') return;
+            const rect = mapPreviewCanvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            for (let i = 1; i <= cameraPoints.length; i++) {
+                const elX = document.getElementById(`p${i}_x`);
+                const elY = document.getElementById(`p${i}_y`);
+                if (elX && elY && elX.value !== '' && elY.value !== '') {
+                    const wx = parseFloat(elX.value);
+                    const wy = parseFloat(elY.value);
+                    const px = wx * mapPreviewScale + mapPreviewOffX;
+                    const py = wy * mapPreviewScale + mapPreviewOffY;
+                    if (Math.hypot(clickX - px, clickY - py) <= 15) {
+                        draggingMapPointIdx = i;
+                        mapPreviewCanvas.style.cursor = 'grabbing';
+                        return;
+                    }
+                }
+            }
+        });
+
+        mapPreviewCanvas.addEventListener('mousemove', (e) => {
+            if (currentMode !== 'calibration') return;
+            const rect = mapPreviewCanvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            if (draggingMapPointIdx === -1) {
+                let hovered = false;
+                for (let i = 1; i <= cameraPoints.length; i++) {
+                    const elX = document.getElementById(`p${i}_x`);
+                    const elY = document.getElementById(`p${i}_y`);
+                    if (elX && elY && elX.value !== '' && elY.value !== '') {
+                        const px = parseFloat(elX.value) * mapPreviewScale + mapPreviewOffX;
+                        const py = parseFloat(elY.value) * mapPreviewScale + mapPreviewOffY;
+                        if (Math.hypot(mouseX - px, mouseY - py) <= 15) {
+                            hovered = true; break;
+                        }
+                    }
+                }
+                mapPreviewCanvas.style.cursor = hovered ? 'grab' : 'default';
+                return;
+            }
+
+            // Execute Drag
+            const newWx = (mouseX - mapPreviewOffX) / mapPreviewScale;
+            const newWy = (mouseY - mapPreviewOffY) / mapPreviewScale;
+            document.getElementById(`p${draggingMapPointIdx}_x`).value = Math.round(newWx * 10) / 10;
+            document.getElementById(`p${draggingMapPointIdx}_y`).value = Math.round(newWy * 10) / 10;
+
+            updateSaveBtn();
+            drawMapPreview();
+        });
+
+        mapPreviewCanvas.addEventListener('mouseup', () => {
+            if (draggingMapPointIdx !== -1) {
+                draggingMapPointIdx = -1;
+                mapPreviewCanvas.style.cursor = 'grab';
+                drawMapPreview(); // Reset view scaling organically
+            }
+        });
+
+        mapPreviewCanvas.addEventListener('mouseleave', () => {
+            if (draggingMapPointIdx !== -1) {
+                draggingMapPointIdx = -1;
+                mapPreviewCanvas.style.cursor = 'default';
+                drawMapPreview();
+            }
+        });
+
+        // ── LIVE RADAR LOGIC ──
+        let radarBgImg = null;
+
+        async function loadRadarBg() {
+            try {
+                const res = await fetch('/api/floorplan/bg');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.exists && data.url) {
+                        radarBgImg = new Image();
+                        radarBgImg.src = data.url;
+                        document.getElementById('btnRemoveBg').style.display = 'inline-block';
+                    }
+                }
+            } catch (e) { }
+        }
+
+        async function uploadRadarBg(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const res = await fetch('/api/floorplan/bg', { method: 'POST', body: formData });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.ok && data.url) {
+                        radarBgImg = new Image();
+                        radarBgImg.src = data.url;
+                        document.getElementById('btnRemoveBg').style.display = 'inline-block';
+                    }
+                }
+            } catch (e) {
+                alert("Failed to upload background");
+            }
+            event.target.value = "";
+        }
+
+        async function removeRadarBg() {
+            try {
+                const res = await fetch('/api/floorplan/bg', { method: 'DELETE' });
+                if (res.ok) {
+                    radarBgImg = null;
+                    document.getElementById('btnRemoveBg').style.display = 'none';
+                }
+            } catch (e) { }
+        }
+
+        loadRadarBg();
+
+        let blindspots = [];
+        let drawingBlindspot = [];
+        let isBlindspotMode = false;
+
+        function toggleBlindspotMode() {
+            isBlindspotMode = !isBlindspotMode;
+            const btn = document.getElementById('btnBlindspot');
+            if (isBlindspotMode) {
+                btn.style.background = 'rgba(240, 165, 0, 0.2)';
+                btn.textContent = i18n.save_right_click;
+                drawingBlindspot = [];
+            } else {
+                btn.style.background = 'transparent';
+                btn.textContent = i18n.draw_blindspot;
+                drawingBlindspot = [];
+            }
+        }
+
+        async function clearBlindspots() {
+            blindspots = [];
+            await fetch('/api/floorplan/blindspots', { method: 'DELETE' });
+            document.getElementById('btnClearBlindspots').style.display = 'none';
+            drawRadar(_lastRetailData);
+        }
+
+        async function loadBlindspots() {
+            try {
+                const res = await fetch('/api/floorplan/blindspots');
+                if (res.ok) {
+                    blindspots = await res.json();
+                    if (blindspots.length > 0) document.getElementById('btnClearBlindspots').style.display = 'inline-block';
+                }
+            } catch (e) { }
+        }
+        async function saveBlindspots() {
+            try {
+                await fetch('/api/floorplan/blindspots', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(blindspots)
+                });
+                if (blindspots.length > 0) document.getElementById('btnClearBlindspots').style.display = 'inline-block';
+            } catch (e) { }
+        }
+        loadBlindspots();
+
+        // Cache of all cameras' world_pts for drawing the floor plan background
+        let worldZones = [];   // [{camId, color, pts: [[x,y],...]}]
+        let warpedBgs = [];
+        let isUserTransformed = false;
+        let globalZoom = 1, globalPanX = 0, globalPanY = 0;
+        let lastMouse = { x: 0, y: 0 };
+        let _lastRetailData = { tracks: {} };
+        let cameraDragOffsets = {};
+        let trackCameraMap = {};
+        // Simple drag state: what are we dragging?
+        let dragState = null; // null | {type:'PAN'} | {type:'VERTEX', zone, idx} | {type:'MOVE', zone} | {type:'ROTATE', zone, cx, cy, startAngle} | {type:'MOVE_BG'} | {type:'ROTATE_BG', cx, cy, startAngle}
+
+        // Global Map Background
+        let globalBgImg = null;
+        let globalBgConfig = { scale: 1, angle: 0, tx: 0, ty: 0 };
+        let isEditingBg = false;
+
+        async function loadRadarBg() {
+            try {
+                const res = await fetch('/api/floorplan/bg');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.exists && data.url) {
+                        const img = new Image();
+                        img.onload = () => { globalBgImg = img; drawRadar(_lastRetailData); };
+                        img.src = data.url;
+                        if (data.config) globalBgConfig = data.config;
+                        document.getElementById('btnRemoveBg').style.display = 'inline-block';
+                        document.getElementById('btnEditBg').style.display = 'inline-block';
+                    } else {
+                        globalBgImg = null;
+                        document.getElementById('btnRemoveBg').style.display = 'none';
+                        document.getElementById('btnEditBg').style.display = 'none';
+                    }
+                }
+            } catch (e) { console.error("Failed to load global bg", e); }
+        }
+
+        document.getElementById('bgUpload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const fd = new FormData(); fd.append('file', file);
+            document.getElementById('btnRemoveBg').style.display = 'none';
+            try {
+                const res = await fetch('/api/floorplan/bg', { method: 'POST', body: fd });
+                if (res.ok) loadRadarBg();
+            } catch (e) { }
+        });
+
+        async function removeRadarBg() {
+            if (!confirm("Are you sure you want to remove the global blueprint floorplan?")) return;
+            try {
+                const res = await fetch('/api/floorplan/bg', { method: 'DELETE' });
+                if (res.ok) { globalBgConfig = { scale: 1, angle: 0, tx: 0, ty: 0 }; loadRadarBg(); drawRadar(_lastRetailData); }
+            } catch (e) { }
+        }
+
+        function toggleEditBg() {
+            isEditingBg = !isEditingBg;
+            const btn = document.getElementById('btnEditBg');
+            if (isEditingBg) {
+                btn.style.background = '#3fb950'; btn.style.color = '#fff'; btn.innerText = i18n.save_floorplan_alignment;
+                radarCanvas.style.border = "2px dashed #3fb950";
+            } else {
+                btn.style.background = 'transparent'; btn.style.color = '#3fb950'; btn.innerText = i18n.edit_floorplan;
+                radarCanvas.style.border = "none";
+                fetch('/api/floorplan/bg', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(globalBgConfig) });
+                drawRadar(_lastRetailData);
+            }
+        }
+
+        async function fetchWarpedBg(camId, forceLive = false) {
+            try {
+                const url = '/api/camera_snapshot_warped/' + camId + (forceLive ? '' : '?use_clean=1');
+                const res = await fetch(url);
+                if (res.ok) {
+                    const boundsStr = res.headers.get('X-World-Bounds');
+                    if (boundsStr) {
+                        const [minX, minY, maxX, maxY] = boundsStr.split(',').map(Number);
+
+                        const bgImg = new Image();
+                        const blob = await res.blob();
+                        bgImg.src = URL.createObjectURL(blob);
+
+                        bgImg.onload = () => {
+                            const idx = warpedBgs.findIndex(b => b.camId === camId);
+                            if (idx !== -1) {
+                                warpedBgs[idx] = { camId, img: bgImg, bounds: [minX, minY, maxX, maxY] };
+                            } else {
+                                warpedBgs.push({ camId, img: bgImg, bounds: [minX, minY, maxX, maxY] });
+                            }
+                            drawRadar(_lastRetailData);
+                        };
+                    }
+                }
+            } catch (e) { }
+        }
+
+        const ZONE_COLORS = [
+            'rgba(36, 182, 252, 0.18)',   // blue
+            'rgba(63, 185, 80, 0.18)',    // green
+            'rgba(240, 165, 0, 0.18)',    // amber
+            'rgba(188, 140, 255, 0.18)',  // purple
+            'rgba(248, 81, 73, 0.18)',    // red
+            'rgba(0, 210, 180, 0.18)',    // teal
+        ];
+        const ZONE_STROKE = [
+            'rgba(36, 182, 252, 0.7)',
+            'rgba(63, 185, 80, 0.7)',
+            'rgba(240, 165, 0, 0.7)',
+            'rgba(188, 140, 255, 0.7)',
+            'rgba(248, 81, 73, 0.7)',
+            'rgba(0, 210, 180, 0.7)',
+        ];
+
+        async function loadWorldZones() {
+            loadRadarBg();
+            const cameras = Array.from(document.querySelectorAll('.cam-tab')).map(b => b.textContent.trim());
+            worldZones = [];
+            warpedBgs = [];
+            for (let i = 0; i < cameras.length; i++) {
+                try {
+                    const res = await fetch('/api/config/homography/' + cameras[i]);
+                    if (res.ok) {
+                        const d = await res.json();
+                        if (d.world_pts && d.world_pts.length >= 4) {
+                            worldZones.push({
+                                camId: cameras[i],
+                                color: ZONE_COLORS[i % ZONE_COLORS.length],
+                                stroke: ZONE_STROKE[i % ZONE_STROKE.length],
+                                pts: d.world_pts,
+                            });
+
+                            const bgImg = new Image();
+                            bgImg.onload = () => { if (currentMode === 'live') resizeRadar(); };
+                            fetchWarpedBg(cameras[i], bgImg);
+                        }
+                    }
+                } catch (e) { }
+            }
+        }
+
+        function computeMapTransform(extraPts) {
+            // Gather all points from zones + optional track positions
+            let allPts = [];
+            worldZones.forEach(z => z.pts.forEach(p => allPts.push(p)));
+            (extraPts || []).forEach(p => allPts.push(p));
+
+            if (allPts.length === 0) return null;
+
+            const pad = 60;
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            allPts.forEach(([x, y]) => {
+                minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+            });
+
+            const rangeX = Math.max(1, maxX - minX);
+            const rangeY = Math.max(1, maxY - minY);
+
+            if (!isUserTransformed) {
+                const scaleX = (radarCanvas.width - pad * 2) / rangeX;
+                const scaleY = (radarCanvas.height - pad * 2) / rangeY;
+                globalZoom = Math.min(scaleX, scaleY);
+                globalPanX = radarCanvas.width / 2 - (minX + rangeX / 2) * globalZoom;
+                globalPanY = radarCanvas.height / 2 - (minY + rangeY / 2) * globalZoom;
+            }
+
+            return { scale: globalZoom, offX: globalPanX, offY: globalPanY };
+        }
+
+        function toCanvas(wx, wy, tx) {
+            return [wx * tx.scale + tx.offX, wy * tx.scale + tx.offY];
+        }
+
+        const viewContainer = document.getElementById('viewContainer');
+
+        function resizeRadar() {
+            const w = viewContainer.clientWidth || 800;
+            const h = viewContainer.clientHeight || 600;
+            radarCanvas.width = w;
+            radarCanvas.height = h;
+        }
+        async function fetchRadarData() {
+            if (currentMode !== 'live') return;
+            try {
+                const res = await fetch('/api/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    resizeRadar();   // re-sync canvas pixel size each poll
+                    _lastRetailData = data.retail_data || { tracks: {} };
+
+                    for (const [gid, attrs] of Object.entries(_lastRetailData.tracks)) {
+                        if (attrs.world_x != null && !trackCameraMap[gid]) {
+                            for (let i = worldZones.length - 1; i >= 0; i--) {
+                                const cId = worldZones[i].camId;
+                                const off = cameraDragOffsets[cId] || { x: 0, y: 0 };
+                                const unshiftedPts = worldZones[i].pts.map(p => [p[0] - off.x, p[1] - off.y]);
+                                if (pointInPoly([attrs.world_x, attrs.world_y], unshiftedPts)) {
+                                    trackCameraMap[gid] = cId;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    drawRadar(_lastRetailData);
+                }
+            } catch (e) {
+                console.error("Failed to fetch radar data", e);
+            }
+        }
+
+        // --- RADAR MOUSE EVENTS ---
+        function getRadarMouse(e) {
+            const r = radarCanvas.getBoundingClientRect();
+            return { x: e.clientX - r.left, y: e.clientY - r.top };
+        }
+        function pointInPoly(pt, vs) {
+            let inside = false;
+            for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+                if (((vs[i][1] > pt[1]) != (vs[j][1] > pt[1])) &&
+                    (pt[0] < (vs[j][0] - vs[i][0]) * (pt[1] - vs[i][1]) / (vs[j][1] - vs[i][1]) + vs[i][0])) {
+                    inside = !inside;
+                }
+            }
+            return inside;
+        }
+
+        let wheelSaveTimeout = null;
+
+        radarCanvas.addEventListener('wheel', (e) => {
+            if (currentMode !== 'live') return;
+            e.preventDefault();
+            isUserTransformed = true;
+
+            if (isEditingBg && globalBgImg) {
+                const zf = e.deltaY > 0 ? 0.95 : 1.05;
+                const oldScale = globalBgConfig.scale;
+                globalBgConfig.scale *= zf;
+
+                // Shift tx, ty to keep the image centered during zoom
+                globalBgConfig.tx += (globalBgImg.width * oldScale) / 2 - (globalBgImg.width * globalBgConfig.scale) / 2;
+                globalBgConfig.ty += (globalBgImg.height * oldScale) / 2 - (globalBgImg.height * globalBgConfig.scale) / 2;
+
+                drawRadar(_lastRetailData);
+                return;
+            }
+
+            const m = getRadarMouse(e);
+            const wX = (m.x - globalPanX) / globalZoom;
+            const wY = (m.y - globalPanY) / globalZoom;
+
+            // Check if hovering over a zone → scale that zone
+            let hit = null;
+            for (let i = worldZones.length - 1; i >= 0; i--) {
+                if (pointInPoly([wX, wY], worldZones[i].pts)) { hit = worldZones[i]; break; }
+            }
+
+            if (hit) {
+                const sf = e.deltaY > 0 ? 0.95 : 1.05;
+                let cx = 0, cy = 0;
+                hit.pts.forEach(p => { cx += p[0]; cy += p[1]; });
+                cx /= hit.pts.length; cy /= hit.pts.length;
+                hit.pts.forEach(p => {
+                    p[0] = cx + (p[0] - cx) * sf;
+                    p[1] = cy + (p[1] - cy) * sf;
+                });
+                const bg = warpedBgs.find(b => b.camId === hit.camId);
+                if (bg && bg.bounds) {
+                    bg.bounds[0] = cx + (bg.bounds[0] - cx) * sf;
+                    bg.bounds[1] = cy + (bg.bounds[1] - cy) * sf;
+                    bg.bounds[2] = cx + (bg.bounds[2] - cx) * sf;
+                    bg.bounds[3] = cy + (bg.bounds[3] - cy) * sf;
+                }
+                drawRadar(_lastRetailData);
+                // Debounced save
+                clearTimeout(wheelSaveTimeout);
+                const camId = hit.camId;
+                wheelSaveTimeout = setTimeout(async () => {
+                    const pts = JSON.parse(JSON.stringify(hit.pts));
+                    try {
+                        const res = await fetch('/api/config/homography/' + camId);
+                        if (res.ok) {
+                            const d = await res.json();
+                            await fetch('/api/config/homography/' + camId, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ camera_pts: d.camera_pts, world_pts: pts })
+                            });
+                            // Refresh warped seamlessly
+                            fetchWarpedBg(camId, true);
+                        }
+                    } catch (e) { }
+                }, 800);
+            } else {
+                // Empty space → global zoom
+                const zf = e.deltaY > 0 ? 0.9 : 1.1;
+                globalZoom *= zf;
+                globalPanX = m.x - wX * globalZoom;
+                globalPanY = m.y - wY * globalZoom;
+                drawRadar(_lastRetailData);
+            }
+        }, { passive: false });
+
+        radarCanvas.addEventListener('mousedown', (e) => {
+            if (currentMode !== 'live') return;
+            isUserTransformed = true;
+            const m = getRadarMouse(e);
+            lastMouse = m;
+            const wX = (m.x - globalPanX) / globalZoom;
+            const wY = (m.y - globalPanY) / globalZoom;
+
+            if (isBlindspotMode) {
+                if (e.button === 0) { drawingBlindspot.push([wX, wY]); drawRadar(_lastRetailData); }
+                return;
+            }
+
+            if (isEditingBg && globalBgImg) {
+                // Determine the current center of the drawing
+                const bx = globalBgConfig.tx + (globalBgImg.width * globalBgConfig.scale) / 2;
+                const by = globalBgConfig.ty + (globalBgImg.height * globalBgConfig.scale) / 2;
+                if (e.shiftKey) {
+                    dragState = { type: 'ROTATE_BG', cx: bx, cy: by, startAngle: Math.atan2(wY - by, wX - bx) };
+                } else {
+                    dragState = { type: 'MOVE_BG' };
+                }
+                return;
+            }
+
+            // 1. Check if clicking a vertex on ANY zone
+            for (let z = worldZones.length - 1; z >= 0; z--) {
+                for (let vi = 0; vi < worldZones[z].pts.length; vi++) {
+                    const [px, py] = [worldZones[z].pts[vi][0] * globalZoom + globalPanX, worldZones[z].pts[vi][1] * globalZoom + globalPanY];
+                    if (Math.hypot(m.x - px, m.y - py) <= 10) {
+                        dragState = { type: 'VERTEX', zone: worldZones[z], idx: vi };
+                        return;
+                    }
+                }
+            }
+
+            // 2. Check if clicking inside a zone
+            for (let z = worldZones.length - 1; z >= 0; z--) {
+                if (pointInPoly([wX, wY], worldZones[z].pts)) {
+                    if (e.shiftKey) {
+                        // Shift+click = rotate mode
+                        let cx = 0, cy = 0;
+                        worldZones[z].pts.forEach(p => { cx += p[0]; cy += p[1]; });
+                        cx /= worldZones[z].pts.length; cy /= worldZones[z].pts.length;
+                        dragState = { type: 'ROTATE', zone: worldZones[z], cx, cy, startAngle: Math.atan2(wY - cy, wX - cx) };
+                    } else {
+                        dragState = { type: 'MOVE', zone: worldZones[z] };
+                        if (!cameraDragOffsets[worldZones[z].camId]) cameraDragOffsets[worldZones[z].camId] = { x: 0, y: 0 };
+                    }
+                    return;
+                }
+            }
+
+            // 3. Empty space = pan
+            dragState = { type: 'PAN' };
+        });
+
+        radarCanvas.addEventListener('mousemove', (e) => {
+            if (currentMode !== 'live') return;
+            const m = getRadarMouse(e);
+            const wX = (m.x - globalPanX) / globalZoom;
+            const wY = (m.y - globalPanY) / globalZoom;
+
+            // Cursor feedback
+            if (!dragState) {
+                let onVtx = false;
+                for (const z of worldZones) {
+                    for (const p of z.pts) {
+                        const px = p[0] * globalZoom + globalPanX, py = p[1] * globalZoom + globalPanY;
+                        if (Math.hypot(m.x - px, m.y - py) <= 10) { onVtx = true; break; }
+                    }
+                    if (onVtx) break;
+                }
+                if (onVtx) radarCanvas.style.cursor = 'crosshair';
+                else if (worldZones.some(z => pointInPoly([wX, wY], z.pts))) radarCanvas.style.cursor = e.shiftKey ? 'alias' : 'grab';
+                else radarCanvas.style.cursor = 'default';
+            }
+
+            if (!dragState) { lastMouse = m; return; }
+
+            if (dragState.type === 'PAN') {
+                globalPanX += m.x - lastMouse.x;
+                globalPanY += m.y - lastMouse.y;
+            } else if (dragState.type === 'VERTEX') {
+                const dx = (m.x - lastMouse.x) / globalZoom;
+                const dy = (m.y - lastMouse.y) / globalZoom;
+                dragState.zone.pts[dragState.idx][0] += dx;
+                dragState.zone.pts[dragState.idx][1] += dy;
+                radarCanvas.style.cursor = 'crosshair';
+            } else if (dragState.type === 'MOVE') {
+                const dx = (m.x - lastMouse.x) / globalZoom;
+                const dy = (m.y - lastMouse.y) / globalZoom;
+                dragState.zone.pts.forEach(p => { p[0] += dx; p[1] += dy; });
+                const bg = warpedBgs.find(b => b.camId === dragState.zone.camId);
+                if (bg && bg.bounds) {
+                    bg.bounds[0] += dx; bg.bounds[1] += dy; bg.bounds[2] += dx; bg.bounds[3] += dy;
+                    if (bg.cx !== undefined) { bg.cx += dx; bg.cy += dy; }
+                }
+                cameraDragOffsets[dragState.zone.camId].x += dx;
+                cameraDragOffsets[dragState.zone.camId].y += dy;
+                radarCanvas.style.cursor = 'grabbing';
+            } else if (dragState.type === 'MOVE_BG') {
+                globalBgConfig.tx += (m.x - lastMouse.x) / globalZoom;
+                globalBgConfig.ty += (m.y - lastMouse.y) / globalZoom;
+                radarCanvas.style.cursor = 'grabbing';
+            } else if (dragState.type === 'ROTATE_BG') {
+                const curAng = Math.atan2(wY - dragState.cy, wX - dragState.cx);
+                globalBgConfig.angle += curAng - dragState.startAngle;
+                dragState.startAngle = curAng;
+                radarCanvas.style.cursor = 'alias';
+            } else if (dragState.type === 'ROTATE') {
+                const curAng = Math.atan2(wY - dragState.cy, wX - dragState.cx);
+                const dA = curAng - dragState.startAngle;
+                const cos = Math.cos(dA), sin = Math.sin(dA);
+                dragState.zone.pts.forEach(p => {
+                    const nx = cos * (p[0] - dragState.cx) - sin * (p[1] - dragState.cy) + dragState.cx;
+                    const ny = sin * (p[0] - dragState.cx) + cos * (p[1] - dragState.cy) + dragState.cy;
+                    p[0] = nx; p[1] = ny;
+                });
+
+                const bg = warpedBgs.find(b => b.camId === dragState.zone.camId);
+                if (bg && bg.bounds) {
+                    if (bg.angle === undefined) {
+                        bg.angle = 0;
+                        bg.cx = (bg.bounds[0] + bg.bounds[2]) / 2;
+                        bg.cy = (bg.bounds[1] + bg.bounds[3]) / 2;
+                    }
+                    bg.angle += dA;
+                    // Rotate the image center around the zone's pivot point
+                    const dx_bg = bg.cx - dragState.cx;
+                    const dy_bg = bg.cy - dragState.cy;
+                    bg.cx = dragState.cx + dx_bg * cos - dy_bg * sin;
+                    bg.cy = dragState.cy + dx_bg * sin + dy_bg * cos;
+                }
+
+                dragState.startAngle = curAng;
+                radarCanvas.style.cursor = 'alias';
+            }
+            drawRadar(_lastRetailData);
+            lastMouse = m;
+        });
+
+        radarCanvas.addEventListener('mouseup', (e) => {
+            if (dragState && ['VERTEX', 'MOVE', 'ROTATE'].includes(dragState.type)) {
+                const camId = dragState.zone.camId;
+                const pts = JSON.parse(JSON.stringify(dragState.zone.pts));
+                const dType = dragState.type;
+
+                // Clear state IMMEDIATELY for flawless UI feedback
+                dragState = null;
+                radarCanvas.style.cursor = 'default';
+
+                // Sync to backend asynchronously without blocking the user
+                (async () => {
+                    try {
+                        const res = await fetch('/api/config/homography/' + camId);
+                        if (res.ok) {
+                            const d = await res.json();
+                            await fetch('/api/config/homography/' + camId, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ camera_pts: d.camera_pts, world_pts: pts })
+                            });
+                            // Refresh warped image seamlessly (keeps clean background if available)
+                            fetchWarpedBg(camId);
+
+                            // Re-align tracking points offset fadeout
+                            if (dType === 'MOVE') {
+                                setTimeout(() => { if (cameraDragOffsets[camId]) { cameraDragOffsets[camId].x = 0; cameraDragOffsets[camId].y = 0; } }, 1000);
+                            }
+                        }
+                    } catch (e) { console.error("Map sync error:", e); }
+                })();
+            } else {
+                dragState = null;
+                radarCanvas.style.cursor = 'default';
+            }
+        });
+
+        radarCanvas.addEventListener('contextmenu', (e) => {
+            if (currentMode === 'live' && isBlindspotMode) {
+                e.preventDefault();
+                if (drawingBlindspot.length >= 3) { blindspots.push([...drawingBlindspot]); saveBlindspots(); }
+                toggleBlindspotMode();
+                drawRadar(_lastRetailData);
+            }
+        });
+
+        radarCanvas.addEventListener('mouseleave', () => { dragState = null; radarCanvas.style.cursor = 'default'; });
+
+        async function generateCleanBackgrounds() {
+            if (worldZones.length === 0) return alert(i18n.no_camera_zones_error);
+
+            const btn = document.getElementById('btnCleanBg');
+            const ogText = btn.innerHTML;
+            btn.disabled = true;
+
+            const activeCams = [...new Set(worldZones.map(z => z.camId))];
+
+            // Fire off all capture requests (they run in background threads)
+            try {
+                await Promise.all(activeCams.map(camId =>
+                    fetch('/api/camera_clean_bg/' + camId, { method: 'POST' })
+                ));
+            } catch (e) {
+                btn.innerHTML = ogText; btn.disabled = false;
+                return alert('Failed to start capture. Check connection.');
+            }
+
+            // Poll for completion: try to load clean warped backgrounds every 5s
+            let elapsed = 0;
+            const maxWait = 130; // seconds
+            const pollInterval = 5;
+
+            const pollTimer = setInterval(async () => {
+                elapsed += pollInterval;
+                const dots = '.'.repeat((elapsed / pollInterval) % 4);
+                btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg> Capturing empty floor${dots} (${elapsed}s)`;
+
+                if (elapsed >= maxWait) {
+                    clearInterval(pollTimer);
+                    btn.innerHTML = ogText;
+                    btn.disabled = false;
+                    // Try one last load regardless
+                    activeCams.forEach(camId => fetchWarpedBg(camId));
+                    return;
+                }
+
+                // Check if clean backgrounds are ready by trying to fetch them
+                let allReady = true;
+                for (const camId of activeCams) {
+                    try {
+                        const check = await fetch(`/static/clean_bg_${camId}.jpg?t=${Date.now()}`, { method: 'HEAD' });
+                        if (!check.ok) { allReady = false; break; }
+                    } catch (e) { allReady = false; break; }
+                }
+
+                if (allReady && elapsed >= 10) { // wait at least 10s for fresh data
+                    clearInterval(pollTimer);
+                    btn.innerHTML = `✅ ${i18n.done}`;
+
+                    // Reload all warped backgrounds with clean source
+                    activeCams.forEach(camId => fetchWarpedBg(camId));
+
+                    setTimeout(() => {
+                        btn.innerHTML = ogText;
+                        btn.disabled = false;
+                    }, 2000);
+                }
+            }, pollInterval * 1000);
+
+            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg> ${i18n.waiting_empty_moments} (0s)`;
+        }
+
+        function drawRadar(retailData) {
+            radarCtx.clearRect(0, 0, radarCanvas.width, radarCanvas.height);
+
+            const trackPts = [];
+            if (retailData && retailData.tracks) {
+                for (const a of Object.values(retailData.tracks)) {
+                    if (a.world_x != null) trackPts.push([a.world_x, a.world_y]);
+                }
+            }
+            const tx = computeMapTransform(trackPts);
+
+            // Draw underlying global floorplan background if exists
+            if (globalBgImg) {
+                radarCtx.save();
+                // move to canvas origin of world coordinates
+                radarCtx.translate(tx.offX, tx.offY);
+                // move the image strictly by its configured scale/rotate
+                radarCtx.translate(globalBgConfig.tx * tx.scale, globalBgConfig.ty * tx.scale);
+
+                const cx = (globalBgImg.width / 2) * tx.scale * globalBgConfig.scale;
+                const cy = (globalBgImg.height / 2) * tx.scale * globalBgConfig.scale;
+
+                radarCtx.translate(cx, cy);
+                radarCtx.rotate(globalBgConfig.angle);
+                radarCtx.translate(-cx, -cy);
+
+                radarCtx.drawImage(
+                    globalBgImg,
+                    0, 0,
+                    globalBgImg.width * tx.scale * globalBgConfig.scale,
+                    globalBgImg.height * tx.scale * globalBgConfig.scale
+                );
+
+                if (isEditingBg) {
+                    radarCtx.strokeStyle = '#3fb950';
+                    radarCtx.lineWidth = 2;
+                    radarCtx.setLineDash([8, 8]);
+                    radarCtx.strokeRect(0, 0, globalBgImg.width * tx.scale * globalBgConfig.scale, globalBgImg.height * tx.scale * globalBgConfig.scale);
+
+                    // instruction overlay
+                    radarCtx.fillStyle = '#fff';
+                    radarCtx.font = '14px Arial';
+                    radarCtx.fillText(i18n.radar_controls_hint, 10, -10);
+                    radarCtx.restore();
+                }
+                radarCtx.restore();
+            }
+
+            // Grid baseline
+            if (!globalBgImg) {
+                const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--radar-grid').trim() || 'rgba(255,255,255,0.05)';
+                radarCtx.strokeStyle = gridColor;
+                radarCtx.lineWidth = 1;
+                for (let x = 0; x < radarCanvas.width; x += 50) {
+                    radarCtx.beginPath(); radarCtx.moveTo(x, 0); radarCtx.lineTo(x, radarCanvas.height); radarCtx.stroke();
+                }
+                for (let y = 0; y < radarCanvas.height; y += 50) {
+                    radarCtx.beginPath(); radarCtx.moveTo(0, y); radarCtx.lineTo(radarCanvas.width, y); radarCtx.stroke();
+                }
+            }
+
+            // ── Step 2.5: draw background map if available ──
+            if (tx) {
+                warpedBgs.forEach(bg => {
+                    if (bg.img.complete && bg.bounds) {
+                        if (bg.angle) {
+                            const [px_c, py_c] = toCanvas(bg.cx, bg.cy, tx);
+                            const w_canvas = (bg.bounds[2] - bg.bounds[0]) * tx.scale;
+                            const h_canvas = (bg.bounds[3] - bg.bounds[1]) * tx.scale;
+
+                            radarCtx.save();
+                            radarCtx.globalAlpha = 0.55;
+                            radarCtx.translate(px_c, py_c);
+                            radarCtx.rotate(bg.angle);
+                            radarCtx.drawImage(bg.img, -w_canvas / 2, -h_canvas / 2, w_canvas, h_canvas);
+                            radarCtx.restore();
+                        } else {
+                            const [w_minX, w_minY, w_maxX, w_maxY] = bg.bounds;
+                            const [px0, py0] = toCanvas(w_minX, w_minY, tx);
+                            const [px1, py1] = toCanvas(w_maxX, w_maxY, tx);
+                            radarCtx.save();
+                            radarCtx.globalAlpha = 0.55;
+                            radarCtx.drawImage(bg.img, px0, py0, px1 - px0, py1 - py0);
+                            radarCtx.restore();
+                        }
+                    }
+                });
+            }
+
+            if (radarBgImg && radarBgImg.complete && tx) {
+                const [px0, py0] = toCanvas(0, 0, tx);
+                const [px1, py1] = toCanvas(radarBgImg.width, radarBgImg.height, tx);
+                radarCtx.save();
+                radarCtx.globalAlpha = 0.4;
+                radarCtx.drawImage(radarBgImg, px0, py0, px1 - px0, py1 - py0);
+                radarCtx.restore();
+            }
+
+            // ── Step 3: draw blindspots ──
+            const allBlindspots = [...blindspots];
+            if (drawingBlindspot.length > 0) allBlindspots.push(drawingBlindspot);
+
+            if (tx && allBlindspots.length > 0) {
+                radarCtx.save();
+                allBlindspots.forEach(bs => {
+                    if (bs.length === 0) return;
+                    radarCtx.beginPath();
+                    bs.forEach(([wx, wy], i) => {
+                        const [px, py] = toCanvas(wx, wy, tx);
+                        i === 0 ? radarCtx.moveTo(px, py) : radarCtx.lineTo(px, py);
+                    });
+                    if (bs !== drawingBlindspot || bs.length >= 3) {
+                        radarCtx.closePath();
+                        radarCtx.fillStyle = 'rgba(20, 20, 25, 0.85)';
+                        radarCtx.fill();
+                    }
+                    radarCtx.strokeStyle = '#f0a500';
+                    radarCtx.lineWidth = 2;
+                    radarCtx.setLineDash([4, 4]);
+                    radarCtx.stroke();
+                    radarCtx.setLineDash([]);
+
+                    bs.forEach(([wx, wy]) => {
+                        const [px, py] = toCanvas(wx, wy, tx);
+                        radarCtx.beginPath(); radarCtx.arc(px, py, 3, 0, Math.PI * 2);
+                        radarCtx.fillStyle = '#f0a500'; radarCtx.fill();
+                    });
+                });
+                radarCtx.restore();
+            }
+
+            // ── Step 4: draw floor zones from calibration world_pts ──
+            if (tx && worldZones.length > 0) {
+                worldZones.forEach((zone, idx) => {
+                    radarCtx.beginPath();
+                    zone.pts.forEach(([wx, wy], i) => {
+                        const [px, py] = toCanvas(wx, wy, tx);
+                        i === 0 ? radarCtx.moveTo(px, py) : radarCtx.lineTo(px, py);
+                    });
+                    radarCtx.closePath();
+                    radarCtx.fillStyle = zone.color;
+                    radarCtx.fill();
+                    radarCtx.strokeStyle = zone.stroke;
+                    radarCtx.lineWidth = 2;
+                    radarCtx.setLineDash([6, 4]);
+                    radarCtx.stroke();
+                    radarCtx.setLineDash([]);
+
+                    // Camera label above first point
+                    const [lx, ly] = toCanvas(zone.pts[0][0], zone.pts[0][1], tx);
+                    radarCtx.font = 'bold 11px Inter';
+                    radarCtx.fillStyle = zone.stroke;
+                    radarCtx.textAlign = 'left';
+                    radarCtx.fillText(zone.camId, lx + 6, ly - 6);
+
+                    // Corner dots — always big and draggable
+                    zone.pts.forEach(([wx, wy], i) => {
+                        const [px, py] = toCanvas(wx, wy, tx);
+                        // Outer ring
+                        radarCtx.beginPath();
+                        radarCtx.arc(px, py, 7, 0, Math.PI * 2);
+                        radarCtx.fillStyle = '#fff';
+                        radarCtx.fill();
+                        radarCtx.strokeStyle = zone.stroke;
+                        radarCtx.lineWidth = 2;
+                        radarCtx.stroke();
+                        // Number label
+                        radarCtx.fillStyle = '#000';
+                        radarCtx.font = 'bold 9px Inter';
+                        radarCtx.textAlign = 'center';
+                        radarCtx.fillText(i + 1, px, py + 3);
+                        radarCtx.textAlign = 'left';
+                    });
+
+                    // Interaction hint labels
+                    radarCtx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                    radarCtx.font = 'bold 10px Inter';
+                    radarCtx.fillText(i18n.radar_controls_hint, lx + 6, ly + 12);
+                });
+
+            } else if (!tx) {
+                radarCtx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+                radarCtx.font = 'bold 13px Inter';
+                radarCtx.textAlign = 'center';
+                radarCtx.fillText(i18n.calibrate_hint, radarCanvas.width / 2, radarCanvas.height / 2);
+                return;
+            }
+
+            // ── Step 4: no tracks yet ──
+            const hasTracks = retailData && retailData.tracks && Object.keys(retailData.tracks).length > 0;
+            if (!hasTracks) {
+                radarCtx.fillStyle = 'rgba(255,255,255,0.4)';
+                radarCtx.font = 'bold 13px Inter';
+                radarCtx.textAlign = 'center';
+                radarCtx.fillText(i18n.waiting_tracks_hint, radarCanvas.width / 2, radarCanvas.height - 30);
+                return;
+            }
+
+            // ── Step 5: draw track blips ──
+            radarCtx.textAlign = 'left';
+            for (const [gid, attrs] of Object.entries(retailData.tracks)) {
+                if (attrs.world_x == null || !tx) continue;
+
+                let wX = attrs.world_x;
+                let wY = attrs.world_y;
+
+                const cId = trackCameraMap[gid];
+                if (cId && cameraDragOffsets[cId]) {
+                    wX += cameraDragOffsets[cId].x;
+                    wY += cameraDragOffsets[cId].y;
+                }
+
+                const [px, py] = toCanvas(wX, wY, tx);
+
+                // Glow ring
+                radarCtx.beginPath();
+                radarCtx.arc(px, py, 16, 0, Math.PI * 2);
+                radarCtx.strokeStyle = 'rgba(36, 182, 252, 0.3)';
+                radarCtx.lineWidth = 2;
+                radarCtx.stroke();
+
+                // Blip
+                radarCtx.beginPath();
+                radarCtx.arc(px, py, 7, 0, Math.PI * 2);
+                radarCtx.fillStyle = '#24B6FC';
+                radarCtx.shadowColor = '#24B6FC';
+                radarCtx.shadowBlur = 10;
+                radarCtx.fill();
+                radarCtx.shadowBlur = 0;
+
+                // Label
+                const label = `ID ${gid}${attrs.zone && attrs.zone !== 'Unknown' ? ' · ' + attrs.zone : ''}`;
+                radarCtx.font = 'bold 11px Inter';
+                const tw = radarCtx.measureText(label).width;
+                radarCtx.fillStyle = 'rgba(0,0,0,0.7)';
+                radarCtx.fillRect(px + 10, py - 17, tw + 8, 16);
+                radarCtx.fillStyle = '#fff';
+                radarCtx.fillText(label, px + 14, py - 4);
+            }
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('btnCalib').classList.toggle('active', mode === 'calibration');
+            document.getElementById('btnLive').classList.toggle('active', mode === 'live');
+
+            const ctrlPanel = document.querySelector('.ctrl-panel');
+            const viewContainer = document.getElementById('viewContainer');
+            if (mode === 'calibration') {
+                ctrlPanel.style.opacity = '1';
+                ctrlPanel.style.pointerEvents = 'auto';
+                feedEl.style.display = 'block';
+                canvas.style.display = 'block';
+                radarCanvas.style.display = 'none';
+                document.getElementById('liveRadarControls').style.display = 'none';
+                if (radarInterval) clearInterval(radarInterval);
+                document.getElementById('paneCamera').style.display = 'flex';
+                document.getElementById('paneMap').style.display = 'block';
+                if (viewContainer) viewContainer.classList.remove('live-mode');
+                redraw();
+                drawMapPreview();
+            } else {
+                ctrlPanel.style.opacity = '0.3';
+                ctrlPanel.style.pointerEvents = 'none';
+                feedEl.style.display = 'none';
+                canvas.style.display = 'none';
+                document.getElementById('paneCamera').style.display = 'none';
+                document.getElementById('paneMap').style.display = 'none';
+                radarCanvas.style.display = 'block';
+                document.getElementById('liveRadarControls').style.display = 'block';
+                if (viewContainer) viewContainer.classList.add('live-mode');
+                loadWorldZones().then(() => {
+                    isUserTransformed = false;
+                    resizeRadar();
+                    radarInterval = setInterval(fetchRadarData, 500);
+                });
+            }
+        }
+
+        if (currentCamera) {
+            feedEl.onload = () => { redraw(); };
+            setCamera(currentCamera, document.querySelector('.cam-tab'));
+        } else {
+            document.getElementById('emptyState').style.display = 'flex';
+        }
+        window.addEventListener('resize', () => {
+            redraw();
+            if (currentMode === 'live') resizeRadar();
+        });
+    </script>
+    <script>
+        if (localStorage.getItem('nort-sidebar-collapsed') === 'true') {
+            const sb = document.querySelector('.sidebar');
+            if (sb) sb.classList.add('collapsed');
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            const sb = document.querySelector('.sidebar');
+            if (sb && !sb.querySelector('.sidebar-collapse-btn')) {
+                const btn = document.createElement('button');
+                btn.className = 'sidebar-collapse-btn';
+                btn.title = 'Toggle Sidebar';
+                const chevronLeft = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`;
+                const chevronRight = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`;
+                btn.innerHTML = sb.classList.contains('collapsed') ? chevronRight : chevronLeft;
+                btn.onclick = () => {
+                    sb.classList.toggle('collapsed');
+                    const isCollapsed = sb.classList.contains('collapsed');
+                    localStorage.setItem('nort-sidebar-collapsed', isCollapsed);
+                    btn.innerHTML = isCollapsed ? chevronRight : chevronLeft;
+                };
+                sb.appendChild(btn);
+            }
+
+        });
+    </script>
+    <script>
+        window.addEventListener('load', () => {
+            const loader = document.getElementById('nort-loader');
+            if (loader) {
+                setTimeout(() => {
+                    loader.classList.add('hidden');
+                    setTimeout(() => loader.remove(), 400);
+                }, 300);
+            }
+        });
+    </script>
+    <!-- i18n.js is no longer needed -->
+    <script>
+        // ── Universal Sidebar & Theme Logic ──
+        (function () {
+            const sb = document.querySelector('.sidebar');
+            const theme = localStorage.getItem('nort-theme') || 'dark';
+            if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+            if (sb && localStorage.getItem('nort-sidebar-collapsed') === 'true') sb.classList.add('collapsed');
+
+            document.addEventListener('DOMContentLoaded', () => {
+                const sidebar = document.querySelector('.sidebar');
+                if (sidebar && !sidebar.querySelector('.sidebar-collapse-btn')) {
+                    const btn = document.createElement('button');
+                    btn.className = 'sidebar-collapse-btn';
+                    btn.title = 'Toggle Sidebar';
+                    const chevL = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`;
+                    const chevR = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`;
+                    btn.innerHTML = sidebar.classList.contains('collapsed') ? chevR : chevL;
+                    btn.onclick = () => {
+                        sidebar.classList.toggle('collapsed');
+                        const isCol = sidebar.classList.contains('collapsed');
+                        localStorage.setItem('nort-sidebar-collapsed', isCol);
+                        btn.innerHTML = isCol ? chevR : chevL;
+                    };
+                    sidebar.appendChild(btn);
+                }
+
+                const header = document.querySelector('.top-header');
+                if (header && !header.querySelector('.theme-toggle')) {
+                    const tBtn = document.createElement('button');
+                    tBtn.className = 'theme-toggle';
+                    const sun = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
+                    const moon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+                    tBtn.innerHTML = document.documentElement.getAttribute('data-theme') === 'light' ? moon : sun;
+                    tBtn.onclick = () => {
+                        if (document.documentElement.getAttribute('data-theme') === 'light') {
+                            document.documentElement.removeAttribute('data-theme');
+                            localStorage.setItem('nort-theme', 'dark');
+                            tBtn.innerHTML = sun;
+                        } else {
+                            document.documentElement.setAttribute('data-theme', 'light');
+                            localStorage.setItem('nort-theme', 'light');
+                            tBtn.innerHTML = moon;
+                        }
+                    };
+                    let actions = header.querySelector('.header-actions');
+                    if (!actions) {
+                        actions = document.createElement('div');
+                        actions.className = 'header-actions';
+                        header.appendChild(actions);
+                    }
+                    actions.prepend(tBtn);
+                }
+            });
+        })();
+    </script>
+
+    <script>
+        // ── Sidebar collapse (floating circular toggle, matches webapp) ──────────
+        const _sb = document.querySelector('.sidebar');
+        if (_sb && localStorage.getItem('nort-sidebar-collapsed') === 'true') _sb.classList.add('collapsed');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const sb = document.querySelector('.sidebar');
+            if (sb && !sb.querySelector('.sidebar-collapse-btn')) {
+                const btn = document.createElement('button');
+                btn.className = 'sidebar-collapse-btn';
+                btn.title = 'Toggle Sidebar';
+                const chevronLeft = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`;
+                const chevronRight = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`;
+                btn.innerHTML = sb.classList.contains('collapsed') ? chevronRight : chevronLeft;
+                btn.onclick = () => {
+                    sb.classList.toggle('collapsed');
+                    const isCollapsed = sb.classList.contains('collapsed');
+                    localStorage.setItem('nort-sidebar-collapsed', isCollapsed);
+                    btn.innerHTML = isCollapsed ? chevronRight : chevronLeft;
+                };
+                sb.appendChild(btn);
+            }
+
+            // ── Theme toggle ──
+            const targetHeader = document.querySelector('.top-header') || document.querySelector('.top-controls');
+            if (targetHeader && !document.querySelector('.theme-toggle')) {
+                const themeBtn = document.createElement('button');
+                themeBtn.className = 'theme-toggle';
+                const isLight = () => document.documentElement.getAttribute('data-theme') === 'light';
+                const sunSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
+                const moonSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+                themeBtn.innerHTML = isLight() ? moonSvg : sunSvg;
+                themeBtn.onclick = () => {
+                    if (isLight()) {
+                        document.documentElement.removeAttribute('data-theme');
+                        localStorage.setItem('nort-theme', 'dark');
+                        themeBtn.innerHTML = sunSvg;
+                    } else {
+                        document.documentElement.setAttribute('data-theme', 'light');
+                        localStorage.setItem('nort-theme', 'light');
+                        themeBtn.innerHTML = moonSvg;
+                    }
+                };
+
+                // Guarantee isolation from the Title block
+                let rightContainer = targetHeader.querySelector('.header-actions');
+                if (!rightContainer) {
+                    rightContainer = document.createElement('div');
+                    rightContainer.className = 'header-actions';
+                    rightContainer.style.display = 'flex';
+                    rightContainer.style.alignItems = 'center';
+                    rightContainer.style.gap = '10px';
+                    targetHeader.appendChild(rightContainer);
+                }
+                rightContainer.prepend(themeBtn);
+            }
+        });
+    </script>
+</body>
+
+</html>

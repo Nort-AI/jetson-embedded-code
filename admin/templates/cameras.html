@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Câmeras — Nort Analytics · {{ store_id }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;600;700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --side-bg: hsl(222, 28%, 8%);
+      --side-border: hsl(222, 22%, 14%);
+      --side-fg: hsl(213, 28%, 90%);
+      --side-fg-dim: hsl(213, 18%, 52%);
+      --side-hover-bg: hsl(222, 24%, 14%);
+      --side-active-bg: rgba(59, 130, 246, 0.1);
+      --side-primary: hsl(217, 91%, 60%);
+      --side-primary-dim: rgba(59, 130, 246, 0.2);
+      --side-logo: #ffffff;
+      --bg: #0f1117;
+      --card: #161b27;
+      --card-hover: #1c2333;
+      --border: #212c3f;
+      --primary: #3b82f6;
+      --primary-dim: rgba(59, 130, 246, 0.15);
+      --primary-glow: rgba(59, 130, 246, 0.3);
+      --fg: #f8fafc;
+      --fg-dim: #94a3b8;
+      --fg-muted: #64748b;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --ok-dim: rgba(16, 185, 129, 0.1);
+      --warn-dim: rgba(245, 158, 11, 0.1);
+      --err-dim: rgba(239, 68, 68, 0.1);
+      --sidebar-bg: #10151f;
+      --radius: 8px;
+      --radius-sm: 6px;
+    }
+
+    html[data-theme="light"] {
+      --bg: #f0f3f7;
+      --card: #ffffff;
+      --card-hover: #e8edf4;
+      --border: #cbd5e1;
+      --fg: #1e2d40;
+      --fg-dim: #475569;
+      --fg-muted: #6b7fa0;
+      --side-bg: #ffffff;
+      --side-border: #cbd5e1;
+      --side-fg: #1e2d40;
+      --side-fg-dim: #64748b;
+      --side-hover-bg: #f8fafc;
+      --side-active-bg: rgba(59, 130, 246, 0.1);
+      --side-primary: #3b82f6;
+      --side-primary-dim: rgba(59, 130, 246, 0.15);
+      --side-logo: #0f172a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Inter', system-ui, sans-serif;
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar (Canonical) ── */
+    .sidebar {
+      width: 224px;
+      background: var(--side-bg);
+      border-right: 1px solid var(--side-border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: relative;
+      transition: width 0.3s ease;
+    }
+
+    .sidebar.collapsed {
+      width: 80px;
+    }
+
+    .sidebar-header {
+      padding: 0 16px;
+      height: 56px;
+      border-bottom: 1px solid var(--side-border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header {
+      justify-content: center;
+      padding: 0 8px;
+    }
+
+    .logo-text {
+      font-family: 'Manrope', sans-serif;
+      font-size: 0.875rem;
+      letter-spacing: 3px;
+      font-weight: 700;
+      color: var(--side-logo);
+    }
+
+    .sidebar nav {
+      flex: 1;
+      padding: 8px;
+      overflow-y: auto;
+    }
+
+    .sidebar.collapsed nav {
+      padding: 8px 6px;
+    }
+
+    .nav-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--side-fg-dim);
+      padding: 16px 12px 4px;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: var(--side-fg-dim);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.875rem;
+      transition: all 0.15s;
+      margin-bottom: 2px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      position: relative;
+    }
+
+    .sidebar.collapsed .nav-link {
+      justify-content: center;
+      width: 48px;
+      height: 40px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .sidebar.collapsed .nav-link span {
+      display: none;
+    }
+
+    .nav-link:hover {
+      background: var(--side-hover-bg);
+      color: var(--side-fg);
+    }
+
+    .nav-link.active {
+      background: var(--side-active-bg);
+      color: var(--side-primary);
+      border-color: var(--side-primary-dim);
+    }
+
+    .beta-tag {
+      font-size: 9px;
+      font-weight: 600;
+      background: rgba(59, 130, 246, 0.1);
+      color: hsl(217, 91%, 60%);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 4px;
+      padding: 2px 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+
+    .sidebar-footer {
+      padding: 12px;
+      border-top: 1px solid var(--side-border);
+    }
+
+    .logout-link:hover {
+      background: rgba(239, 68, 68, 0.1) !important;
+      color: #ef4444 !important;
+    }
+
+    .sidebar-collapse-btn {
+      position: absolute;
+      right: -12px;
+      top: 64px;
+      width: 24px;
+      height: 24px;
+      background: var(--side-bg);
+      border: 1px solid var(--side-border);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--side-fg-dim);
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.2s;
+    }
+
+    .sidebar.collapsed .sidebar-collapse-btn {
+      transform: rotate(180deg);
+    }
+
+    /* ── Main Layout ── */
+    .main-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .top-header {
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .top-header h1 {
+      font-family: 'Manrope', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--fg);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .theme-toggle {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--fg-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      transition: all 0.2s;
+      padding: 0;
+      z-index: 100;
+    }
+
+    .theme-toggle:hover {
+      background: var(--side-hover-bg);
+      color: var(--fg);
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    /* ── Cameras Page Specific ── */
+    .cam-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 20px;
+    }
+
+    .cam-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: all 0.2s;
+    }
+
+    .cam-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+    }
+
+    .cam-img-wrap {
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cam-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .cam-info {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .cam-title {
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.95rem;
+    }
+
+    .cam-meta {
+      font-size: 0.75rem;
+      color: var(--fg-muted);
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ── Footer (canonical ─ matches dashboard) ── */
+
+    /* ── Footer (canonical - matches dashboard) ── */
+    .status-footer {
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      padding: 8px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--fg-muted);
+    }
+
+    .status-footer .left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-footer .connected {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status-footer .connected .dot {
+      width: 5px;
+      height: 5px;
+      background: var(--ok);
+      border-radius: 50%;
+      animation: pulse 2s infinite alternate;
+    }
+
+
+    @keyframes pulse {
+      to {
+        opacity: 0.4;
+      }
+    }
+
+    /* ── Button variants ── */
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg-dim);
+    }
+
+    .btn-outline:hover {
+      background: var(--card-hover);
+      color: var(--fg);
+      border-color: rgba(59, 130, 246, 0.4);
+    }
+
+    /* ── Lang switcher (canonical ─ matches dashboard) ── */
+    .header-lang-switcher {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding-right: 12px;
+      margin-right: 4px;
+      border-right: 1px solid var(--border);
+    }
+
+    .lang-btn {
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      transition: all .2s;
+      text-decoration: none;
+      background: transparent;
+      color: var(--fg-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .lang-btn:hover {
+      background: var(--side-hover-bg);
+      color: var(--fg);
+      border-color: var(--border);
+    }
+
+    .lang-btn.active {
+      color: var(--primary) !important;
+      background: var(--primary-dim) !important;
+      border-color: var(--primary-glow) !important;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 500px;
+      padding: 24px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--fg);
+    }
+
+    .modal-close {
+      cursor: pointer;
+      color: var(--fg-muted);
+      font-size: 1.2rem;
+    }
+
+    .modal-body {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--fg-muted);
+      text-transform: uppercase;
+    }
+
+    .form-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--fg);
+      padding: 10px 12px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .form-input:focus {
+      border-color: var(--primary);
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border-radius: var(--radius-sm);
+      border: none;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+
+    .btn:hover {
+      filter: brightness(1.1);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg-dim);
+    }
+
+    .btn-secondary:hover {
+      background: var(--card-hover);
+      color: var(--fg);
+      border-color: rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #0A0D0F;
+    }
+
+    .btn-scan {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg-dim);
+    }
+
+    .btn-scan:hover {
+      background: var(--card-hover);
+      color: var(--fg);
+      border-color: rgba(59, 130, 246, 0.4);
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: var(--fg-dim);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 10px;
+    }
+
+    .header-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ok);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .pill-active {
+      background: rgba(16, 185, 129, 0.1);
+      color: #10b981;
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .pill-inactive {
+      background: rgba(239, 68, 68, 0.1);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+  
+    .sidebar.collapsed .sidebar-header > div {
+      display: none !important;
+    }
+    .sidebar.collapsed .sidebar-header .beta-tag {
+      display: none !important;
+    }
+
+  </style>
+</head>
+
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M11.2966 4.12501C11.5853 3.62501 12.307 3.62501 12.5957 4.12501L21.2787 19.1645C21.638 19.7867 21.0013 20.5092 20.3388 20.231L12.2365 16.8289C12.0508 16.751 11.8415 16.751 11.6558 16.8289L3.55346 20.231C2.89106 20.5092 2.25435 19.7867 2.61357 19.1645L11.2966 4.12501Z"
+          fill="var(--primary)" />
+      </svg>
+      <div style="display: flex; flex-direction: column; gap: 0;">
+        <span class="logo-text" style="letter-spacing: 2px;">NORT</span>
+        <span
+          style="font-size: 9px; font-weight: 700; color: var(--side-primary); opacity: 0.9; margin-top: -2px; letter-spacing: 0.5px;">STORE
+          MANAGER</span>
+      </div>
+      <span class="beta-tag">BETA</span>
+    </div>
+    <nav>
+      <div class="nav-section-label">{{ t('nav.section_platform') }}</div>
+      <a href="/home" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg><span>{{ t('nav.home') }}</span></a>
+      <a href="/" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+        </svg><span>{{ t('nav.dashboard') }}</span></a>
+      <a href="/streams" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+          <circle cx="12" cy="13" r="3" />
+        </svg><span>{{ t('nav.streams') }}</span></a>
+      <a href="/cameras" class="nav-link active"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <line x1="8" y1="21" x2="16" y2="21" />
+          <line x1="12" y1="17" x2="12" y2="21" />
+        </svg><span>{{ t('nav.cameras') }}</span></a>
+      <a href="/zones" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 2 7 12 12 22 7 12 2" />
+          <polyline points="2 17 12 22 22 17" />
+          <polyline points="2 12 12 17 22 12" />
+        </svg><span>{{ t('nav.zones') }}</span></a>
+      <a href="/floorplan" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="3" y1="9" x2="21" y2="9"></line>
+          <line x1="9" y1="21" x2="9" y2="9"></line>
+        </svg><span>{{ t('nav.floorplan') }}</span></a>
+      <a href="/help" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg><span>{{ t('nav.help') }}</span></a>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="/profile" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg><span>{{ t('nav.profile') }}</span></a>
+      <a href="/settings" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg><span>{{ t('nav.settings') }}</span></a>
+      <a href="#" class="nav-link logout-link"
+        onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='/')"><svg class="nav-icon" width="16"
+          height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg><span>{{ t('nav.logout') }}</span></a>
+    </div>
+    <button class="sidebar-collapse-btn" onclick="toggleSidebar()"><svg width="14" height="14" viewBox="0 0 24 24"
+        fill="none" stroke="currentColor" stroke-width="2">
+        <path d="m15 18-6-6 6-6" />
+      </svg></button>
+  </div>
+
+  <div class="main-wrapper">
+    <div class="top-header">
+      <div style="display:flex; align-items:center; gap:20px;">
+        <h1>{{ t('nav.cameras') }}</h1>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-scan" style="padding: 6px 12px; font-size: 0.75rem;" onclick="scanNetwork()"><svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;">
+              <path d="m2 4 4.54 4.54" />
+              <path d="m2 10 9.09 9.09" />
+              <path d="m2 16 13.64 13.64" />
+              <path d="m2 22 18.18 18.18" />
+            </svg>
+            {{ t('cameras.scan_network', 'Reconhecer Rede') }}</button>
+          <button class="btn btn-primary" style="padding: 6px 12px; font-size: 0.75rem;"
+            onclick="openAddCameraModal()">+ {{ t('cameras.add_camera', 'Adicionar Câmera') }}</button>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="sub" style="display:flex;align-items:center;gap:6px;"><span>{{ store_id }} &middot; {{ device_id
+            }}</span><span style="opacity:0.5;">&bull;</span><span id="clock"
+            style="font-variant-numeric:tabular-nums; font-weight:600; color:var(--fg);"></span></div>
+        <button class="theme-toggle" onclick="toggleTheme()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+          </svg></button>
+        <div class="header-lang-switcher">
+          <a href="/set_lang/pt" class="lang-btn {% if current_lang == 'pt' %}active{% endif %}">PT</a>
+          <a href="/set_lang/en" class="lang-btn {% if current_lang == 'en' %}active{% endif %}">EN</a>
+          <a href="/set_lang/es" class="lang-btn {% if current_lang == 'es' %}active{% endif %}">ES</a>
+        </div>
+        <div class="header-badge"><span class="dot"></span>{{ t('header.active', 'Active') }}</div>
+      </div>
+    </div>
+    <div class="content">
+      <div class="cam-grid">
+        {% for cam_id, cam in cameras.items() %}
+        <div class="cam-card">
+          <div class="cam-img-wrap" {% if not cam.get('enabled', True) %}style="opacity: 0.5; filter: grayscale(100%);"
+            {% endif %}>
+            {% if not cam.get('enabled', True) %}
+            <div
+              style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.8); color: #ef4444; font-size: 0.7rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; border: 1px solid #ef4444; z-index: 10;">
+              {{ t('cameras.status.disabled', 'DISABLED') | upper }}</div>
+            {% endif %}
+            <img class="cam-img" src="/api/camera_snapshot/{{ cam_id }}" alt="{{ cam_id }}" loading="lazy"
+              onerror="this.src='/static/no-signal.jpg'">
+          </div>
+          <div class="cam-info">
+            <div class="cam-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;">
+                <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+                <circle cx="12" cy="13" r="3" />
+              </svg> {{ cam_id }}
+              {% if cam.get('enabled', True) %}
+              {% if cam.active %}
+              <span class="pill pill-active">{{ t('cameras.status.active', 'ONLINE') | upper }}</span>
+              {% else %}
+              <span class="pill pill-inactive">{{ t('cameras.status.offline', 'OFFLINE') | upper }}</span>
+              {% endif %}
+              {% else %}
+              <span class="pill" style="background: #444; color: #ccc;">{{ t('cameras.status.disabled', 'DISABLED') |
+                upper }}</span>
+              {% endif %}
+            </div>
+            <div class="cam-meta">
+              <span>{{ t('cameras.table.fps', 'FPS') }}: <b>{{ cam.fps }}</b></span>
+              <span>&bull;</span>
+              <span>{{ t('cameras.table.id', 'ID') }}: {{ cam_id }}</span>
+            </div>
+            <div style="margin-top: 12px; display: flex; gap: 8px;">
+              <button class="btn btn-outline" style="flex: 1; padding: 6px; font-size: 0.7rem;"
+                onclick="openEditCameraModal('{{ cam_id }}', '{{ cam.name }}', '{{ cam.source }}', '{{ cam.type }}', {{ 'true' if cam.get('enabled', True) else 'false' }})"><svg
+                  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;">
+                  <path
+                    d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                {{ t('common.edit', 'Editar') }}</button>
+              <button class="btn btn-outline"
+                style="flex: 1; padding: 6px; font-size: 0.7rem; color: var(--err); border-color: rgba(239,68,68,0.2);"
+                onclick="deleteCamera('{{ cam_id }}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  style="margin-right:4px;">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                  <line x1="10" y1="11" x2="10" y2="17" />
+                  <line x1="14" y1="11" x2="14" y2="17" />
+                </svg> {{ t('common.delete', 'Excluir') }}</button>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <!-- Status Footer -->
+
+    <!-- Status Footer -->
+    <div class="status-footer">
+      <div class="left">
+        <span>{{ t('footer.system_online', 'System Online') }}</span>
+        <div class="connected"><span class="dot"></span><span>{{ t('footer.connected', 'Connected') }}</span></div>
+      </div>
+      <div>{{ t('footer.rights', '&copy; 2026 NORT Analytics') | safe }}</div>
+    </div>
+  </div>
+
+  <!-- Camera Modal -->
+  <div class="modal-overlay" id="cameraModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modalTitle">{{ t('cameras.form.title', 'Adicionar Câmera') }}</h2>
+        <span class="modal-close" onclick="closeModal()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editCamId">
+        <div class="form-group">
+          <label>{{ t('cameras.form.name', 'Nome') }}</label>
+          <input type="text" id="camName" class="form-input"
+            placeholder="{{ t('cameras.form.name_placeholder', 'Ex: Câmera Principal') }}">
+        </div>
+        <div class="form-group">
+          <label>{{ t('cameras.form.type', 'Tipo de Fonte') }}</label>
+          <select id="camType" class="form-input" onchange="updateSourcePlaceholder()">
+            <option value="rtsp">{{ t('cameras.source_type.rtsp', 'RTSP') }}</option>
+            <option value="http">{{ t('cameras.source_type.http', 'HTTP / MJPEG') }}</option>
+            <option value="hls">{{ t('cameras.source_type.hls', 'HLS') }}</option>
+            <option value="mp4">{{ t('cameras.source_type.file', 'Arquivo (MP4)') }}</option>
+            <option value="usb">{{ t('cameras.source_type.usb', 'USB (V4L2)') }}</option>
+            <option value="webrtc">{{ t('cameras.source_type.webrtc', 'WebRTC') }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label id="sourceLabel">{{ t('cameras.form.source', 'URL RTSP') }}</label>
+          <input type="text" id="camSource" class="form-input" placeholder="rtsp://...">
+        </div>
+        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="camEnabled" checked>
+          <label for="camEnabled" style="margin: 0;">{{ t('cameras.form.enabled', 'Câmera Ativa') }}</label>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">{{ t('cameras.form.cancel', 'Cancelar') }}</button>
+        <button class="btn btn-primary" onclick="saveCamera()">{{ t('cameras.form.save', 'Salvar Câmera') }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scan Results Modal -->
+  <div class="modal-overlay" id="scanModal">
+    <div class="modal" style="max-width: 600px;">
+      <div class="modal-header">
+        <h2 class="modal-title">{{ t('cameras.scan_modal.title', 'Dispositivos Encontrados') }}</h2>
+        <span class="modal-close" onclick="closeScanModal()">&times;</span>
+      </div>
+      <div class="modal-body" style="padding:0;">
+        <div id="scanResultList" style="display:flex; flex-direction:column; max-height:400px; overflow-y:auto;">
+          <!-- Items inserted here via JS -->
+        </div>
+      </div>
+      <div class="modal-actions" style="padding: 16px; border-top: 1px solid var(--border);">
+        <button class="btn btn-secondary" onclick="closeScanModal()">{{ t('common.close', 'Fechar') }}</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const theme = localStorage.getItem('nort-theme') || 'dark';
+      if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+      const sb = document.querySelector('.sidebar');
+      if (sb && localStorage.getItem('nort-sidebar-collapsed') === 'true') sb.classList.add('collapsed');
+      function updateClock() {
+        const el = document.getElementById('clock');
+        if (el) el.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+      updateClock(); setInterval(updateClock, 1000);
+    })();
+    function openAddCameraModal() {
+      document.getElementById('modalTitle').textContent = "{{ t('cameras.add_title', 'Adicionar Câmera') }}";
+      document.getElementById('editCamId').value = '';
+      document.getElementById('camName').value = '';
+      document.getElementById('camSource').value = '';
+      document.getElementById('camType').value = 'rtsp';
+      document.getElementById('camEnabled').checked = true;
+      updateSourcePlaceholder();
+      document.getElementById('cameraModal').style.display = 'flex';
+    }
+
+    function openEditCameraModal(id, name, source, type, enabled) {
+      document.getElementById('modalTitle').textContent = "{{ t('cameras.edit_title', 'Editar Câmera') }}";
+      document.getElementById('editCamId').value = id;
+      document.getElementById('camName').value = name;
+      document.getElementById('camSource').value = source;
+      document.getElementById('camType').value = type;
+      document.getElementById('camEnabled').checked = !!enabled;
+      updateSourcePlaceholder();
+      document.getElementById('cameraModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+      document.getElementById('cameraModal').style.display = 'none';
+    }
+
+    function updateSourcePlaceholder() {
+      const type = document.getElementById('camType').value;
+      const input = document.getElementById('camSource');
+      const label = document.getElementById('sourceLabel');
+      const map = {
+        rtsp: { label: 'URL RTSP', ph: 'rtsp://admin:pass@192.168.1.50:554/stream' },
+        http: { label: 'URL HTTP / MJPEG', ph: 'http://192.168.1.50/mjpeg' },
+        hls: { label: 'URL HLS (m3u8)', ph: 'http://192.168.1.50/stream/index.m3u8' },
+        mp4: { label: 'Caminho do Arquivo', ph: '/opt/videos/sample.mp4' },
+        usb: { label: 'Device Path (V4L2)', ph: '/dev/video0' },
+        webrtc: { label: 'WebRTC Signaling URL', ph: 'ws://192.168.1.50:8080/webrtc' },
+      };
+      const cfg = map[type] || map.rtsp;
+      label.textContent = cfg.label;
+      input.placeholder = cfg.ph;
+    }
+
+    async function saveCamera() {
+      const id = document.getElementById('editCamId').value;
+      const data = {
+        name: document.getElementById('camName').value,
+        source: document.getElementById('camSource').value,
+        type: document.getElementById('camType').value,
+        enabled: document.getElementById('camEnabled').checked
+      };
+
+      const url = id ? `/api/cameras/${id}` : '/api/cameras';
+      const method = id ? 'PUT' : 'POST';
+
+      try {
+        const res = await fetch(url, {
+          method: method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) {
+          location.reload();
+        } else {
+          const err = await res.json();
+          alert('Erro: ' + (err.error || 'Falha ao salvar'));
+        }
+      } catch (e) {
+        alert('Erro de conexão');
+      }
+    }
+
+    async function deleteCamera(id) {
+      if (!confirm(`Excluir câmera ${id}?`)) return;
+      try {
+        const res = await fetch(`/api/cameras/${id}`, { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else alert('Erro ao excluir');
+      } catch (e) { alert('Erro de conexão'); }
+    }
+
+    function closeScanModal() {
+      document.getElementById('scanModal').style.display = 'none';
+    }
+
+    function quickAddDevice(ip, ports, typeName) {
+      closeScanModal();
+      openAddCameraModal();
+      document.getElementById('camName').value = typeName;
+      // Pre-fill URL based on typical default ports
+      if (ports.includes(554) || ports.includes(37777)) {
+        document.getElementById('camType').value = 'rtsp';
+        updateSourcePlaceholder();
+        document.getElementById('camSource').value = `rtsp://admin:admin@${ip}:554/cam/realmonitor?channel=1&subtype=0`;
+      } else {
+        document.getElementById('camType').value = 'http';
+        updateSourcePlaceholder();
+        document.getElementById('camSource').value = `http://${ip}/`;
+      }
+    }
+
+    async function scanNetwork() {
+      const btn = document.querySelector('.btn-scan');
+      const oldText = btn.innerHTML;
+      btn.innerHTML = '⌛ Escaneando...';
+      btn.disabled = true;
+      try {
+        console.log("[Scanner] Requesting /api/cameras/scan...");
+        const res = await fetch('/api/cameras/scan', { method: 'POST' });
+        const data = await res.json();
+        console.log("[Scanner] Received data:", data);
+
+        const listWrap = document.getElementById('scanResultList');
+        listWrap.innerHTML = '';
+
+        if (data.devices && data.devices.length > 0) {
+          data.devices.forEach(d => {
+            const card = document.createElement('div');
+            card.style.cssText = 'padding:16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;';
+            card.innerHTML = `
+              <div>
+                <div style="font-weight:600; font-size:1rem; margin-bottom:4px; color:var(--fg);">${d.device_type}</div>
+                <div style="font-size:0.85rem; color:var(--fg); opacity:0.7;">IP: <b>${d.ip}</b> &middot; Portas: ${d.ports.join(', ')}</div>
+              </div>
+              <button class="btn btn-primary" style="padding:6px 16px; font-size:0.8rem;" onclick="quickAddDevice('${d.ip}', [${d.ports.join(',')}], '${d.device_type}')">+ Adicionar</button>
+            `;
+            listWrap.appendChild(card);
+          });
+          document.getElementById('scanModal').style.display = 'flex';
+        } else {
+          listWrap.innerHTML = '<div style="padding:32px; text-align:center; color:var(--fg); opacity:0.6;">Nenhum dispositivo encontrado na sua sub-rede atual.<br>Certifique-se que o seu computador está conectado na mesma rede das câmeras.</div>';
+          document.getElementById('scanModal').style.display = 'flex';
+        }
+      } catch (e) {
+        console.error("[Scanner] Request failed:", e);
+        alert('Erro ao escanear rede: ' + e.message);
+      }
+      finally {
+        btn.innerHTML = oldText;
+        btn.disabled = false;
+      }
+    }
+
+    function toggleTheme() {
+      const isL = document.documentElement.getAttribute('data-theme') === 'light';
+      const next = isL ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('nort-theme', next);
+    }
+    function toggleSidebar() {
+      const sb = document.querySelector('.sidebar');
+      sb.classList.toggle('collapsed');
+      localStorage.setItem('nort-sidebar-collapsed', sb.classList.contains('collapsed'));
+    }
+  </script>
+</body>
+
+</html>

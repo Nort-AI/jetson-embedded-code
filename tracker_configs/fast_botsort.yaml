@@ -1,0 +1,19 @@
+# Customized BoT-SORT config for static retail cameras (NORT project)
+# Based on: ultralytics/cfg/trackers/botsort.yaml
+
+tracker_type: botsort           # Use BoT-SORT tracker
+track_high_thresh: 0.45         # Sustain standard tracks with solid confidence
+track_low_thresh: 0.05          # Deep occlusions and motion blur
+new_track_thresh: 0.40          # Lowered slightly to allow partial waist-up bodies to successfully spawn tracks
+track_buffer: 180               # Extreme buffer (6s max) to hold tracks through heavy occlusions.
+match_thresh: 0.90              # Maximize match radius to prevent ID resets on fast movement
+fuse_score: true                # Fuse detection score with motion for matching
+
+# BoT-SORT specifics
+gmc_method: none                # DISABLED: Cameras are static, no need for expensive optical flow GMC!
+
+# ReID — We handle Re-ID externally via reid_manager.py, so disable Ultralytics internal ReID
+proximity_thresh: 0.5
+appearance_thresh: 0.8
+with_reid: false                # We do our own Re-ID externally
+model: auto                     # Required placeholder (unused when with_reid=false)

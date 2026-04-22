@@ -1,0 +1,30 @@
+[Unit]
+Description=Nort Analytics Edge Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nort
+WorkingDirectory=/opt/nort
+ExecStart=/opt/nort/venv/bin/python run.py
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=5
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/opt/nort/data_store/device.json.env
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nort-agent
+
+# Watchdog
+WatchdogSec=120
+NotifyAccess=main
+
+[Install]
+WantedBy=multi-user.target

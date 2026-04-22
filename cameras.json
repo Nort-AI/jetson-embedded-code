@@ -1,0 +1,74 @@
+{
+  "camera_1": {
+    "name": "Camera 1",
+    "source": "videos_1080p/videos_loja_real/CH04.mp4",
+    "type": "mp4",
+    "enabled": true
+  },
+  "camera_2": {
+    "name": "Camera 2",
+    "source": "videos_1080p/videos_loja_real/CH05.mp4",
+    "type": "mp4",
+    "enabled": true
+  },
+  "camera_3": {
+    "name": "Camera 3",
+    "source": "videos_1080p/videos_loja_real/CH06.mp4",
+    "type": "mp4",
+    "enabled": true
+  },
+  "camera_4": {
+    "name": "Camera 4",
+    "source": "videos_1080p/videos_loja_real/CH07.mp4",
+    "type": "mp4",
+    "enabled": false
+  },
+  "camera_5": {
+    "name": "Camera 5",
+    "source": "videos_1080p/videos_loja_real/CH08.mp4",
+    "type": "mp4",
+    "enabled": true
+  },
+  "camera_6": {
+    "name": "Camera 6",
+    "source": "videos_1080p/videos_loja_real/CH09.mp4",
+    "type": "mp4",
+    "enabled": true
+  },
+  "camera_7": {
+    "name": "Camera 7",
+    "source": "videos_1080p/videos_loja_real/CH03.mp4",
+    "type": "mp4",
+    "enabled": true
+  },
+  "camera_8": {
+    "name": "Camera 8",
+    "source": "videos_1080p/videos_loja_real/CH02.mp4",
+    "type": "mp4",
+    "enabled": true
+  },
+  "camera_9": {
+    "name": "Camera 9",
+    "source": "videos_1080p/videos_loja_real/CH01.mp4",
+    "type": "mp4",
+    "enabled": true
+  },
+  "camera_10": {
+    "name": "Camera 10",
+    "source": "videos_1080p/videos_loja_real/CH10.mp4",
+    "type": "mp4",
+    "enabled": true
+  },
+  "camera_11": {
+    "name": "Camera 11",
+    "source": "videos_1080p/videos_loja_real/CH11.mp4",
+    "type": "mp4",
+    "enabled": true
+  },
+  "camera_12": {
+    "name": "Camera 12",
+    "source": "videos_1080p/videos_loja_real/CH12.mp4",
+    "type": "mp4",
+    "enabled": true
+  }
+}

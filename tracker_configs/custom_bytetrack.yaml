@@ -1,0 +1,18 @@
+# Customized ByteTrack config for static retail cameras (NORT project)
+# ByteTrack explicitly uses spatial bounding box overlaps (IoU) rather than velocity predictions,
+# completely eliminating bounding box "fly-away" oscillation jitter on static cameras.
+
+tracker_type: bytetrack         # Use ByteTrack logic
+track_high_thresh: 0.20         # Very low — grip tiny/distant bounding boxes immediately
+track_low_thresh: 0.04          # Catch even the faintest detections to maintain tracks
+new_track_thresh: 0.25          # Start tracks early on distant/peripheral people
+track_buffer: 240               # 8 seconds of tracking memory (240 frames @ 30fps) — very sticky
+match_thresh: 0.70              # *** CRITICAL FIX: was 0.90 which dropped tracks on any angle change.
+                                # 0.70 allows natural bounding box drift from camera perspective ***
+
+# Required Ultralytics config parser keys:
+fuse_score: true
+gmc_method: none
+proximity_thresh: 0.5
+appearance_thresh: 0.25
+with_reid: false

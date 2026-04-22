@@ -1,0 +1,25 @@
+{
+    "client_id": "YOUR_CLIENT_ID",
+    "store_id": "YOUR_STORE_ID",
+    "device_id": "jetson-001",
+    "api_url": "https://YOUR-CLOUD-RUN-API-URL.run.app",
+    "device_key": "YOUR_DEVICE_API_KEY",
+    "admin_pin": "SET_VIA_LOCAL_ADMIN_SETUP",
+    "enable_reid": true,
+    "vlm": {
+        "enabled": true,
+        "warmup_on_start": false,
+        "prefer_local": true,
+        "allow_cloud_fallback": false,
+        "cloud_api_key": "",
+        "max_crops": 200,
+        "max_queue_size": 32,
+        "capture_interval_frames": 10,
+        "min_sharpness": 10.0,
+        "min_crop_area": 5000,
+        "clip_enabled": true,
+        "video_buffer_seconds": 30,
+        "video_buffer_fps": 5,
+        "video_buffer_max_tracks": 100
+    }
+}

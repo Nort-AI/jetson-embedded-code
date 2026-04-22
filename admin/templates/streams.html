@@ -1,0 +1,2935 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ t('page_titles.streams', 'Live Streams') }} — NORT Analytics</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;600;700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      /* Sidebar Dark Tokens */
+      --side-bg: hsl(222, 28%, 8%);
+      --side-border: hsl(222, 22%, 14%);
+      --side-fg: hsl(213, 28%, 90%);
+      --side-fg-dim: hsl(213, 18%, 52%);
+      --side-hover-bg: hsl(222, 24%, 14%);
+      --side-active-bg: rgba(59, 130, 246, 0.1);
+      --side-primary: hsl(217, 91%, 60%);
+      --side-primary-dim: rgba(59, 130, 246, 0.2);
+      --side-logo: #ffffff;
+
+
+      --bg: #0f1117;
+      --card: #161b27;
+      --card-hover: #1c2333;
+      --border: #212c3f;
+      --primary: #3b82f6;
+      --primary-dim: rgba(59, 130, 246, 0.15);
+      --primary-glow: rgba(59, 130, 246, 0.3);
+      --fg: #f8fafc;
+      --fg-dim: #94a3b8;
+      --fg-muted: #64748b;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --sidebar-bg: #10151f;
+      --radius: 8px;
+      --radius-sm: 6px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--fg-muted);
+    }
+
+    /* ── Page-specific styles ── */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /* ── Status Badge override if any ── */
+    .status-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--side-fg-dim);
+      padding: 8px;
+      border-radius: 50%;
+      background: rgba(63, 185, 80, 0.06);
+      border: 1px solid rgba(63, 185, 80, 0.15);
+    }
+
+    .status-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #3fb950;
+      animation: pulse 2s infinite alternate;
+    }
+
+    @keyframes pulse {
+      to {
+        opacity: 0.4;
+      }
+    }
+
+
+
+    .main-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .top-header {
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .top-header h1 {
+      font-family: 'Manrope', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--fg);
+    }
+
+    .top-header .sub {
+      font-size: 0.8125rem;
+      color: var(--fg-dim);
+      margin-top: 2px;
+      font-weight: 500;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .theme-toggle {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--fg-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      transition: all 0.2s;
+      padding: 0;
+      z-index: 100;
+    }
+
+    .theme-toggle:hover {
+      background: var(--side-hover-bg);
+      color: var(--fg);
+    }
+
+    /* ── Lang switcher (canonical) ── */
+    .header-lang-switcher {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding-right: 12px;
+      margin-right: 4px;
+      border-right: 1px solid var(--border);
+    }
+
+    .lang-btn {
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      transition: all .2s;
+      text-decoration: none;
+      background: transparent;
+      color: var(--fg-muted);
+      display: flex;
+      align-items: center;
+      line-height: 1;
+    }
+
+    .lang-btn:hover {
+      background: var(--side-hover-bg);
+      color: var(--fg);
+      border-color: var(--border);
+    }
+
+    .lang-btn.active {
+      color: var(--primary) !important;
+      background: var(--primary-dim) !important;
+      border-color: var(--primary-glow) !important;
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 20px;
+      align-items: start;
+      height: 100%;
+    }
+
+    /* ── Control Panel ── */
+    .ctrl-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-height: calc(100vh - 140px);
+      overflow-y: auto;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .cam-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .cam-tab {
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--fg-dim);
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .cam-tab:hover {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--fg);
+    }
+
+    .cam-tab.active {
+      background: var(--primary-dim);
+      color: var(--primary);
+      border-color: rgba(36, 182, 252, 0.3);
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    label {
+      font-size: 0.7rem;
+      color: var(--fg-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    select,
+    input[type="datetime-local"] {
+      width: 100%;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--fg);
+      font-size: 0.85rem;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    select:focus,
+    input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(36, 182, 252, 0.15);
+    }
+
+    option {
+      background: #0d1117;
+      color: #fff;
+    }
+
+    .btn-primary {
+      padding: 10px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: var(--primary);
+      color: #0A0D0F;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 0.88rem;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+
+    .btn-primary:hover {
+      filter: brightness(1.1);
+    }
+
+    .toggles {
+      display: flex;
+      gap: 8px;
+    }
+
+    .toggle-btn {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--fg-muted);
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 600;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .toggle-btn.on {
+      background: var(--primary-dim);
+      color: var(--primary);
+      border-color: rgba(36, 182, 252, 0.3);
+    }
+
+    .toggle-btn:hover:not(.on) {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--fg);
+    }
+
+    .stats {
+      display: flex;
+      gap: 10px;
+      margin-top: auto;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .stat-card {
+      flex: 1;
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+    }
+
+    .stat-val {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--fg);
+      margin-top: 2px;
+    }
+
+    .stat-lbl {
+      font-size: 0.68rem;
+      color: var(--fg-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+
+    /* ── Viewport area wrapper (holds feed + VLM panel) ── */
+    #viewAreaWrapper {
+      display: flex;
+      flex-direction: row;
+      gap: 0;
+      min-width: 0;
+      align-items: stretch;
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+      align-self: start;
+    }
+
+    /* ── Hide scene query bar (replaced by floating prompt) ── */
+    #sceneQueryBar {
+      display: none !important;
+    }
+
+    /* ── Viewport ── */
+    .view-container {
+      position: relative;
+      overflow: hidden;
+      background: #000;
+      flex: 1;
+      min-width: 0;
+    }
+
+    img#feed {
+      display: block;
+      width: 100%;
+      height: auto;
+      cursor: crosshair;
+    }
+
+    img#overlayImg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      mix-blend-mode: screen;
+      opacity: 0.9;
+    }
+
+    canvas#overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .loading-glow {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 10px var(--primary);
+      animation: glow 1s infinite alternate;
+      display: none;
+      z-index: 10;
+    }
+
+    @keyframes glow {
+      from {
+        opacity: 0.3;
+        transform: scale(0.8);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1.2);
+      }
+    }
+
+    .empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--fg-muted);
+      font-weight: 500;
+      font-size: 1rem;
+    }
+
+    /* Click-to-analyze hint badge */
+    #clickHint {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(6px);
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      pointer-events: none;
+      z-index: 8;
+      white-space: nowrap;
+      transition: opacity 0.4s;
+    }
+
+    /* ── VLM Backdrop ── */
+    #vlmBackdrop {
+      display: none;
+    }
+
+    /* ── VLM Panel — Transparent HUD Overlay ── */
+    #vlmPanel {
+      display: none;
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 360px;
+      height: 100%;
+      flex-direction: column;
+      z-index: 120;
+      overflow: hidden;
+      background: rgba(10, 12, 18, 0.55);
+      backdrop-filter: blur(24px) saturate(160%);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
+      animation: vlmSlideIn 0.3s ease-out;
+      box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
+    }
+
+    @keyframes vlmSlideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    #vlmPanel.open {
+      display: flex;
+    }
+
+    .vlm-body {
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      flex: 1;
+    }
+
+    .vlm-header {
+      background: rgba(0, 0, 0, 0.25);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .vlm-header-title {
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--fg);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .vlm-header-title .ai-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 8px var(--primary);
+      animation: glow 1.5s infinite alternate;
+      flex-shrink: 0;
+    }
+
+    .vlm-close {
+      background: transparent;
+      border: 1px solid transparent;
+      cursor: pointer;
+      color: var(--fg-muted);
+      font-size: 1.1rem;
+      line-height: 1;
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      transition: all 0.2s;
+    }
+
+    .vlm-close:hover {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--err);
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+
+    .vlm- .vlm-crop-wrap {
+      text-align: center;
+      display: none;
+      position: relative;
+    }
+
+    .vlm-crop-wrap img {
+      max-width: 100%;
+      max-height: 280px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      object-fit: contain;
+    }
+
+    .vlm-track-info {
+      font-size: 0.75rem;
+      color: var(--fg);
+      line-height: 1.6;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      font-weight: 500;
+    }
+
+    .vlm-label {
+      font-size: 0.68rem;
+      color: var(--fg-muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+    }
+
+    .vlm-select,
+    .vlm-textarea {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--fg);
+      border-radius: var(--radius);
+      padding: 9px 12px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      transition: all 0.2s;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .vlm-select:focus,
+    .vlm-textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px var(--primary);
+    }
+
+    .vlm-textarea {
+      resize: vertical;
+    }
+
+    .vlm-btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, var(--primary) 0%, rgba(37, 99, 235, 1) 100%);
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+      box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
+    }
+
+    .vlm-btn:hover:not(:disabled) {
+      filter: brightness(1.15);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35);
+    }
+
+    .vlm-btn:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    .vlm-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      filter: grayscale(50%);
+      box-shadow: none;
+      border-color: transparent;
+    }
+
+    .vlm-time-btn {
+      padding: 6px 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--fg-dim);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+
+    .vlm-time-btn:hover {
+      background: var(--border);
+      color: var(--fg);
+    }
+
+    .vlm-time-btn.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+    }
+
+    .vlm-status {
+      font-size: 0.78rem;
+      color: var(--fg-dim);
+      min-height: 1.2em;
+      font-weight: 500;
+    }
+
+    .vlm-result {
+      font-size: 0.82rem;
+      color: var(--fg);
+      line-height: 1.7;
+      white-space: pre-wrap;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      display: none;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    /* ── Footer ── */
+
+    /* ── Footer (canonical - matches dashboard) ── */
+    .status-footer {
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      padding: 8px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--fg-muted);
+    }
+
+    .status-footer .left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-footer .connected {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status-footer .connected .dot {
+      width: 5px;
+      height: 5px;
+      background: var(--ok);
+      border-radius: 50%;
+      animation: pulse 2s infinite alternate;
+    }
+
+
+    /* ── Scene Query Bar ── */
+    .sq-chip {
+      padding: 4px 11px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--fg-muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+      transition: all 0.18s;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+
+    .sq-chip:hover {
+      background: var(--primary-dim);
+      color: var(--primary);
+      border-color: rgba(59, 130, 246, .35);
+    }
+
+    .sq-chip.active {
+      background: var(--primary-dim);
+      color: var(--primary);
+      border-color: rgba(59, 130, 246, .35);
+    }
+
+    #sqBtn.loading {
+      opacity: 0.7;
+      pointer-events: none;
+    }
+
+    /* ── Sidebar CSS ── CANONICAL ── */
+    .sidebar {
+      width: 224px;
+      background: var(--side-bg);
+      border-right: 1px solid var(--side-border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: relative;
+      transition: width 0.3s ease;
+    }
+
+    .sidebar.collapsed {
+      width: 80px;
+    }
+
+    .sidebar-header {
+      padding: 0 16px;
+      height: 56px;
+      border-bottom: 1px solid var(--side-border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header {
+      justify-content: center;
+      padding: 0 8px;
+    }
+
+    .logo-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .sidebar.collapsed .logo-wrapper {
+      display: none !important;
+    }
+
+    .logo-text {
+      font-family: 'Manrope', sans-serif;
+      font-size: 0.875rem;
+      letter-spacing: 3px;
+      font-weight: 700;
+      color: var(--side-logo);
+    }
+
+    .sidebar nav {
+      flex: 1;
+      padding: 8px;
+      overflow-y: auto;
+    }
+
+    .sidebar.collapsed nav {
+      padding: 8px 6px;
+    }
+
+    .nav-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--side-fg-dim);
+      padding: 16px 12px 4px;
+    }
+
+    .sidebar.collapsed .nav-section-label {
+      display: none;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: var(--side-fg-dim);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.875rem;
+      transition: all 0.15s;
+      margin-bottom: 2px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      position: relative;
+    }
+
+    .sidebar.collapsed .nav-link {
+      justify-content: center;
+      padding-left: 0;
+      padding-right: 0;
+      width: 48px;
+      height: 40px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .sidebar.collapsed .nav-link span {
+      display: none;
+    }
+
+    .nav-link:hover {
+      background: var(--side-hover-bg);
+      color: var(--side-fg);
+    }
+
+    .nav-link.active {
+      background: var(--side-active-bg);
+      color: var(--side-primary);
+      border-color: var(--side-primary-dim);
+    }
+
+    .nav-link.active::before {
+      content: '';
+      position: absolute;
+      left: -1px;
+      top: 6px;
+      bottom: 6px;
+      width: 2px;
+      border-radius: 0 2px 2px 0;
+      background: var(--side-primary);
+    }
+
+    .nav-icon {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+    }
+
+    .sidebar-footer {
+      padding: 12px;
+      border-top: 1px solid var(--side-border);
+    }
+
+    .sidebar.collapsed .sidebar-footer {
+      padding: 12px 6px;
+    }
+
+    .sidebar.collapsed .sidebar-footer .nav-link {
+      width: 40px;
+      height: 40px;
+    }
+
+    .beta-tag {
+      font-size: 9px;
+      font-weight: 600;
+      background: rgba(59, 130, 246, 0.1);
+      color: hsl(217, 91%, 60%);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 4px;
+      padding: 2px 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+
+    .logout-link {
+      margin-top: 4px;
+    }
+
+    .logout-link:hover {
+      background: rgba(239, 68, 68, 0.1) !important;
+      color: #ef4444 !important;
+    }
+
+    /* ── Definitive Light Theme ── */
+    html[data-theme="light"] {
+      --bg: #f0f3f7;
+      --card: #ffffff;
+      --card-hover: #e8edf4;
+      --border: #cbd5e1;
+      --fg: #1e2d40;
+      --fg-dim: #475569;
+      --fg-muted: #6b7fa0;
+
+      --sidebar-bg: #e8edf4;
+      --console-bg: #f1f5f9;
+
+      --side-bg: #ffffff;
+      --side-border: #cbd5e1;
+      --side-fg: #1e2d40;
+      --side-fg-dim: #64748b;
+      --side-hover-bg: #f8fafc;
+      --side-active-bg: rgba(59, 130, 246, 0.1);
+      --side-primary: #3b82f6;
+      --side-primary-dim: rgba(59, 130, 246, 0.15);
+      --side-logo: #0f172a;
+    }
+
+    html[data-theme="light"]
+
+    /* ── UI Controls ── */
+    .theme-toggle {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--fg-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      transition: all 0.2s;
+      padding: 0;
+      z-index: 100;
+    }
+
+    .theme-toggle:hover {
+      background: var(--side-hover-bg);
+      color: var(--fg);
+    }
+
+
+
+    .theme-toggle svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .sidebar-collapse-btn {
+      position: absolute;
+      top: 64px;
+      right: -12px;
+      z-index: 101;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      color: var(--fg-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .sidebar-collapse-btn:hover {
+      color: var(--fg);
+      border-color: var(--primary);
+      transform: scale(1.1);
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: var(--fg-dim);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 10px;
+    }
+
+    .header-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ok);
+    }
+
+    /* ── DVR Player Bar ── */
+    #dvrBar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 20;
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.72) 0%, transparent 100%);
+      padding: 14px 16px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    #viewContainer:hover #dvrBar {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    #dvrPlayBtn,
+    #dvrRevBtn {
+      flex-shrink: 0;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 50%;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #fff;
+      font-size: 14px;
+      transition: background 0.15s;
+    }
+
+    #dvrPlayBtn:hover,
+    #dvrRevBtn:hover {
+      background: rgba(255, 255, 255, 0.28);
+    }
+
+    #dvrScrubber {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      border-radius: 4px;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.25);
+      outline: none;
+      accent-color: var(--primary);
+    }
+
+    #dvrScrubber::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+      cursor: pointer;
+    }
+
+    #dvrTimestamp {
+      flex-shrink: 0;
+      font-size: 0.72rem;
+      color: rgba(255, 255, 255, 0.85);
+      font-family: 'SF Mono', 'Fira Mono', monospace;
+      min-width: 90px;
+      text-align: center;
+    }
+
+    #dvrLiveBtn {
+      flex-shrink: 0;
+      font-size: 0.7rem;
+      font-weight: 700;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 3px 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    #dvrLiveBtn:hover {
+      opacity: 0.85;
+    }
+
+    #dvrLiveIndicator {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #f87171;
+      letter-spacing: 0.05em;
+    }
+
+    #dvrLiveIndicator span.dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #f87171;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    /* ── Floating VLM Prompt Bar  ── */
+    #vlm-prompt-container {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      width: 540px;
+      max-width: 60vw;
+      padding: 4px;
+      background: rgba(10, 12, 18, 0.45);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 100px;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #vlm-prompt-container:focus-within {
+      width: 600px;
+      max-width: 70vw;
+      background: rgba(14, 16, 22, 0.6);
+      border-color: var(--primary);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    #vlm-prompt-input {
+      flex: 1;
+      height: 46px;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #fff;
+      font-size: 0.95rem;
+      padding: 0 20px;
+      font-weight: 400;
+    }
+
+    #vlm-prompt-input::placeholder {
+      color: rgba(255, 255, 255, 0.35);
+    }
+
+    #vlm-prompt-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 4px;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    #vlm-prompt-btn:hover {
+      background: #2563eb;
+      transform: scale(1.08);
+    }
+
+    .sidebar.collapsed .sidebar-header>div {
+      display: none !important;
+    }
+
+    .sidebar.collapsed .sidebar-header .beta-tag {
+      display: none !important;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M11.2966 4.12501C11.5853 3.62501 12.307 3.62501 12.5957 4.12501L21.2787 19.1645C21.638 19.7867 21.0013 20.5092 20.3388 20.231L12.2365 16.8289C12.0508 16.751 11.8415 16.751 11.6558 16.8289L3.55346 20.231C2.89106 20.5092 2.25435 19.7867 2.61357 19.1645L11.2966 4.12501Z"
+          fill="var(--primary)" />
+      </svg>
+      <div style="display: flex; flex-direction: column; gap: 0;">
+        <span class="logo-text" style="letter-spacing: 2px;">NORT</span>
+        <span
+          style="font-size: 9px; font-weight: 700; color: var(--side-primary); opacity: 0.9; margin-top: -2px; letter-spacing: 0.5px;">STORE
+          MANAGER</span>
+      </div>
+      <span class="beta-tag">BETA</span>
+    </div>
+
+    <nav>
+      <div class="nav-section-label">{{ t('nav.section_platform') }}</div>
+      <a href="/home" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+        <span>{{ t('nav.home') }}</span>
+      </a>
+      <a href="/" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+        </svg>
+        <span>{{ t('nav.dashboard') }}</span>
+      </a>
+      <a href="/streams" class="nav-link active">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+          <circle cx="12" cy="13" r="3" />
+        </svg>
+        <span>{{ t('nav.streams') }}</span>
+      </a>
+      <a href="/cameras" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <line x1="8" y1="21" x2="16" y2="21" />
+          <line x1="12" y1="17" x2="12" y2="21" />
+        </svg>
+        <span>{{ t('nav.cameras') }}</span>
+      </a>
+      <a href="/zones" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 2 7 12 12 22 7 12 2" />
+          <polyline points="2 17 12 22 22 17" />
+          <polyline points="2 12 12 17 22 12" />
+        </svg>
+        <span>{{ t('nav.zones') }}</span>
+      </a>
+      <a href="/floorplan" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="3" y1="9" x2="21" y2="9"></line>
+          <line x1="9" y1="21" x2="9" y2="9"></line>
+        </svg>
+        <span>{{ t('nav.floorplan') }}</span>
+      </a>
+      <a href="/help" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <span>{{ t('nav.help') }}</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <a href="/profile" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+        <span>{{ t('nav.profile') }}</span>
+      </a>
+      <a href="/settings" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        <span>{{ t('nav.settings') }}</span>
+      </a>
+      <a href="#" class="nav-link logout-link" onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='/')">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+        <span>{{ t('nav.logout') }}</span>
+      </a>
+    </div>
+  </div>
+  </div>
+
+  <div class="main-wrapper">
+    <div class="top-header">
+      <div>
+        <h1>{{ t('nav.streams') }}</h1>
+        <div class="sub">Advanced Computer Vision & Visual AI Analysis</div>
+      </div>
+      <div class="header-actions" style="display:flex;align-items:center;gap:10px;">
+        <div class="sub" style="display:flex;align-items:center;gap:6px;">
+          <span>{{ store_id }} &middot; {{ device_id }}</span>
+          <span style="opacity:0.5;">&bull;</span>
+          <span id="clock" style="font-variant-numeric:tabular-nums; font-weight:600; color:var(--fg);"></span>
+        </div>
+        <button class="theme-toggle" onclick="toggleTheme()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+          </svg></button>
+        <div class="header-lang-switcher">
+          <a href="/set_lang/pt" class="lang-btn {% if current_lang == 'pt' %}active{% endif %}">PT</a>
+          <a href="/set_lang/en" class="lang-btn {% if current_lang == 'en' %}active{% endif %}">EN</a>
+          <a href="/set_lang/es" class="lang-btn {% if current_lang == 'es' %}active{% endif %}">ES</a>
+        </div>
+        <div class="header-badge"><span class="dot"></span>{{ t('header.active', 'Active') }}</div>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="layout">
+        <!-- Control Panel -->
+        <div class="ctrl-panel">
+          <div class="cam-tabs" id="camTabs">
+            <button id="btn_grid" class="cam-tab" onclick="setCamera('grid',this)">{{ t('streams.grid_view', 'Grid
+              View') }}</button>
+            {% for cam_id in cameras %}
+            <button id="btn_{{ cam_id }}" class="cam-tab{% if loop.first %} active{% endif %}"
+              onclick="setCamera('{{ cam_id }}',this)">{{ cam_id }}</button>
+            {% endfor %}
+          </div>
+
+          <div class="input-group">
+            <label>{{ t('streams.gender_label', 'Gender Filter') }}</label>
+            <select id="fGender">
+              <option value="all">{{ t('streams.gender_all', 'All Genders') }}</option>
+              <option value="male">{{ t('streams.gender_male', 'Male Only') }}</option>
+              <option value="female">{{ t('streams.gender_female', 'Female Only') }}</option>
+              <option value="unknown">{{ t('streams.gender_unknown', 'Unknown') }}</option>
+            </select>
+          </div>
+
+          <div class="input-group">
+            <label>{{ t('streams.age_label', 'Age Demographic') }}</label>
+            <select id="fAge">
+              <option value="all">{{ t('streams.age_all', 'All Ages') }}</option>
+              <option value="child">{{ t('streams.age_child', 'Child (0-12)') }}</option>
+              <option value="young_adult">{{ t('streams.age_young_adult', 'Young Adult (13-35)') }}</option>
+              <option value="adult">{{ t('streams.age_adult', 'Adult (36-60)') }}</option>
+              <option value="senior">{{ t('streams.age_senior', 'Senior (60+)') }}</option>
+            </select>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div class="input-group">
+              <label>{{ t('streams.time_from', 'Time From') }}</label>
+              <input type="datetime-local" id="fFrom">
+            </div>
+            <div class="input-group">
+              <label>{{ t('streams.time_to', 'Time To') }}</label>
+              <input type="datetime-local" id="fTo">
+            </div>
+          </div>
+
+          <button class="btn-primary" onclick="applyFilters()">{{ t('streams.query_button', 'Query Database')
+            }}</button>
+
+          <div>
+            <label style="margin-bottom:6px; display:block;">{{ t('streams.layers_label', 'Visualization Layers')
+              }}</label>
+            <div class="toggles">
+              <button class="toggle-btn" id="btnHeat" onclick="toggle('heatmap')">{{ t('streams.layer_heatmap',
+                'Heatmap') }}</button>
+              <button class="toggle-btn" id="btnPaths" onclick="toggle('paths')">{{ t('streams.layer_trajectories',
+                'Trajectories') }}</button>
+            </div>
+            <div class="toggles" style="margin-top:8px;">
+              <button class="toggle-btn on" id="btnFeed" onclick="toggle('feed')">{{ t('streams.layer_live_camera',
+                'Live Camera') }}</button>
+              <button class="toggle-btn on" id="btnOverlay" onclick="toggle('overlay')">{{ t('streams.layer_detections',
+                'Detections') }}</button>
+            </div>
+            <div class="toggles" style="margin-top:8px;">
+              <button class="toggle-btn" id="btnZones" onclick="toggle('zones')">{{ t('streams.layer_zones', 'Zones')
+                }}</button>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-lbl">{{ t('streams.stat_data_points', 'Data Points') }}</div>
+              <div class="stat-val" id="statPts">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-lbl">{{ t('streams.stat_track_paths', 'Track Paths') }}</div>
+              <div class="stat-val" id="statPaths">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Viewport + VLM side panel in one flex row -->
+        <div id="viewAreaWrapper">
+          <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
+            <div id="gridContainer"
+              style="display:none; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 15px; padding: 15px; background: var(--bg); overflow-y: auto; height: 100%;">
+            </div>
+            <div class="view-container" id="viewContainer" style="overflow:hidden; position:relative;">
+              <div class="loading-glow" id="loader"></div>
+              <div id="zoomLayer"
+                style="width:100%;height:100%;transform-origin:center center;transition:transform 0.15s ease-out, transform-origin 0.1s ease-out;">
+                <img id="feed" src="" alt="">
+                <img id="dvrFrame" src="" alt=""
+                  style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;z-index:5;">
+                <img id="overlayImg" src="" alt="">
+                <canvas id="overlay"></canvas>
+                <canvas id="bboxOverlay"
+                  style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:6;"></canvas>
+              </div>
+              <div class="empty-state" id="emptyState" style="display:none;">{{ t('streams.no_cameras', 'No cameras
+                connected.') }}</div>
+              <div id="clickHint">Click a tracked person to analyze with AI</div>
+
+              <!-- DVR Player Bar -->
+              <div id="dvrBar">
+
+                <button id="dvrRevBtn" title="Reverse Playback" onclick="dvrToggleReverse()">
+                  <svg id="dvrIconRev" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"
+                    style="transform: scaleX(-1);">
+                    <polygon points="5,3 19,12 5,21" />
+                  </svg>
+                </button>
+                <button id="dvrPlayBtn" title="Pause / Play" onclick="dvrTogglePlay()">
+                  <svg id="dvrIconPause" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                    <rect x="5" y="4" width="4" height="16" rx="1" />
+                    <rect x="15" y="4" width="4" height="16" rx="1" />
+                  </svg>
+                  <svg id="dvrIconPlay" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"
+                    style="display:none">
+                    <polygon points="5,3 19,12 5,21" />
+                  </svg>
+                </button>
+                <input type="range" id="dvrScrubber" min="0" max="300" value="300" title="Scrub timeline"
+                  oninput="dvrOnScrub(this.value)" onchange="dvrOnScrubEnd(this.value)">
+                <span id="dvrTimestamp">LIVE</span>
+                <button id="dvrLiveBtn" onclick="dvrGoLive()">⏩ {{ t('streams.live', 'LIVE') }}</button>
+                <div id="dvrLiveIndicator"><span class="dot"></span>{{ t('streams.live', 'LIVE') }}</div>
+              </div>
+            </div>
+
+            <!-- ── AI Scene Query Bar ────────────────────────────────────── -->
+            <div id="sceneQueryBar" style="
+              margin-top: 12px;
+              background: var(--card);
+              border: 1px solid var(--border);
+              border-radius: 10px;
+              padding: 14px 16px;
+              display: flex;
+              flex-direction: column;
+              gap: 10px;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+            ">
+              <!-- Preset chips -->
+              <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                <span
+                  style="font-size:0.68rem;font-weight:600;color:var(--fg-muted);text-transform:uppercase;letter-spacing:.05em;align-self:center;margin-right:4px;">{{
+                  t('vlm.quick', 'Quick:') }}</span>
+                <button class="sq-chip"
+                  onclick="sqPreset('Describe the behavior, actions, and interactions of the people in this scene. Ignore the room and static background.')"><svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;">
+                    <path
+                      d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+                    <circle cx="12" cy="13" r="3" />
+                  </svg>
+                  {{ t('vlm.preset_describe', 'Describe behavior') }}</button>
+                <button class="sq-chip"
+                  onclick="sqPreset('How many people are in the scene and what are they doing?')"><svg width="14"
+                    height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg> {{ t('vlm.preset_count', 'Count people') }}</button>
+                <button class="sq-chip"
+                  onclick="sqPreset('Are there any groups of people standing together or congregating?')"><svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg> {{ t('vlm.preset_groups', 'Find groups') }}</button>
+                <button class="sq-chip"
+                  onclick="sqPreset('Find anyone who looks suspicious, loitering, or behaving unusually')">{{
+                  t('vlm.preset_security', '⚠️ Security issues') }}</button>
+                <button class="sq-chip"
+                  onclick="sqPreset('Describe the people in the scene — clothing, appearance, and what they are carrying')"><svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  {{ t('vlm.preset_person', 'Find person') }}</button>
+                <button class="sq-chip" onclick="sqPreset('Which areas of the store are busiest right now?')"><svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;">
+                    <circle cx="12" cy="10" r="3" />
+                    <path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z" />
+                  </svg> {{ t('vlm.preset_busy', 'Busy areas') }}</button>
+                <button class="sq-chip"
+                  onclick="sqPreset('Is there anything unusual, unexpected, or potentially dangerous in this scene?')"><svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;">
+                    <path d="M22 10.5V12a10 10 0 1 1-5.93-9.14" />
+                    <path d="M12 22v-4" />
+                    <path d="M12 8v4" />
+                    <path d="M8 12h4" />
+                    <path d="M14 12h4" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  {{ t('vlm.preset_anomalies', 'Anomalies') }}</button>
+              </div>
+              <!-- Text input row -->
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <label
+                  style="display:flex; align-items:center; gap:6px; font-size:.78rem; color:var(--fg-muted); cursor:pointer;">
+                  <input type="checkbox" id="sqGlobal" style="cursor:pointer;"
+                    title="Find a person across all active cameras"
+                    onchange="document.getElementById('sqInput').placeholder = this.checked ? 'Find a person globally... e.g. &quot;man in red shirt&quot;' : 'Ask about this scene... e.g. &quot;what is happening here?&quot;'">
+                  {{ t('vlm.global_search', 'Find a person across all cameras (Global Search)') }}
+                </label>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <div style="position:relative;flex:1;">
+                  <svg
+                    style="position:absolute;left:11px;top:50%;transform:translateY(-50%);opacity:.45;pointer-events:none;"
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.35-4.35" />
+                  </svg>
+                  <input id="sqInput" type="text"
+                    placeholder="Ask about this scene... e.g. &quot;what is happening here?&quot;"
+                    style="width:100%;padding:9px 12px 9px 32px;background:rgba(0,0,0,.2);border:1px solid var(--border);border-radius:7px;color:var(--fg);font-size:.85rem;font-family:inherit;transition:border-color .2s;"
+                    onkeydown="if(event.key==='Enter')sqSend()" onfocus="this.style.borderColor='var(--primary)'"
+                    onblur="this.style.borderColor='var(--border)'">
+                </div>
+                <button id="sqBtn" onclick="sqSend()" style="
+                  padding:9px 18px;background:var(--primary);color:#fff;border:none;
+                  border-radius:7px;font-weight:700;font-size:.85rem;cursor:pointer;
+                  font-family:inherit;white-space:nowrap;transition:filter .15s;flex-shrink:0;
+                " onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter=''">{{
+                  t('vlm.ask_ai', 'Ask AI ✦') }}</button>
+              </div>
+              <!-- Result area -->
+              <div id="sqResult" style="display:none;">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
+                  <span
+                    style="width:7px;height:7px;border-radius:50%;background:var(--primary);display:inline-block;animation:pulse 1.5s infinite alternate;"></span>
+                  <span
+                    style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-muted);">AI
+                    Response</span>
+                  <span id="sqCam" style="font-size:.68rem;color:var(--primary);margin-left:auto;"></span>
+                </div>
+
+                <div id="sqText" style="
+                  font-size:.875rem;color:var(--fg);line-height:1.65;
+                  white-space:pre-wrap;background:rgba(0,0,0,.15);
+                  border-radius:7px;padding:12px 14px;
+                  border:1px solid var(--border);
+                "></div>
+              </div>
+            </div>
+          </div>
+
+
+          <div id="vlmBackdrop" onclick="closeVlmPanel()"></div>
+          <div id="vlmPanel">
+            <div class="vlm-header">
+              <div class="vlm-header-title">
+                <span class="ai-dot"></span>
+                AI Analysis
+              </div>
+              <button class="vlm-close" onclick="closeVlmPanel()" title="Close">✕</button>
+            </div>
+            <div class="vlm-body">
+              <div class="vlm-crop-wrap" id="vlmCropWrap">
+                <img id="vlmCrop" src="" alt="Person crop">
+              </div>
+              <div class="vlm-track-info" id="vlmTrackInfo"></div>
+
+              <div>
+                <div class="vlm-label">{{ t('vlm.analysis_mode', 'Analysis mode') }}</div>
+                <select id="vlmMode" class="vlm-select">
+                  <option value="describe">{{ t('vlm.mode_describe', 'Describe appearance (single frame)') }}</option>
+                  <option value="behavior">{{ t('vlm.mode_behavior', 'Behavior / engagement (single frame)') }}</option>
+                  <option value="carrying">{{ t('vlm.mode_carrying', 'Items being carried (single frame)') }}</option>
+                  <option value="staff">{{ t('vlm.mode_staff', 'Employee vs customer (single frame)') }}</option>
+                  <option value="staff_clip">{{ t('vlm.mode_staff_clip', 'Quick staff check (CLIP)') }}</option>
+                  <option value="anomaly">{{ t('vlm.mode_anomaly', 'Anomaly detection (single frame)') }}</option>
+                  <option value="behavior_timeline">{{ t('vlm.mode_behavior_timeline', 'Behavior over time (video
+                    clip)') }}</option>
+                  <option value="movement_pattern">{{ t('vlm.mode_movement_pattern', 'Movement pattern (video clip)') }}
+                  </option>
+                  <option value="suspicious_activity">{{ t('vlm.mode_suspicious', 'Detect suspicious activity (video
+                    clip)') }}</option>
+                </select>
+              </div>
+
+              <!-- Time range selector for video clip analysis -->
+              <div id="timeRangeSelector" style="display:none;">
+                <div class="vlm-label">{{ t('vlm.time_range', 'Time range') }}</div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <button class="vlm-time-btn" data-seconds="1" onclick="setTimeRange(1)">1s</button>
+                  <button class="vlm-time-btn active" data-seconds="3" onclick="setTimeRange(3)">3s</button>
+                  <button class="vlm-time-btn" data-seconds="5" onclick="setTimeRange(5)">5s</button>
+                  <button class="vlm-time-btn" data-seconds="10" onclick="setTimeRange(10)">10s</button>
+                </div>
+              </div>
+
+              <div>
+                <div class="vlm-label">Custom question <span
+                    style="font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></div>
+                <textarea id="vlmQuestion" class="vlm-textarea" rows="2"
+                  placeholder="e.g. Is this person wearing a hat?"></textarea>
+              </div>
+
+              <!-- Video clip preview area -->
+              <div id="videoClipPreview" style="display:none;">
+                <div class="vlm-label">Video clip preview</div>
+                <div id="clipFrames" style="display:flex; gap:4px; overflow-x:auto; padding:4px 0;"></div>
+              </div>
+
+              <button onclick="runVlmAnalysis()" id="vlmRunBtn" class="vlm-btn">Analyze</button>
+              <div class="vlm-status" id="vlmStatus">Select a mode and click Analyze.</div>
+              <div class="vlm-result" id="vlmResult"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Footer -->
+    <div class="status-footer">
+      <div class="left">
+        <span>{{ t('footer.system_online', 'System Online') }}</span>
+        <div class="connected"><span class="dot"></span><span>{{ t('footer.connected', 'Connected') }}</span></div>
+      </div>
+      <div>{{ t('footer.rights', '&copy; 2026 NORT Analytics') | safe }}</div>
+    </div>
+  </div>
+  <script>
+    if (localStorage.getItem('nort-theme') === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+    if (localStorage.getItem('nort-sidebar-collapsed') === 'true') {
+      const sb = document.querySelector('.sidebar');
+      if (sb) sb.classList.add('collapsed');
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      const sb = document.querySelector('.sidebar');
+      if (sb && !sb.querySelector('.sidebar-collapse-btn')) {
+        const btn = document.createElement('button');
+        btn.className = 'sidebar-collapse-btn';
+        btn.title = 'Toggle Sidebar';
+        const chevronLeft = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`;
+        const chevronRight = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`;
+        btn.innerHTML = sb.classList.contains('collapsed') ? chevronRight : chevronLeft;
+        btn.onclick = () => {
+          sb.classList.toggle('collapsed');
+          const isCollapsed = sb.classList.contains('collapsed');
+          localStorage.setItem('nort-sidebar-collapsed', isCollapsed);
+          btn.innerHTML = isCollapsed ? chevronRight : chevronLeft;
+        };
+        sb.appendChild(btn);
+      }
+    });
+
+    let currentCamera = "{{ cameras|first if cameras else '' }}";
+    let showHeat = false;
+    let showPaths = false;
+    let showFeed = true;
+    let showOverlay = true;
+    let showZones = false;
+    let zoneData = null;
+
+    let pathData = null;
+    let heatImgUrl = null;
+
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    const feedEl = document.getElementById('feed');
+    const overlayImg = document.getElementById('overlayImg');
+    const loader = document.getElementById('loader');
+
+    let _gridRefreshInterval = null;
+
+    function setCamera(cam, btn) {
+      document.querySelectorAll('.cam-tab').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+
+      if (_gridRefreshInterval) {
+        clearInterval(_gridRefreshInterval);
+        _gridRefreshInterval = null;
+      }
+
+      if (cam === 'grid') {
+        currentCamera = null;
+        document.getElementById('viewContainer').style.display = 'none';
+        const dvr = document.getElementById('dvrBar');
+        if (dvr) dvr.style.display = 'none';
+        const grid = document.getElementById('gridContainer');
+        grid.style.display = 'grid';
+        grid.innerHTML = '';
+        const allCams = Array.from(document.querySelectorAll('.cam-tab'))
+          .map(b => b.id.replace('btn_', ''))
+          .filter(id => id && id !== 'grid');
+
+        allCams.forEach(c => {
+          const div = document.createElement('div');
+          div.style.position = 'relative';
+          div.style.borderRadius = 'var(--radius)';
+          div.style.overflow = 'hidden';
+          div.style.aspectRatio = '16 / 9';
+          div.style.background = '#000';
+          div.style.border = '1px solid var(--border)';
+          const layers = `&rendered=${showOverlay ? 1 : 0}&heatmap=${showHeat ? 1 : 0}&paths=${showPaths ? 1 : 0}`;
+          div.innerHTML = `
+            <img id="grid_img_${c}" src="/api/camera_snapshot/${c}?t=${Date.now()}${layers}" style="width:100%; height:100%; object-fit:cover; display:block; cursor:pointer;" onclick="document.getElementById('btn_${c}').click()">
+            <div style="position:absolute; top:12px; left:12px; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); color:#fff; font-size:0.85rem; font-weight:700; padding:6px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); pointer-events:none;">${c}</div>
+          `;
+          grid.appendChild(div);
+        });
+
+        // Set up snapshot refresh interval (every 1.5s) to avoid browser MJPEG connection limits
+        _gridRefreshInterval = setInterval(() => {
+          allCams.forEach(c => {
+            const img = document.getElementById(`grid_img_${c}`);
+            if (img) {
+              const base = `/api/camera_snapshot/${c}?t=${Date.now()}`;
+              const layers = `&rendered=${showOverlay ? 1 : 0}&heatmap=${showHeat ? 1 : 0}&paths=${showPaths ? 1 : 0}`;
+              img.src = base + layers;
+            }
+          });
+        }, 1500);
+
+        return;
+      }
+
+      const grid = document.getElementById('gridContainer');
+      if (grid) {
+        grid.style.display = 'none';
+        grid.innerHTML = '';
+      }
+      document.getElementById('viewContainer').style.display = 'block';
+      const dvr = document.getElementById('dvrBar');
+      if (dvr) dvr.style.display = '';
+
+      currentCamera = cam;
+      zoneData = null;
+      feedEl.src = showFeed ? (showOverlay ? '/stream/' + cam : '/stream_raw/' + cam) : 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      if (showZones) fetchZones();
+      applyFilters();
+    }
+
+    function toggle(what) {
+      if (what === 'heatmap') { showHeat = !showHeat; document.getElementById('btnHeat').classList.toggle('on', showHeat); }
+      if (what === 'paths') { showPaths = !showPaths; document.getElementById('btnPaths').classList.toggle('on', showPaths); }
+      if (what === 'feed') {
+        showFeed = !showFeed; document.getElementById('btnFeed').classList.toggle('on', showFeed);
+        feedEl.src = showFeed ? (showOverlay ? '/stream/' + currentCamera : '/stream_raw/' + currentCamera) : 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        feedEl.style.opacity = showFeed ? '1' : '0.1';
+      }
+      if (what === 'overlay') {
+        showOverlay = !showOverlay; document.getElementById('btnOverlay').classList.toggle('on', showOverlay);
+        if (showFeed) { feedEl.src = showOverlay ? '/stream/' + currentCamera : '/stream_raw/' + currentCamera; }
+      }
+      if (what === 'zones') {
+        showZones = !showZones; document.getElementById('btnZones').classList.toggle('on', showZones);
+        if (showZones && !zoneData) fetchZones();
+      }
+      redraw();
+    }
+
+    async function fetchZones() {
+      if (!currentCamera) return;
+      try {
+        const res = await fetch('/api/zones?camera=' + encodeURIComponent(currentCamera));
+        if (res.ok) { zoneData = await res.json(); redraw(); }
+      } catch (e) { }
+    }
+
+    function buildParams() {
+      const p = new URLSearchParams({ camera: currentCamera });
+      const g = document.getElementById('fGender').value; if (g !== 'all') p.set('gender', g);
+      const a = document.getElementById('fAge').value; if (a !== 'all') p.set('age', a);
+      const from = document.getElementById('fFrom').value; if (from) p.set('from', from);
+      const to = document.getElementById('fTo').value; if (to) p.set('to', to);
+      return p;
+    }
+
+    async function applyFilters() {
+      if (!currentCamera) return;
+      const p = buildParams();
+      loader.style.display = 'block';
+
+      try {
+        const pRes = await fetch('/api/paths?' + p);
+        if (pRes.ok) {
+          pathData = await pRes.json();
+          document.getElementById('statPaths').textContent = pathData.paths ? pathData.paths.length : '0';
+        }
+      } catch (e) { }
+
+      try {
+        const hRes = await fetch('/api/streams?' + p);
+        if (hRes.ok) {
+          const pts = hRes.headers.get('X-Total-Points');
+          document.getElementById('statPts').textContent = pts || '0';
+
+          const blob = await hRes.blob();
+          const url = URL.createObjectURL(blob);
+          if (heatImgUrl) URL.revokeObjectURL(heatImgUrl);
+          heatImgUrl = url;
+          overlayImg.src = url;
+        }
+      } catch (e) { }
+
+      loader.style.display = 'none';
+      redraw();
+    }
+
+    function redraw() {
+      canvas.width = feedEl.offsetWidth || 960;
+      canvas.height = feedEl.offsetHeight || 540;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      overlayImg.style.display = (showHeat && heatImgUrl) ? 'block' : 'none';
+
+      if (showPaths && pathData && pathData.paths && pathData.paths.length > 0) {
+        drawPaths(pathData.paths);
+      }
+      if (showZones && zoneData && zoneData.zones) {
+        drawZones(zoneData.zones);
+      }
+    }
+
+    const ZONE_COLORS = ['#24B6FC', '#3fb950', '#F0A500', '#f85149', '#bc8cff'];
+    function drawZones(zones) {
+      zones.forEach((zone, idx) => {
+        const pts = zone.points || zone.polygon || [];
+        if (pts.length < 3) return;
+        const col = ZONE_COLORS[idx % ZONE_COLORS.length];
+        ctx.save();
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        pts.forEach(([nx, ny], i) => {
+          const px = nx * canvas.width;
+          const py = ny * canvas.height;
+          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        });
+        ctx.closePath();
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = col;
+        ctx.fill();
+        ctx.globalAlpha = 0.9;
+        ctx.stroke();
+        // Label
+        if (zone.name) {
+          const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length * canvas.width;
+          const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length * canvas.height;
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = col;
+          ctx.font = 'bold 13px Inter, sans-serif';
+          ctx.shadowBlur = 4;
+          ctx.fillText(zone.name, cx, cy);
+        }
+        ctx.restore();
+      });
+    }
+
+    const PATH_COLORS = ['#24B6FC', '#3fb950', '#F0A500', '#f85149', '#bc8cff', '#0384ff'];
+    function drawPaths(paths) {
+      paths.forEach((path, idx) => {
+        if (path.length < 2) return;
+        const col = PATH_COLORS[idx % PATH_COLORS.length];
+        ctx.save();
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 4;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 12;
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        path.forEach(([cx, cy], i) => {
+          const px = cx * canvas.width;
+          const py = cy * canvas.height;
+          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+        const last = path[path.length - 1];
+        const prev = path[path.length - 2];
+        const angle = Math.atan2((last[1] - prev[1]) * canvas.height, (last[0] - prev[0]) * canvas.width);
+        const tip = [last[0] * canvas.width, last[1] * canvas.height];
+        ctx.fillStyle = col;
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.moveTo(tip[0], tip[1]);
+        ctx.lineTo(tip[0] - 18 * Math.cos(angle - 0.45), tip[1] - 18 * Math.sin(angle - 0.45));
+        ctx.lineTo(tip[0] - 18 * Math.cos(angle + 0.45), tip[1] - 18 * Math.sin(angle + 0.45));
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    if (currentCamera) {
+      feedEl.src = showOverlay ? '/stream/' + currentCamera : '/stream_raw/' + currentCamera;
+      feedEl.onload = () => { applyFilters(); };
+      setInterval(() => { if (showHeat || showPaths) applyFilters(); }, 15000);
+    } else {
+      document.getElementById('emptyState').style.display = 'flex';
+    }
+    window.addEventListener('resize', redraw);
+
+    // ── AI Scene Query Bar ─────────────────────────────────────────────────────
+    function sqPreset(text) {
+      document.getElementById('sqInput').value = text;
+      // Highlight the active chip
+      document.querySelectorAll('.sq-chip').forEach(c => c.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+
+      // Presets are always for Scene Understanding on the current camera
+      const globalCb = document.getElementById('sqGlobal');
+      globalCb.checked = false;
+      // Trigger placeholder update
+      globalCb.dispatchEvent(new Event('change'));
+
+      sqSend();
+    }
+
+    async function sqSend() {
+      const query = (document.getElementById('sqInput').value || '').trim();
+      const isGlobal = document.getElementById('sqGlobal').checked;
+      if (!query) return;
+      if (!isGlobal && !currentCamera) return;
+
+      const btn = document.getElementById('sqBtn');
+      const resultEl = document.getElementById('sqResult');
+      const textEl = document.getElementById('sqText');
+      const camLbl = document.getElementById('sqCam');
+
+      btn.textContent = '{{ t("vlm.thinking", "Thinking…") }}';
+      btn.classList.add('loading');
+      resultEl.style.display = 'block';
+      textEl.textContent = '';
+      camLbl.textContent = isGlobal ? '{{ t("vlm.all_cameras", "ALL CAMERAS") }}' : currentCamera;
+
+      // Simple blinking cursor while waiting
+      let dotCount = 0;
+      const dotInterval = setInterval(() => {
+        textEl.textContent = '●'.repeat((dotCount++ % 3) + 1);
+      }, 350);
+
+      _scanningActive = true;
+      _activeCropImages = [];
+      if (isGlobal || currentCamera) {
+        fetch('/api/vlm/active_crops').then(r => r.json()).then(data => {
+          if (data.crops && data.crops.length > 0) {
+            const images = [];
+            let loadedCount = 0;
+            data.crops.forEach(c => {
+              const img = new Image();
+              img.onload = () => loadedCount++;
+              img.src = c.image;
+              images.push({ img, id: c.global_id });
+            });
+            _activeCropImages = images;
+          }
+        }).catch(e => console.error(e));
+      }
+
+      async function _pollSearchResult(jobId, textEl, camLbl, btn, dotInterval) {
+        const MAX_POLLS = 300; // 300 × 0.4s = 2 min max
+        for (let i = 0; i < MAX_POLLS; i++) {
+          await new Promise(r => setTimeout(r, 400));
+          try {
+            const res = await fetch(`/api/vlm/search_status/${jobId}`);
+            const data = await res.json();
+            if (data.status !== 'pending') {
+              // Done — stop scanning animation
+              clearInterval(dotInterval);
+              _scanningActive = false;
+              btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
+              btn.classList.remove('loading');
+
+              if (data.error || data.found === false) {
+                textEl.textContent = '\u26a0\ufe0f ' + (data.error || data.result || '{{ t("vlm.not_found", "Not found.") }}');
+                if (!data.found && !data.error) camLbl.textContent = '{{ t("vlm.none", "NONE") }}';
+              } else {
+                const answer = data.result || '{{ t("vlm.no_answer", "(no answer)") }}';
+                textEl.textContent = '';
+                let ci = 0;
+                const typeInterval = setInterval(() => {
+                  if (ci >= answer.length) { clearInterval(typeInterval); return; }
+                  textEl.textContent += answer[ci++];
+                }, 12);
+                camLbl.textContent = data.camera_id || currentCamera;
+                if (data.found && data.camera_id) {
+                  if (data.camera_id !== currentCamera) {
+                    const tabBox = document.getElementById('btn_' + data.camera_id);
+                    if (tabBox) setCamera(data.camera_id, tabBox);
+                  }
+                  if (data.global_id) {
+                    setTimeout(() => {
+                      openVlmPanel(data.global_id);
+                    }, 100);
+                  }
+                }
+              }
+              return;
+            }
+          } catch (e) {
+            console.warn('[VLM poll]', e);
+          }
+        }
+        // Timeout
+        clearInterval(dotInterval);
+        _scanningActive = false;
+        btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
+        btn.classList.remove('loading');
+        textEl.textContent = '\u26a0\ufe0f {{ t("vlm.search_timeout", "Search timed out.") }}';
+      }
+
+      try {
+        const endpoint = isGlobal ? '/api/vlm/global_query' : '/api/vlm/scene_query';
+        const payload = isGlobal ? { query } : { camera_id: currentCamera, query };
+
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (data.error) {
+          clearInterval(dotInterval);
+          _scanningActive = false;
+          btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
+          btn.classList.remove('loading');
+          textEl.textContent = '\u26a0\ufe0f ' + data.error;
+          return;
+        }
+
+        if (data.job_id) {
+          // Non-blocking: poll for result in background — stream stays live
+          _pollSearchResult(data.job_id, textEl, camLbl, btn, dotInterval);
+          // NOTE: we intentionally do NOT await here — the try/finally below
+          // must NOT stop the scanning animation prematurely.
+          return;
+        }
+
+        // Fallback if no job_id for some reason
+        clearInterval(dotInterval);
+        _scanningActive = false;
+        btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
+        btn.classList.remove('loading');
+        textEl.textContent = '\u26a0\ufe0f {{ t("vlm.unexpected_response", "Unexpected response from VLM.") }}';
+      } catch (e) {
+        clearInterval(dotInterval);
+        _scanningActive = false;
+        textEl.textContent = '\u26a0\ufe0f {{ t("vlm.network_error_prefix", "Network error: ") }}' + e.message;
+      } finally {
+        // Only reset button if we didn't hand off to the async poller
+        if (!isGlobal) {
+          btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
+          btn.classList.remove('loading');
+        }
+      }
+    }
+
+
+    // ── VLM: click-to-analyze ─────────────────────────────────────────────────────
+    // The MJPEG stream already draws all bounding boxes at full pipeline FPS.
+    // We do NOT re-draw them here — that would create a lagged duplicate layer.
+    //
+    // Instead:
+    //   • Poll /api/status at 500ms to keep _vlmTracks fresh for click hit-testing
+    //   • bboxOverlay canvas draws ONLY the selection highlight for the clicked track
+    //   • Click anywhere on the feed → find which track bbox contains that point
+
+    let _vlmTracks = {};        // { global_id → {x1,y1,x2,y2,frame_w,frame_h,...} }
+    let _selectedTrackId = null;
+    let _scanningActive = false;
+    let _arFrame = 0;
+    let _activeCropImages = [];
+    let _activeCropIdx = 0;
+    let _lastCropTime = 0;
+    const bboxCanvas = document.getElementById('bboxOverlay');
+    const bboxCtx = bboxCanvas.getContext('2d');
+
+    function _normBbox(t) {
+      let nx1 = t.x1, ny1 = t.y1, nx2 = t.x2, ny2 = t.y2;
+      if (nx1 > 2) {
+        const fw = t.frame_w || 1920, fh = t.frame_h || 1080;
+        nx1 /= fw; ny1 /= fh; nx2 /= fw; ny2 /= fh;
+      }
+      return [nx1, ny1, nx2, ny2];
+    }
+
+    function _drawAROverlay() {
+      requestAnimationFrame(_drawAROverlay);
+
+      // Resize canvas to match the rendered feed image only if changed
+      const fw = feedEl.offsetWidth || 960;
+      const fh = feedEl.offsetHeight || 540;
+      if (bboxCanvas.width !== fw || bboxCanvas.height !== fh) {
+        bboxCanvas.width = fw;
+        bboxCanvas.height = fh;
+      }
+      bboxCtx.clearRect(0, 0, bboxCanvas.width, bboxCanvas.height);
+
+      _arFrame += 0.05;
+
+      if (_scanningActive && _activeCropImages.length > 0) {
+        if (performance.now() - _lastCropTime > 400) {
+          _activeCropIdx = (_activeCropIdx + 1) % _activeCropImages.length;
+          _lastCropTime = performance.now();
+        }
+        const activeCrop = _activeCropImages[_activeCropIdx];
+
+        const boxW = 86;
+        const boxH = 86;
+        const padding = 20;
+        const px = bboxCanvas.width - boxW - padding;
+        const py = bboxCanvas.height - boxH - padding;
+
+        bboxCtx.save();
+        bboxCtx.shadowColor = '#06b6d4';
+        bboxCtx.shadowBlur = 10;
+        bboxCtx.strokeStyle = '#06b6d4';
+        bboxCtx.lineWidth = 1.5;
+
+        bboxCtx.fillStyle = 'rgba(0,0,0,0.5)';
+        bboxCtx.fillRect(px, py, boxW, boxH);
+
+        if (activeCrop.img.complete) {
+          bboxCtx.shadowBlur = 0;
+          bboxCtx.drawImage(activeCrop.img, px, py, boxW, boxH);
+        }
+
+        bboxCtx.strokeRect(px, py, boxW, boxH);
+
+        // Corner brackets
+        const cs = 10;
+        bboxCtx.shadowBlur = 8;
+        [[px, py, 1, 1], [px + boxW, py, -1, 1], [px, py + boxH, 1, -1], [px + boxW, py + boxH, -1, -1]].forEach(([x, y, dx, dy]) => {
+          bboxCtx.beginPath();
+          bboxCtx.moveTo(x + dx * cs, y); bboxCtx.lineTo(x, y); bboxCtx.lineTo(x, y + dy * cs);
+          bboxCtx.stroke();
+        });
+
+        // Scanning line
+        const lineY = py + ((Math.sin(_arFrame * 3) + 1) / 2) * boxH;
+        bboxCtx.beginPath();
+        bboxCtx.moveTo(px, lineY);
+        bboxCtx.lineTo(px + boxW, lineY);
+        bboxCtx.lineWidth = 2;
+        bboxCtx.stroke();
+
+        // Text
+        bboxCtx.shadowBlur = 0;
+        bboxCtx.fillStyle = 'rgba(6,182,212,0.9)';
+        bboxCtx.font = 'bold 10px monospace';
+        bboxCtx.fillText('MATCHING DB', px, py - 16);
+        bboxCtx.fillText('ID: ' + activeCrop.id, px, py - 4);
+
+        bboxCtx.restore();
+      }
+
+      // Frontend UI no longer draws the red tracking box; 
+      // It is now rendered directly on the camera stream by bbox_renderer 
+      // for perfect, zero-latency sync.
+
+    }
+    // Kick off the AR loop
+    requestAnimationFrame(_drawAROverlay);
+
+
+    // ── DVR Player ────────────────────────────────────────────────────────────────
+    // DESIGN: The live MJPEG (feedEl) is NEVER cleared — it keeps streaming in
+    // background.  A separate #dvrFrame img overlays it during DVR mode so the
+    // container never collapses.  Playback advances FORWARD in time when "playing"
+    // in DVR mode (offset decreases until it reaches 0 → go live).
+    //
+    //  Scrubber: left (0) = oldest available, right = live edge
+    //  _dvrWindow is queried from /api/dvr/info on each camera switch.
+
+    let DVR_WINDOW = 300;   // defaults to 5 min; updated from server on each camera switch
+    let _dvrMode = false; // true = DVR overlay visible
+    let _dvrPlaying = false; // true = auto-advancing toward live
+    let _dvrPlayDir = 1;     // 1 = forward, -1 = reverse
+    let _dvrOffset = 0;     // seconds behind NOW (0 = live edge)
+    let _dvrPlayTimer = null;
+    let _dvrScrubbing = false;
+    let _dvrDebTimer = null;  // debounce timer for scrub renders
+
+    const _dvrScrubEl = document.getElementById('dvrScrubber');
+    const _dvrTsEl = document.getElementById('dvrTimestamp');
+    const _dvrPlayBtn = document.getElementById('dvrPlayBtn');
+    const _dvrRevBtn = document.getElementById('dvrRevBtn');
+    const _dvrLiveBtn = document.getElementById('dvrLiveBtn');
+    const _dvrLiveInd = document.getElementById('dvrLiveIndicator');
+    const _dvrFrameEl = document.getElementById('dvrFrame');
+    const _dvrIconPause = document.getElementById('dvrIconPause');
+    const _dvrIconPlay = document.getElementById('dvrIconPlay');
+
+    function _dvrSetIcon(isPlaying) {
+      if (_dvrIconPause) _dvrIconPause.style.display = (isPlaying && _dvrPlayDir === 1) ? '' : 'none';
+      if (_dvrIconPlay) _dvrIconPlay.style.display = (isPlaying && _dvrPlayDir === 1) ? 'none' : '';
+      if (_dvrRevBtn) {
+        _dvrRevBtn.style.color = (isPlaying && _dvrPlayDir === -1) ? 'var(--primary)' : '#fff';
+      }
+    }
+
+    function _dvrFmt(epochSec) {
+      return new Date(epochSec * 1000)
+        .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function _dvrFill(sliderVal, win) {
+      win = win || DVR_WINDOW || 300;
+      const pct = (sliderVal / win) * 100;
+      _dvrScrubEl.style.background =
+        'linear-gradient(to right, var(--primary) 0%, var(--primary) ' + pct +
+        '%, rgba(255,255,255,0.25) ' + pct + '%, rgba(255,255,255,0.25) 100%)';
+    }
+
+    // Render a DVR frame — debounced during scrubbing to avoid flooding the server
+    function _dvrRenderFrame(epochSec) {
+      const cam = currentCamera || '';
+      if (!cam) return;
+      if (_dvrDebTimer) clearTimeout(_dvrDebTimer);
+      _dvrDebTimer = setTimeout(() => {
+        _dvrFrameEl.src = '/api/dvr/seek/' + cam + '/' + Math.floor(epochSec) +
+          '?_=' + Math.floor(epochSec);
+      }, _dvrScrubbing ? 120 : 0);  // 120ms debounce while dragging, instant otherwise
+    }
+
+    // Update the scrubber + timestamp from current _dvrOffset
+    function _dvrSyncUI() {
+      const sliderVal = DVR_WINDOW - _dvrOffset;
+      _dvrScrubEl.value = sliderVal;
+      _dvrFill(sliderVal);
+      const epoch = Date.now() / 1000 - _dvrOffset;
+      _dvrTsEl.textContent = _dvrOffset <= 0 ? 'LIVE' : _dvrFmt(epoch);
+    }
+
+    // Query the server for actual available buffer length and update scrubber max
+    function dvrInitFromCamera(camId) {
+      if (!camId) return;
+      fetch('/api/dvr/info/' + camId)
+        .then(r => r.json())
+        .then(d => {
+          // original API returns {min_ts, max_ts, count}
+          const avail = (d.max_ts && d.min_ts) ? (d.max_ts - d.min_ts) : 0;
+          // Use actual available buffer, clamped between 5s and 300s
+          DVR_WINDOW = Math.max(5, Math.min(300, avail));
+          _dvrScrubEl.max = DVR_WINDOW;
+          // Reset to live edge
+          _dvrScrubEl.value = DVR_WINDOW;
+          _dvrFill(DVR_WINDOW);
+        })
+        .catch(() => { /* leave defaults */ });
+    }
+
+    // Enter DVR mode at a specific offset (seconds behind NOW)
+    function _dvrEnterAt(offsetSec) {
+      _dvrMode = true;
+      _dvrPlaying = false;
+      _dvrOffset = Math.max(1, Math.min(DVR_WINDOW, offsetSec));
+      _dvrStop();
+      _dvrFrameEl.style.display = 'block';
+      _dvrSetIcon(false);  // show play icon
+      _dvrLiveBtn.style.display = 'inline-block';
+      _dvrLiveInd.style.display = 'none';
+      _dvrSyncUI();
+      _dvrRenderFrame(Date.now() / 1000 - _dvrOffset);
+    }
+
+    // Start auto-playback (forward through time) while in DVR mode
+    function _dvrPlay() {
+      if (!_dvrMode) return;
+      _dvrPlaying = true;
+      _dvrSetIcon(true);
+      _dvrStop();
+      _dvrPlayTimer = setInterval(() => {
+        if (_dvrScrubbing) return;
+        _dvrOffset = Math.max(0, Math.min(DVR_WINDOW, _dvrOffset - _dvrPlayDir));
+        _dvrSyncUI();
+        if (_dvrOffset <= 0 && _dvrPlayDir === 1) {
+          dvrGoLive();
+        } else if (_dvrOffset >= DVR_WINDOW && _dvrPlayDir === -1) {
+          dvrPause(); // paused at start of buffer
+        } else {
+          _dvrRenderFrame(Date.now() / 1000 - _dvrOffset);
+        }
+      }, 1000);
+    }
+
+    function _dvrStop() {
+      if (_dvrPlayTimer) { clearInterval(_dvrPlayTimer); _dvrPlayTimer = null; }
+    }
+
+    // Public: pause (freeze on current frame)
+    function dvrPause() {
+      _dvrPlaying = false;
+      _dvrStop();
+      _dvrSetIcon(false);
+    }
+
+    // Public: toggle reverse
+    function dvrToggleReverse() {
+      if (!_dvrMode) {
+        _dvrEnterAt(Math.min(5, DVR_WINDOW));
+        _dvrPlayDir = -1;
+        _dvrPlay();
+        return;
+      }
+      if (_dvrPlaying && _dvrPlayDir === -1) {
+        dvrPause();
+      } else {
+        _dvrPlayDir = -1;
+        _dvrPlay();
+      }
+    }
+
+    // Public: toggle pause/play
+    function dvrTogglePlay() {
+      if (!_dvrMode) {
+        _dvrEnterAt(Math.min(5, DVR_WINDOW));
+        _dvrPlayDir = 1;
+        _dvrPlay();
+        return;
+      }
+      if (_dvrPlaying && _dvrPlayDir === 1) dvrPause();
+      else {
+        _dvrPlayDir = 1;
+        _dvrPlay();
+      }
+    }
+
+    // Public: go back to live
+    function dvrGoLive() {
+      _dvrStop();
+      _dvrMode = false;
+      _dvrPlaying = false;
+      _dvrPlayDir = 1;
+      _dvrOffset = 0;
+      _dvrFrameEl.style.display = 'none';
+      _dvrFrameEl.src = '';
+      _dvrSetIcon(true);  // reset to play icon
+      _dvrLiveBtn.style.display = 'none';
+      _dvrLiveInd.style.display = 'flex';
+      _dvrScrubEl.value = DVR_WINDOW;
+      _dvrFill(DVR_WINDOW);
+      _dvrTsEl.textContent = 'LIVE';
+    }
+
+    // Scrubber oninput — called continuously while dragging
+    function dvrOnScrub(val) {
+      _dvrScrubbing = true;
+      const sliderVal = parseInt(val, 10);
+      _dvrOffset = DVR_WINDOW - sliderVal;
+      _dvrFill(sliderVal);
+      const epoch = Date.now() / 1000 - _dvrOffset;
+      _dvrTsEl.textContent = _dvrOffset <= 0 ? 'LIVE' : _dvrFmt(epoch);
+      if (!_dvrMode && _dvrOffset > 0) {
+        _dvrMode = true;
+        _dvrFrameEl.style.display = 'block';
+        _dvrLiveBtn.style.display = 'inline-block';
+        _dvrLiveInd.style.display = 'none';
+        _dvrStop();
+        _dvrPlaying = false;
+        _dvrSetIcon(false);
+      }
+      // Debounced render happens inside _dvrRenderFrame
+      _dvrRenderFrame(epoch);
+    }
+
+    // Scrubber onchange — called once when user releases the thumb
+    function dvrOnScrubEnd(val) {
+      _dvrScrubbing = false;
+      const sliderVal = parseInt(val, 10);
+      _dvrOffset = DVR_WINDOW - sliderVal;
+      if (_dvrOffset <= 0) {
+        dvrGoLive();
+      } else {
+        _dvrMode = true;
+        _dvrFrameEl.style.display = 'block';
+        _dvrLiveBtn.style.display = 'inline-block';
+        _dvrLiveInd.style.display = 'none';
+        _dvrRenderFrame(Date.now() / 1000 - _dvrOffset);
+        _dvrSyncUI();
+      }
+    }
+
+    // Passively track live MJPEG url via MutationObserver (for camera-switch resilience)
+    let _dvrLiveSrc = '';
+    new MutationObserver(() => {
+      const src = feedEl.getAttribute('src') || '';
+      if (src && src.startsWith('/stream')) {
+        _dvrLiveSrc = src;
+        // Re-query buffer size whenever the camera changes
+        dvrGoLive();
+        dvrInitFromCamera(currentCamera);
+      }
+    }).observe(feedEl, { attributes: true, attributeFilter: ['src'] });
+
+    // Initialize scrubber on page load
+    _dvrFill(DVR_WINDOW);
+    if (currentCamera) dvrInitFromCamera(currentCamera);
+
+    // ── Mouse Wheel Zoom ──────────────────────────────────────────────────────────
+    let _zoomLvl = 1;
+    let _zoomX = 50; let _zoomY = 50;
+    const _zoomLayer = document.getElementById('zoomLayer');
+    const _viewCont = document.getElementById('viewContainer');
+
+    _viewCont.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        _zoomLvl = Math.min(5, _zoomLvl + 0.25);
+      } else {
+        _zoomLvl = Math.max(1, _zoomLvl - 0.25);
+      }
+
+      if (_zoomLvl === 1) {
+        _zoomX = 50; _zoomY = 50;
+        _zoomLayer.style.transform = '';
+      } else {
+        const rect = _viewCont.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        _zoomX = _zoomX * 0.7 + x * 0.3; // ease towards mouse
+        _zoomY = _zoomY * 0.7 + y * 0.3;
+        _zoomLayer.style.transformOrigin = `${_zoomX}% ${_zoomY}%`;
+        _zoomLayer.style.transform = `scale(${_zoomLvl})`;
+      }
+    });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // ── SSE Real-time Track Streaming ────────────────────────────────────────────
+    // Uses Server-Sent Events for smooth, low-latency track position updates (~15fps)
+    // Replaces the old 500ms polling which caused selection box lag
+
+    let _trackEventSource = null;
+
+    function connectTrackStream() {
+      // Close existing connection
+      if (_trackEventSource) {
+        _trackEventSource.close();
+        _trackEventSource = null;
+      }
+
+      // Connect to SSE endpoint
+      _trackEventSource = new EventSource('/api/stream/tracks');
+
+      _trackEventSource.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          const allTracks = data.tracks || {};
+
+          // Filter to current camera
+          _vlmTracks = {};
+          for (const [gid, t] of Object.entries(allTracks)) {
+            if (t.camera_id === currentCamera || !t.camera_id) {
+              _vlmTracks[gid] = t;
+            }
+          }
+
+          // Note: Selection highlight is now drawn on backend for perfect sync
+          // _drawSelectionHighlight() removed - highlight is part of video feed
+
+          // Update live track count badge
+          const n = Object.keys(_vlmTracks).length;
+          const badge = document.getElementById('liveTrackBadge');
+          if (badge) {
+            badge.style.display = n > 0 ? 'flex' : 'none';
+            document.getElementById('liveTrackCount').textContent = n;
+          }
+
+          // Show/hide click hint
+          const hint = document.getElementById('clickHint');
+          if (hint && hint.style.opacity !== '0') {
+            hint.style.opacity = n > 0 ? '1' : '0';
+          }
+        } catch (e) { }
+      };
+
+      _trackEventSource.onerror = (e) => {
+        console.log('[SSE] Connection error, will retry...');
+        // Auto-reconnect after 2 seconds
+        setTimeout(connectTrackStream, 2000);
+      };
+    }
+
+    // Connect when camera changes
+    const _origSetCamera = setCamera;
+    setCamera = function (camId, btn) {
+      _origSetCamera(camId, btn);
+      connectTrackStream();
+    };
+
+    // Initial connection
+    connectTrackStream();
+
+    // Click the feed → find which track bbox contains the click point
+    feedEl.addEventListener('click', (e) => {
+      const rect = feedEl.getBoundingClientRect();
+      const cx = (e.clientX - rect.left) / rect.width;
+      const cy = (e.clientY - rect.top) / rect.height;
+      let bestId = null, bestArea = Infinity;
+      for (const [gid, t] of Object.entries(_vlmTracks)) {
+        if (t.x1 == null) continue;
+        const [nx1, ny1, nx2, ny2] = _normBbox(t);
+        if (cx >= nx1 && cx <= nx2 && cy >= ny1 && cy <= ny2) {
+          // If overlapping, prefer the smallest (frontmost) box
+          const area = (nx2 - nx1) * (ny2 - ny1);
+          if (area < bestArea) { bestArea = area; bestId = gid; }
+        }
+      }
+      if (bestId) openVlmPanel(bestId);
+    });
+
+    async function openVlmPanel(trackId) {
+      _selectedTrackId = trackId;
+      document.getElementById('vlmBackdrop').classList.add('open');
+      document.getElementById('vlmPanel').classList.add('open');
+      // Hide the hint once user has discovered the feature
+      const hint = document.getElementById('clickHint');
+      if (hint) hint.style.opacity = '0';
+
+      // Notify backend to draw selection highlight (syncs with tracking boxes)
+      const t = _vlmTracks[trackId] || {};
+      try {
+        await fetch('/api/vlm/select', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ track_id: trackId, camera_id: t.camera_id })
+        });
+      } catch (e) { }
+
+      // Track info
+      document.getElementById('vlmTrackInfo').textContent =
+        'ID: ' + trackId + (t.gender ? '  ·  ' + t.gender : '') + (t.age ? '  ·  ' + t.age : '') + (t.zone ? '  ·  Zone: ' + t.zone : '');
+
+      // Check if video mode is selected
+      const mode = document.getElementById('vlmMode').value;
+      const isVideo = isVideoMode(mode);
+
+      // Show/hide crop vs video preview
+      const cropWrap = document.getElementById('vlmCropWrap');
+      const videoPreview = document.getElementById('videoClipPreview');
+
+      if (isVideo) {
+        cropWrap.style.display = 'none';
+        videoPreview.style.display = 'block';
+        loadClipPreview();
+      } else {
+        videoPreview.style.display = 'none';
+        // Crop thumbnail
+        const cropImg = document.getElementById('vlmCrop');
+        cropImg.src = '/api/crop/' + encodeURIComponent(trackId) + '?t=' + Date.now();
+        cropImg.onload = () => { cropWrap.style.display = 'block'; };
+        cropImg.onerror = () => { cropWrap.style.display = 'none'; };
+      }
+
+      // Show/hide time range selector
+      document.getElementById('timeRangeSelector').style.display = isVideo ? 'block' : 'none';
+
+      // Reset result
+      document.getElementById('vlmResult').style.display = 'none';
+      document.getElementById('vlmResult').textContent = '';
+      document.getElementById('vlmStatus').textContent = '{{ t("vlm.select_mode", "Select a mode and click Analyze.") }}';
+      document.getElementById('vlmRunBtn').disabled = false;
+      document.getElementById('vlmRunBtn').textContent = '{{ t("vlm.analyze", "Analyze") }}';
+    }
+
+    async function closeVlmPanel() {
+      document.getElementById('vlmBackdrop').classList.remove('open');
+      document.getElementById('vlmPanel').classList.remove('open');
+      _selectedTrackId = null;
+      if (_vlmPollTimer) { clearInterval(_vlmPollTimer); _vlmPollTimer = null; }
+
+      // Clear backend selection highlight
+      try {
+        await fetch('/api/vlm/select', { method: 'DELETE' });
+      } catch (e) { }
+    }
+
+    // Time range selection for video clip analysis
+    let _selectedTimeRange = 3; // default 3 seconds
+
+    function setTimeRange(seconds) {
+      _selectedTimeRange = seconds;
+      // Update UI
+      document.querySelectorAll('.vlm-time-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.seconds) === seconds);
+      });
+      // Refresh clip preview if video mode
+      const mode = document.getElementById('vlmMode').value;
+      if (isVideoMode(mode)) {
+        loadClipPreview();
+      }
+    }
+
+    function isVideoMode(mode) {
+      return ['behavior_timeline', 'movement_pattern', 'suspicious_activity'].includes(mode);
+    }
+
+    // Show/hide time range selector based on mode
+    document.getElementById('vlmMode').addEventListener('change', (e) => {
+      const mode = e.target.value;
+      const isVideo = isVideoMode(mode);
+      document.getElementById('timeRangeSelector').style.display = isVideo ? 'block' : 'none';
+      document.getElementById('videoClipPreview').style.display = isVideo ? 'block' : 'none';
+      if (isVideo && _selectedTrackId) {
+        loadClipPreview();
+      }
+    });
+
+    // Load and display video clip preview
+    async function loadClipPreview() {
+      if (!_selectedTrackId) return;
+      const container = document.getElementById('clipFrames');
+      container.innerHTML = `<div style="color:var(--fg-muted)">{{ t('vlm.loading_frames', 'Loading frames…') }}</div>`;
+
+      try {
+        const track = _vlmTracks[_selectedTrackId] || {};
+        const cameraId = track.camera_id;
+        if (!cameraId) throw new Error('No camera_id');
+
+        const res = await fetch(`/api/clip/${encodeURIComponent(_selectedTrackId)}?camera_id=${cameraId}&last_n_seconds=${_selectedTimeRange}&max_frames=5`);
+        if (!res.ok) {
+          container.innerHTML = `<div style="color:var(--fg-muted)">{{ t('vlm.no_clip', 'No video clip available yet') }}</div>`;
+          return;
+        }
+
+        const data = await res.json();
+        container.innerHTML = '';
+
+        data.frames.forEach((frame, i) => {
+          const img = document.createElement('img');
+          img.src = 'data:image/jpeg;base64,' + frame.image_jpeg;
+          img.style.cssText = 'height:60px; border-radius:4px; border:1px solid var(--border);';
+          img.title = `Frame ${i + 1} @ ${frame.timestamp.toFixed(1)}s`;
+          container.appendChild(img);
+        });
+      } catch (e) {
+        container.innerHTML = `<div style="color:var(--fg-muted)">{{ t('vlm.error_clip', 'Error loading clip') }}</div>`;
+      }
+    }
+
+    async function runVlmAnalysis() {
+      if (!_selectedTrackId) return;
+      const mode = document.getElementById('vlmMode').value;
+      const question = document.getElementById('vlmQuestion').value.trim();
+      const btn = document.getElementById('vlmRunBtn');
+      const statusEl = document.getElementById('vlmStatus');
+      const resultEl = document.getElementById('vlmResult');
+
+      btn.disabled = true;
+      btn.textContent = '{{ t("vlm.analyzing", "Analyzing…") }}';
+      statusEl.textContent = '{{ t("vlm.submitting", "Submitting request…") }}';
+      resultEl.style.display = 'none';
+
+      // Check if this is a video clip analysis
+      const isVideo = isVideoMode(mode);
+
+      try {
+        let res;
+        if (isVideo) {
+          // Video clip analysis endpoint
+          res = await fetch('/api/analyze_clip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              track_id: _selectedTrackId,
+              mode,
+              question,
+              last_n_seconds: _selectedTimeRange,
+              camera_id: (_vlmTracks[_selectedTrackId] || {}).camera_id
+            }),
+          });
+        } else {
+          // Single frame analysis
+          res = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ track_id: _selectedTrackId, mode, question }),
+          });
+        }
+
+        const data = await res.json();
+        if (!res.ok) {
+          statusEl.textContent = '✗ ' + (data.error || '{{ t("vlm.request_failed", "Request failed") }}');
+          btn.disabled = false; btn.textContent = '{{ t("vlm.analyze", "Analyze") }}';
+          return;
+        }
+      } catch (e) {
+        statusEl.textContent = '✗ {{ t("vlm.network_error", "Network error") }}';
+        btn.disabled = false; btn.textContent = '{{ t("vlm.analyze", "Analyze") }}';
+        return;
+      }
+
+      statusEl.textContent = '{{ t("vlm.analyzing_wait", "Analyzing… (this may take 3–8 seconds for video clips)") }}';
+      // Poll for result
+      if (_vlmPollTimer) clearInterval(_vlmPollTimer);
+      const pollTrackId = _selectedTrackId;
+      _vlmPollTimer = setInterval(async () => {
+        try {
+          const r = await fetch('/api/analysis/' + encodeURIComponent(pollTrackId));
+          const d = await r.json();
+          if (d.status === 'done') {
+            clearInterval(_vlmPollTimer); _vlmPollTimer = null;
+            statusEl.textContent = '✓ {{ t("vlm.analysis_complete", "Analysis complete") }}';
+            resultEl.textContent = d.text;
+            resultEl.style.display = 'block';
+            btn.disabled = false; btn.textContent = '{{ t("vlm.analyze_again", "Analyze again") }}';
+          } else if (d.status === 'error') {
+            clearInterval(_vlmPollTimer); _vlmPollTimer = null;
+            statusEl.textContent = '✗ ' + (d.text || '{{ t("vlm.analysis_failed", "Analysis failed") }}');
+            btn.disabled = false; btn.textContent = '{{ t("vlm.retry", "Retry") }}';
+          }
+          // 'pending' → keep polling
+        } catch (e) { }
+      }, 800);
+    }
+    const theme = localStorage.getItem('nort-theme') || 'dark';
+    if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    const sb = document.querySelector('.sidebar');
+    if (sb && localStorage.getItem('nort-sidebar-collapsed') === 'true') sb.classList.add('collapsed');
+
+    // Clock
+    function updateClock() {
+      const el = document.getElementById('clock');
+      if (el) el.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    updateClock(); setInterval(updateClock, 1000);
+    function toggleTheme() {
+      const isL = document.documentElement.getAttribute('data-theme') === 'light';
+      const next = isL ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('nort-theme', next);
+    }
+    function toggleSidebar() {
+      const sb = document.querySelector('.sidebar');
+      sb.classList.toggle('collapsed');
+      localStorage.setItem('nort-sidebar-collapsed', sb.classList.contains('collapsed'));
+    }
+  </script>
+    <script>
+    // Create floating VLM prompt bar at body level, aligned to .view-container center
+    document.addEventListener('DOMContentLoaded', () => {
+      const c = document.createElement('div');
+      c.id = 'vlm-prompt-container';
+      c.innerHTML = `
+        <input type="text" id="vlm-prompt-input"
+          placeholder="Search store with AI... e.g. 'find a woman in blue'"
+          onkeydown="if(event.key==='Enter')submitGlobalVlmPrompt()">
+        <button id="vlm-prompt-btn" onclick="submitGlobalVlmPrompt()" title="Search with VLM">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>`;
+      document.body.appendChild(c);
+    });
+
+    async function submitGlobalVlmPrompt() {
+      const input = document.getElementById('vlm-prompt-input');
+      const query = input.value.trim();
+      if (!query) return;
+      const globalCb = document.getElementById('sqGlobal');
+      if (globalCb) globalCb.checked = true;
+      const mainInput = document.getElementById('sqInput');
+      if (mainInput) mainInput.value = query;
+      sqSend();
+      input.blur();
+    }
+  </script>
+</body>
+
+</html>

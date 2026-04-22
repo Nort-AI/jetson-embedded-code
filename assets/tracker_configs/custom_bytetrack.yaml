@@ -1,0 +1,7 @@
+tracker_type: bytetrack   # tracker type, ['botsort', 'bytetrack']
+track_high_thresh: 0.5    # raised from 0.3 — fewer false detections promoted to tracks
+track_low_thresh: 0.1     # keep — good for recovering occluded people
+new_track_thresh: 0.6     # keep — threshold for initialising a new track
+track_buffer: 90          # lowered from 1000 — 90 frames ≈ 3s @ 30fps, prevents ghost tracks
+match_thresh: 0.8         # raised from 0.6 — stricter matching, fewer ID swaps on crossings
+fuse_score: True          # fuse confidence scores with IoU distances before matching

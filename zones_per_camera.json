@@ -1,0 +1,174 @@
+{
+    "client_acme": {
+        "store_downtown": {
+            "camera_1": {
+                "type": "standard_camera",
+                "zones": [
+                    {
+                        "sector_name": "feminino",
+                        "polygon_vertices": [
+                            [
+                                1037,
+                                565
+                            ],
+                            [
+                                1390,
+                                349
+                            ],
+                            [
+                                1637,
+                                374
+                            ],
+                            [
+                                1523,
+                                536
+                            ],
+                            [
+                                1891,
+                                605
+                            ],
+                            [
+                                1816,
+                                763
+                            ],
+                            [
+                                1040,
+                                564
+                            ]
+                        ]
+                    },
+                    {
+                        "sector_name": "teste",
+                        "polygon_vertices": [
+                            [
+                                16,
+                                799
+                            ],
+                            [
+                                466,
+                                611
+                            ],
+                            [
+                                774,
+                                726
+                            ],
+                            [
+                                324,
+                                1016
+                            ],
+                            [
+                                12,
+                                803
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "camera_4": {
+                "type": "entrance_camera",
+                "entrance_line": [
+                    [
+                        1000,
+                        350
+                    ],
+                    [
+                        1800,
+                        450
+                    ]
+                ],
+                "inside_direction": "left",
+                "zones": [
+                    {
+                        "sector_name": "Setor Infantil",
+                        "polygon_vertices": [
+                            [
+                                450,
+                                100
+                            ],
+                            [
+                                1400,
+                                150
+                            ],
+                            [
+                                1500,
+                                950
+                            ],
+                            [
+                                400,
+                                900
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "camera_2": {
+                "type": "standard_camera",
+                "zones": [
+                    {
+                        "sector_name": "Corredor Principal",
+                        "polygon_vertices": [
+                            [
+                                100,
+                                100
+                            ],
+                            [
+                                100,
+                                800
+                            ],
+                            [
+                                800,
+                                800
+                            ],
+                            [
+                                800,
+                                100
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "camera_6": {
+                "type": "standard_camera",
+                "zones": []
+            },
+            "camera_3": {
+                "type": "standard_camera",
+                "zones": []
+            },
+            "camera_5": {
+                "type": "standard_camera",
+                "zones": [
+                    {
+                        "sector_name": "teste",
+                        "polygon_vertices": [
+                            [
+                                93,
+                                1076
+                            ],
+                            [
+                                447,
+                                640
+                            ],
+                            [
+                                1652,
+                                651
+                            ],
+                            [
+                                1914,
+                                915
+                            ],
+                            [
+                                1910,
+                                1071
+                            ],
+                            [
+                                93,
+                                1077
+                            ]
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+}

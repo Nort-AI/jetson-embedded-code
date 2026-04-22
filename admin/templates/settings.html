@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ t('settings.page_title', 'Settings — NORT Analytics') }}</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --side-bg: hsl(222, 28%, 8%);
+            --side-border: hsl(222, 22%, 14%);
+            --side-fg: hsl(213, 28%, 90%);
+            --side-fg-dim: hsl(213, 18%, 52%);
+            --side-hover-bg: hsl(222, 24%, 14%);
+            --side-active-bg: rgba(59, 130, 246, 0.1);
+            --side-primary: hsl(217, 91%, 60%);
+            --side-primary-dim: rgba(59, 130, 246, 0.2);
+            --side-logo: #ffffff;
+
+            --bg: #0f1117;
+            --card: #161b27;
+            --card-hover: #1c2333;
+            --border: #212c3f;
+            --primary: #3b82f6;
+            --primary-dim: rgba(59, 130, 246, 0.15);
+            --primary-glow: rgba(59, 130, 246, 0.3);
+            --fg: #f8fafc;
+            --fg-dim: #94a3b8;
+            --fg-muted: #64748b;
+            --ok: #10b981;
+            --warn: #f59e0b;
+            --err: #ef4444;
+            --sidebar-bg: #10151f;
+            --radius: 8px;
+            --radius-sm: 6px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: 'Inter', system-ui, sans-serif;
+            font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--fg-muted);
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--side-fg-dim);
+            padding: 8px;
+            border-radius: 50%;
+            background: rgba(63, 185, 80, 0.06);
+            border: 1px solid rgba(63, 185, 80, 0.15);
+        }
+
+        .status-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #3fb950;
+            animation: pulse 2s infinite alternate;
+        }
+
+        @keyframes pulse {
+            to {
+                opacity: 0.4;
+            }
+        }
+
+        .main-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .top-header {
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .top-header h1 {
+            font-family: 'Manrope', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--fg);
+        }
+
+        .top-header .sub {
+            font-size: 0.78rem;
+            color: var(--fg-dim);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--fg-dim);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 4px 10px;
+        }
+
+        .header-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--ok);
+            animation: blink 2s infinite alternate;
+        }
+
+        @keyframes blink {
+            to {
+                opacity: 0.4;
+            }
+        }
+
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px 28px 40px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--card-hover);
+            display: flex;
+            align-items: center;
+        }
+
+        .card-title {
+            font-family: 'Manrope', sans-serif;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--fg);
+        }
+
+        .card-icon {
+            color: var(--fg-muted);
+            display: flex;
+            align-items: center;
+        }
+
+        .toast-container {
+            position: fixed;
+            bottom: 45px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 9999;
+            pointer-events: none;
+        }
+
+        .toast {
+            pointer-events: auto;
+            background: var(--card);
+            border: 1px solid var(--border);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.2s;
+            cursor: pointer;
+            padding: 12px 16px;
+            border-radius: 8px;
+        }
+
+        @keyframes toast-in {
+            from {
+                transform: translateX(100%) scale(0.9);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        .toast-err {
+            background: #2a1215;
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #ff8080;
+        }
+
+        .toast-ok {
+            background: #0d1a14;
+            border-color: rgba(16, 185, 129, 0.4);
+            color: #80ffc0;
+        }
+
+        .lang-btn {
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 700;
+            transition: all .2s;
+            text-decoration: none;
+            background: transparent;
+            color: var(--fg-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        .lang-btn:hover {
+            background: var(--side-hover-bg);
+            color: var(--fg);
+            border-color: var(--border);
+        }
+
+        .lang-btn.active {
+            color: var(--primary) !important;
+            background: var(--primary-dim) !important;
+            border-color: var(--primary-glow) !important;
+        }
+
+        .header-lang-switcher {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding-right: 12px;
+            margin-right: 4px;
+            border-right: 1px solid var(--border);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #ffffff;
+            border: none;
+        }
+
+        .btn-primary:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--fg-dim);
+        }
+
+        .btn-outline:hover {
+            background: var(--card-hover);
+            color: var(--fg);
+            border-color: var(--primary-glow);
+        }
+
+        .sidebar {
+            width: 224px;
+            background: var(--side-bg);
+            border-right: 1px solid var(--side-border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            position: relative;
+            transition: width 0.3s ease;
+        }
+
+        .sidebar.collapsed {
+            width: 80px;
+        }
+
+        .sidebar-header {
+            padding: 0 16px;
+            height: 56px;
+            border-bottom: 1px solid var(--side-border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .sidebar.collapsed .sidebar-header {
+            justify-content: center;
+            padding: 0 8px;
+        }
+
+        .logo-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .sidebar.collapsed .logo-wrapper {
+            display: none !important;
+        }
+
+        .logo-text {
+            font-family: 'Manrope', sans-serif;
+            font-size: 0.875rem;
+            letter-spacing: 3px;
+            font-weight: 700;
+            color: var(--side-logo);
+        }
+
+        .sidebar nav {
+            flex: 1;
+            padding: 8px;
+            overflow-y: auto;
+        }
+
+        .sidebar.collapsed nav {
+            padding: 8px 6px;
+        }
+
+        .nav-section-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--side-fg-dim);
+            padding: 16px 12px 4px;
+        }
+
+        .sidebar.collapsed .nav-section-label {
+            display: none;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: var(--side-fg-dim);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.875rem;
+            transition: all 0.15s;
+            margin-bottom: 2px;
+            border: 1px solid transparent;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .sidebar.collapsed .nav-link {
+            justify-content: center;
+            padding-left: 0;
+            padding-right: 0;
+            width: 48px;
+            height: 40px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .sidebar.collapsed .nav-link span {
+            display: none;
+        }
+
+        .nav-link:hover {
+            background: var(--side-hover-bg);
+            color: var(--side-fg);
+        }
+
+        .nav-link.active {
+            background: var(--side-active-bg);
+            color: var(--side-primary);
+            border-color: var(--side-primary-dim);
+        }
+
+        .nav-link.active::before {
+            content: '';
+            position: absolute;
+            left: -1px;
+            top: 6px;
+            bottom: 6px;
+            width: 2px;
+            border-radius: 0 2px 2px 0;
+            background: var(--side-primary);
+        }
+
+        .nav-icon {
+            flex-shrink: 0;
+            width: 16px;
+            height: 16px;
+        }
+
+        .sidebar-footer {
+            padding: 12px;
+            border-top: 1px solid var(--side-border);
+        }
+
+        .sidebar.collapsed .sidebar-footer {
+            padding: 12px 6px;
+        }
+
+        .sidebar.collapsed .sidebar-footer .nav-link {
+            width: 40px;
+            height: 40px;
+        }
+
+        .beta-tag {
+            font-size: 9px;
+            font-weight: 600;
+            background: rgba(59, 130, 246, 0.1);
+            color: hsl(217, 91%, 60%);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 4px;
+            padding: 2px 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            flex-shrink: 0;
+        }
+
+        .logout-link {
+            margin-top: 4px;
+        }
+
+        .logout-link:hover {
+            background: rgba(239, 68, 68, 0.1) !important;
+            color: #ef4444 !important;
+        }
+
+        html[data-theme="light"] {
+            --bg: #f0f3f7;
+            --card: #ffffff;
+            --card-hover: #e8edf4;
+            --border: #cbd5e1;
+            --fg: #1e2d40;
+            --fg-dim: #475569;
+            --fg-muted: #6b7fa0;
+            --sidebar-bg: #e8edf4;
+            --console-bg: #f1f5f9;
+            --side-bg: #ffffff;
+            --side-border: #cbd5e1;
+            --side-fg: #1e2d40;
+            --side-fg-dim: #64748b;
+            --side-hover-bg: #f8fafc;
+            --side-active-bg: rgba(59, 130, 246, 0.1);
+            --side-primary: #3b82f6;
+            --side-primary-dim: rgba(59, 130, 246, 0.15);
+            --side-logo: #0f172a;
+        }
+
+        .theme-toggle {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--fg-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            padding: 0;
+            z-index: 100;
+        }
+
+        .theme-toggle:hover {
+            background: var(--side-hover-bg);
+            color: var(--fg);
+        }
+
+        .theme-toggle svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .sidebar-collapse-btn {
+            position: absolute;
+            top: 64px;
+            right: -12px;
+            z-index: 101;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--card);
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            color: var(--fg-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .sidebar-collapse-btn:hover {
+            color: var(--fg);
+            border-color: var(--primary);
+            transform: scale(1.1);
+        }
+
+        /* ── Settings specific ── */
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 1100px) {
+            .settings-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .s-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .s-row:last-child {
+            border-bottom: none;
+        }
+
+        .s-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .s-title {
+            color: var(--fg);
+            font-size: 0.9rem;
+            font-weight: 600;
+            font-family: 'Manrope', sans-serif;
+        }
+
+        .s-desc {
+            color: var(--fg-dim);
+            font-size: 0.75rem;
+        }
+
+        .s-input,
+        .s-select {
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--fg);
+            font-size: 0.85rem;
+            font-family: inherit;
+            width: 180px;
+        }
+
+        .s-input:focus,
+        .s-select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        html[data-theme="light"] .s-input,
+        html[data-theme="light"] .s-select {
+            background: #f8fafc;
+            color: #1e2d40;
+        }
+
+        /* Essential Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--border);
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        input:checked+.slider {
+            background-color: var(--ok);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(20px);
+        }
+
+        .status-footer {
+            height: 32px;
+            background: #0A0D0F;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            font-size: 11px;
+            color: var(--fg-muted);
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        html[data-theme="light"] .status-footer {
+            background: #e8edf4;
+        }
+
+        .status-footer .left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-footer .connected {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--ok);
+            background: rgba(16, 185, 129, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .status-footer .connected .dot {
+            width: 6px;
+            height: 6px;
+            background: var(--ok);
+            border-radius: 50%;
+        }
+    
+    .sidebar.collapsed .sidebar-header > div {
+      display: none !important;
+    }
+    .sidebar.collapsed .sidebar-header .beta-tag {
+      display: none !important;
+    }
+
+  </style>
+    <script>if (localStorage.getItem('nort-theme') === 'light') document.documentElement.setAttribute('data-theme', 'light');</script>
+</head>
+
+<body>
+    <div id="nort-loader">
+        <div class="loader-logo-container">
+            <div class="loader-glow"></div><img src="/static/favicon.svg" class="loader-logo" alt="NORT Logo" />
+        </div>
+    </div>
+    <script>
+        (function () {
+            const loader = document.getElementById('nort-loader');
+            const showTimer = setTimeout(() => { if (loader) { loader.style.opacity = '1'; loader.style.pointerEvents = 'all'; } }, 400);
+            window.addEventListener('load', () => {
+                clearTimeout(showTimer);
+                if (loader) { loader.style.opacity = '0'; loader.style.pointerEvents = 'none'; setTimeout(() => loader.remove(), 500); }
+            });
+        })();
+    </script>
+
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path
+                    d="M11.2966 4.12501C11.5853 3.62501 12.307 3.62501 12.5957 4.12501L21.2787 19.1645C21.638 19.7867 21.0013 20.5092 20.3388 20.231L12.2365 16.8289C12.0508 16.751 11.8415 16.751 11.6558 16.8289L3.55346 20.231C2.89106 20.5092 2.25435 19.7867 2.61357 19.1645L11.2966 4.12501Z"
+                    fill="var(--primary)" />
+            </svg>
+            <div style="display: flex; flex-direction: column; gap: 0;">
+                <span class="logo-text" style="letter-spacing: 2px;">NORT</span>
+                <span
+                    style="font-size: 9px; font-weight: 700; color: var(--side-primary); opacity: 0.9; margin-top: -2px; letter-spacing: 0.5px;">STORE
+                    MANAGER</span>
+            </div>
+            <span class="beta-tag">BETA</span>
+        </div>
+        <nav>
+            <div class="nav-section-label">{{ t('nav.section_platform') }}</div>
+            <a href="/home" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
+                </svg><span>{{ t('nav.home') }}</span></a>
+            <a href="/" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                </svg><span>{{ t('nav.dashboard') }}</span></a>
+            <a href="/streams" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+                    <circle cx="12" cy="13" r="3" />
+                </svg><span>{{ t('nav.streams') }}</span></a>
+            <a href="/cameras" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2" />
+                    <line x1="8" y1="21" x2="16" y2="21" />
+                    <line x1="12" y1="17" x2="12" y2="21" />
+                </svg><span>{{ t('nav.cameras') }}</span></a>
+            <a href="/zones" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                    <polyline points="2 17 12 22 22 17" />
+                    <polyline points="2 12 12 17 22 12" />
+                </svg><span>{{ t('nav.zones') }}</span></a>
+            <a href="/floorplan" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="3" y1="9" x2="21" y2="9"></line>
+                    <line x1="9" y1="21" x2="9" y2="9"></line>
+                </svg><span>{{ t('nav.floorplan') }}</span></a>
+            <a href="/help" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg><span>{{ t('nav.help') }}</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <a href="/profile" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg><span>{{ t('nav.profile') }}</span></a>
+            <a href="/settings" class="nav-link active"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg><span>{{ t('nav.settings') }}</span></a>
+            <a href="#" class="nav-link logout-link"
+                onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='/')"><svg class="nav-icon" width="16"
+                    height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                </svg><span>{{ t('nav.logout') }}</span></a>
+        </div>
+        <button class="sidebar-collapse-btn" onclick="toggleSidebar()"><svg width="14" height="14" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m15 18-6-6 6-6" />
+            </svg></button>
+    </div>
+
+    <div class="main-wrapper">
+        <div class="top-header">
+            <div style="display:flex; align-items:center; gap:20px;">
+                <h1>{{ t('nav.settings', 'Settings') }}</h1>
+            </div>
+            <div class="header-actions" style="display:flex;align-items:center;gap:10px;">
+                <div class="sub" style="display:flex;align-items:center;gap:6px;">
+                    <span id="clock"
+                        style="font-variant-numeric:tabular-nums; font-weight:600; color:var(--fg);"></span>
+                </div>
+                <button class="theme-toggle" onclick="toggleTheme()"><svg width="16" height="16" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5" />
+                        <line x1="12" y1="1" x2="12" y2="3" />
+                        <line x1="12" y1="21" x2="12" y2="23" />
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                        <line x1="1" y1="12" x2="3" y2="12" />
+                        <line x1="21" y1="12" x2="23" y2="12" />
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                    </svg></button>
+                <div class="header-lang-switcher">
+                    <a href="/set_lang/pt" class="lang-btn {% if current_lang == 'pt' %}active{% endif %}">PT</a>
+                    <a href="/set_lang/en" class="lang-btn {% if current_lang == 'en' %}active{% endif %}">EN</a>
+                    <a href="/set_lang/es" class="lang-btn {% if current_lang == 'es' %}active{% endif %}">ES</a>
+                </div>
+                <div class="header-badge"><span class="dot"></span>{{ t('header.active', 'Active') }}</div>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="toast-container" id="toastRoot"></div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="font-family:'Manrope',sans-serif; font-size:1.2rem; color:var(--fg);">{{
+                    t('settings.config_section_title', 'Client Configuration') }}
+                </h2>
+                <button class="btn btn-primary" onclick="fakeSaveAll()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                        <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                    {{ t('settings.save_all', 'Save All Changes') }}
+                </button>
+            </div>
+
+            <div class="settings-grid">
+
+                <!-- Notifications & Alerts -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                style="margin-right:8px;">
+                                <path
+                                    d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0">
+                                </path>
+                            </svg></span>
+                        <span class="card-title">{{ t('settings.notifications_card', 'Notifications & Alerts') }}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.alert_high_occ_title', 'Enable High Occupancy
+                                    Alerts') }}</span>
+                                <span class="s-desc">{{ t('settings.alert_high_occ_desc', 'Get notified if the count
+                                    goes above maximum.') }}</span>
+                            </div>
+                            <label class="toggle-switch"><input type="checkbox" id="sett_alerts_high_occupancy" {% if
+                                    settings.get('alerts_high_occupancy', True) %}checked{% endif %}><span
+                                    class="slider"></span></label>
+                        </div>
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.alert_anomaly_title', 'Enable Anomaly/Security
+                                    Alerts') }}</span>
+                                <span class="s-desc">{{ t('settings.alert_anomaly_desc', 'Get notified of shoplifting or
+                                    suspicious activity.') }}</span>
+                            </div>
+                            <label class="toggle-switch"><input type="checkbox" id="sett_alerts_anomaly" {% if
+                                    settings.get('alerts_anomaly', True) %}checked{% endif %}><span
+                                    class="slider"></span></label>
+                        </div>
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.alert_email_title', 'Alert Email Address')
+                                    }}</span>
+                                <span class="s-desc">{{ t('settings.alert_email_desc', 'Where should reports be sent?')
+                                    }}</span>
+                            </div>
+                            <input type="email" id="sett_alerts_email" class="s-input"
+                                value="{{ settings.get('alerts_email', 'manager@acme.com') }}"
+                                placeholder="manager@company.com">
+                        </div>
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.quiet_hours_title', 'Quiet Hours') }}</span>
+                                <span class="s-desc">{{ t('settings.quiet_hours_desc', 'Mute all notifications during
+                                    this period.') }}</span>
+                            </div>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                <input type="time" id="sett_quiet_hours_start" class="s-input" style="width:105px;"
+                                    value="{{ settings.get('quiet_hours_start', '22:00') }}">
+                                <span style="color:var(--fg-dim); font-size:0.8rem;">{{ t('settings.quiet_hours_to',
+                                    'to') }}</span>
+                                <input type="time" id="sett_quiet_hours_end" class="s-input" style="width:105px;"
+                                    value="{{ settings.get('quiet_hours_end', '06:00') }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Business Context -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                style="margin-right:8px;">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                <line x1="16" y1="2" x2="16" y2="6"></line>
+                                <line x1="8" y1="2" x2="8" y2="6"></line>
+                                <line x1="3" y1="10" x2="21" y2="10"></line>
+                            </svg></span>
+                        <span class="card-title">{{ t('settings.store_layout_card', 'Store Layout & Context') }}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.store_name_title', 'Store Registration Name')
+                                    }}</span>
+                                <span class="s-desc">{{ t('settings.store_name_desc', 'Label used on exported analytical
+                                    reports.') }}</span>
+                            </div>
+                            <input type="text" id="sett_store_name" class="s-input"
+                                value="{{ settings.get('store_name', 'Main Downtown Retail') }}">
+                        </div>
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.max_capacity_title', 'Max Allowed Capacity')
+                                    }}</span>
+                                <span class="s-desc">{{ t('settings.max_capacity_desc', 'For queue line and fire-safety
+                                    alerts.') }}</span>
+                            </div>
+                            <input type="number" id="sett_max_capacity" class="s-input"
+                                value="{{ settings.get('max_capacity', 85) }}" style="width: 80px;">
+                        </div>
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.hours_title', 'Business Operating Hours') }}</span>
+                                <span class="s-desc">{{ t('settings.hours_desc', 'AI tracks differently outside these
+                                    hours.') }}</span>
+                            </div>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                <input type="time" id="sett_hours_start" class="s-input" style="width:105px;"
+                                    value="{{ settings.get('hours_start', '08:00') }}">
+                                <span style="color:var(--fg-dim); font-size:0.8rem;">{{ t('settings.hours_to', 'to')
+                                    }}</span>
+                                <input type="time" id="sett_hours_end" class="s-input" style="width:105px;"
+                                    value="{{ settings.get('hours_end', '20:00') }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Privacy & Compliance -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                style="margin-right:8px;">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                            </svg></span>
+                        <span class="card-title">{{ t('settings.privacy_card', 'Privacy & Compliance') }}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.privacy_mode_title', 'Privacy Mode / Face
+                                    Blurring') }}</span>
+                                <span class="s-desc">{{ t('settings.privacy_mode_desc', 'Blur faces in live camera feeds
+                                    (LGPD/GDPR context).') }}</span>
+                            </div>
+                            <select id="sett_privacy_mode" class="s-select">
+                                <option value="disabled" {% if settings.get('privacy_mode', 'disabled' )=='disabled' or
+                                    settings.get('privacy_mode')==False %}selected{% endif %}>{{
+                                    t('settings.privacy_disabled', 'Disabled') }}</option>
+                                <option value="heuristic" {% if settings.get('privacy_mode')=='heuristic' or
+                                    settings.get('privacy_mode')==True %}selected{% endif %}>{{
+                                    t('settings.privacy_heuristic', 'Heuristic (Top 20%)') }}
+                                </option>
+                                <option value="haar" {% if settings.get('privacy_mode')=='haar' %}selected{% endif %}>
+                                    {{ t('settings.privacy_haar', 'OpenCV Haar Cascade') }}</option>
+                            </select>
+                        </div>
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.retention_title', 'Analytical Data Retention')
+                                    }}</span>
+                                <span class="s-desc">{{ t('settings.retention_desc', 'Auto-delete tracking metadata
+                                    after:') }}</span>
+                            </div>
+                            <select id="sett_data_retention" class="s-select">
+                                <option value="7" {% if settings.get('data_retention', '30' )=='7' %}selected{% endif
+                                    %}>{{ t('settings.retention_7', '7 Days') }}</option>
+                                <option value="15" {% if settings.get('data_retention', '30' )=='15' %}selected{% endif
+                                    %}>{{ t('settings.retention_15', '15 Days') }}</option>
+                                <option value="30" {% if settings.get('data_retention', '30' )=='30' %}selected{% endif
+                                    %}>{{ t('settings.retention_30', '30 Days') }}</option>
+                                <option value="90" {% if settings.get('data_retention', '30' )=='90' %}selected{% endif
+                                    %}>{{ t('settings.retention_90', '90 Days') }}</option>
+                            </select>
+                        </div>
+                        <div class="s-row" style="background:var(--card-hover);">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.export_title', 'Export Log History') }}</span>
+                                <span class="s-desc">{{ t('settings.export_desc', 'Generate monthly tracking
+                                    summaries.') }}</span>
+                            </div>
+                            <button class="btn btn-outline"
+                                data-msg="{{ t('settings.js_exporting', 'Exporting to Excel format...') }}"
+                                onclick="fakeToast(this.dataset.msg, 'ok')">{{ t('settings.export_btn', 'Download CSV')
+                                }}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Personalization & UX -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                style="margin-right:8px;">
+                                <path
+                                    d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                                </path>
+                                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                            </svg></span>
+                        <span class="card-title">{{ t('settings.personalization_card', 'Personalization & UX') }}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.landing_title', 'Default Application Landing')
+                                    }}</span>
+                                <span class="s-desc">{{ t('settings.landing_desc', 'Which page opens first when you
+                                    login.') }}</span>
+                            </div>
+                            <select id="sett_default_landing" class="s-select">
+                                <option value="dashboard" {% if settings.get('default_landing', 'home' )=='dashboard'
+                                    %}selected{% endif %}>{{ t('settings.landing_dashboard', 'Dashboard (Charts)') }}
+                                </option>
+                                <option value="home" {% if settings.get('default_landing', 'home' )=='home' %}selected{%
+                                    endif %}>{{ t('settings.landing_home', 'Home (Overview)') }}</option>
+                                <option value="streams" {% if settings.get('default_landing', 'home' )=='streams'
+                                    %}selected{% endif %}>{{ t('settings.landing_streams', 'Streams (Live Cameras)') }}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.timezone_title', 'App Timezone') }}</span>
+                                <span class="s-desc">{{ t('settings.timezone_desc', 'Timezone for analytics charts.')
+                                    }}</span>
+                            </div>
+                            <select id="sett_app_timezone" class="s-select">
+                                <option value="America/Sao_Paulo" {% if settings.get('app_timezone', 'America/Sao_Paulo'
+                                    )=='America/Sao_Paulo' %}selected{% endif %}>America/Sao_Paulo</option>
+                                <option value="America/New_York" {% if settings.get('app_timezone', 'America/Sao_Paulo'
+                                    )=='America/New_York' %}selected{% endif %}>America/New_York</option>
+                                <option value="Europe/London" {% if settings.get('app_timezone', 'America/Sao_Paulo'
+                                    )=='Europe/London' %}selected{% endif %}>Europe/London</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Security Basics -->
+                <div class="card" style="grid-column: 1 / -1; max-width: 600px;">
+                    <div class="card-header"
+                        style="background: rgba(239, 68, 68, 0.05); border-bottom: 1px solid rgba(239, 68, 68, 0.1);">
+                        <span class="card-icon" style="color: var(--err);"><svg width="16" height="16"
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                            </svg></span>
+                        <span class="card-title" style="color: var(--err);">{{ t('settings.security_card', 'Access &
+                            Security') }}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.pin_title', 'Change Store PIN') }}</span>
+                                <span class="s-desc">{{ t('settings.pin_desc', 'Update your 4-digit access code.')
+                                    }}</span>
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                                <input type="password" id="new_pin_input" class="s-input"
+                                    placeholder="{{ t('settings.pin_placeholder', 'New PIN') }}" style="width: 100px;">
+                                <button class="btn btn-outline" onclick="changeAdminPin()">{{ t('settings.pin_btn',
+                                    'Reset') }}</button>
+                            </div>
+                        </div>
+                        <div class="s-row">
+                            <div class="s-info">
+                                <span class="s-title">{{ t('settings.signout_title', 'Logout all devices') }}</span>
+                                <span class="s-desc">{{ t('settings.signout_desc', 'Instantly disconnect any other
+                                    manager logged in.') }}</span>
+                            </div>
+                            <button class="btn" style="background: rgba(239,68,68,0.1); color: var(--err);"
+                                data-msg="{{ t('settings.signout_btn_msg', 'All other sessions terminated.') }}"
+                                onclick="fakeToast(this.dataset.msg, 'err')">{{ t('settings.signout_btn', 'Sign Out
+                                Everywhere') }}</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="status-footer">
+            <div class="left">
+                <span>{{ t('footer.system_online', 'System Online') }}</span>
+                <div class="connected"><span class="dot"></span><span>{{ t('footer.connected', 'Connected') }}</span>
+                </div>
+            </div>
+            <div>{{ t('footer.rights', '&copy; 2026 NORT Analytics') }}</div>
+        </div>
+    </div>
+
+    <script>
+        function updateClock() {
+            const el = document.getElementById('clock');
+            if (el) el.textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        updateClock(); setInterval(updateClock, 1000);
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            if (html.getAttribute('data-theme') === 'light') {
+                html.removeAttribute('data-theme'); localStorage.setItem('nort-theme', 'dark');
+            } else {
+                html.setAttribute('data-theme', 'light'); localStorage.setItem('nort-theme', 'light');
+            }
+        }
+
+        function toggleSidebar() {
+            const sb = document.querySelector('.sidebar');
+            if (sb) {
+                sb.classList.toggle('collapsed');
+                localStorage.setItem('nort-sidebar-collapsed', sb.classList.contains('collapsed'));
+            }
+        }
+
+        (function () {
+            const sb = document.querySelector('.sidebar');
+            if (sb && localStorage.getItem('nort-sidebar-collapsed') === 'true') {
+                sb.classList.add('collapsed');
+            }
+        })();
+
+        function fakeToast(msg, type = 'ok') {
+            const container = document.getElementById('toastRoot');
+            const t = document.createElement('div');
+            t.className = `toast toast-${type}`;
+            t.innerHTML = `
+                <span class="toast-icon">${type === 'ok' ? '✓' : '⚠️'}</span>
+                <div class="toast-content">${msg}</div>
+                <span class="toast-close" onclick="this.parentElement.remove()">×</span>
+            `;
+            container.appendChild(t);
+            setTimeout(() => t.remove(), 4000);
+        }
+
+        function changeAdminPin() {
+            const newPin = document.getElementById('new_pin_input').value;
+            if (!newPin) {
+                fakeToast("{{ t('settings.js_pin_empty', 'Please enter a new PIN first.') }}", "err");
+                return;
+            }
+            fetch('/api/settings/pin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pin: newPin })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        fakeToast("{{ t('settings.js_pin_ok', 'PIN updated successfully. You will be asked to re-login.') }}", "ok");
+                        document.getElementById('new_pin_input').value = "";
+                    } else {
+                        fakeToast("{{ t('settings.js_save_err', 'Error: ') }}" + data.error, "err");
+                    }
+                })
+                .catch(e => fakeToast("{{ t('settings.js_pin_err', 'Error changing PIN') }}", "err"));
+        }
+
+        function fakeSaveAll() {
+            fakeToast("{{ t('settings.js_saving', 'Saving configuration...') }}", "ok");
+
+            const payload = {
+                alerts_high_occupancy: document.getElementById('sett_alerts_high_occupancy').checked,
+                alerts_anomaly: document.getElementById('sett_alerts_anomaly').checked,
+                alerts_email: document.getElementById('sett_alerts_email').value,
+                quiet_hours_start: document.getElementById('sett_quiet_hours_start').value,
+                quiet_hours_end: document.getElementById('sett_quiet_hours_end').value,
+
+                store_name: document.getElementById('sett_store_name').value,
+                max_capacity: parseInt(document.getElementById('sett_max_capacity').value) || 85,
+                hours_start: document.getElementById('sett_hours_start').value,
+                hours_end: document.getElementById('sett_hours_end').value,
+
+                privacy_mode: document.getElementById('sett_privacy_mode').value,
+                data_retention: document.getElementById('sett_data_retention').value,
+
+                default_landing: document.getElementById('sett_default_landing').value,
+                app_timezone: document.getElementById('sett_app_timezone').value
+            };
+
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        fakeToast("{{ t('settings.js_save_ok', 'All store settings applied successfully.') }}", "ok");
+                    } else {
+                        fakeToast("{{ t('settings.js_save_err', 'Error: ') }}" + data.error, "err");
+                    }
+                })
+                .catch(e => fakeToast("{{ t('settings.js_save_fail', 'Failed to save settings.') }}", "err"));
+        }
+    </script>
+</body>
+
+</html>

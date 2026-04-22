@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ t('nav.profile', 'Profile') }} — NORT Analytics</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            /* Sidebar Dark Tokens */
+            --side-bg: hsl(222, 28%, 8%);
+            --side-border: hsl(222, 22%, 14%);
+            --side-fg: hsl(213, 28%, 90%);
+            --side-fg-dim: hsl(213, 18%, 52%);
+            --side-hover-bg: hsl(222, 24%, 14%);
+            --side-active-bg: rgba(59, 130, 246, 0.1);
+            --side-primary: hsl(217, 91%, 60%);
+            --side-primary-dim: rgba(59, 130, 246, 0.2);
+            --side-logo: #ffffff;
+
+
+            --bg: #0f1117;
+            --card: #161b27;
+            --card-hover: #1c2333;
+            --border: #212c3f;
+            --primary: #3b82f6;
+            --primary-dim: rgba(59, 130, 246, 0.15);
+            --primary-glow: rgba(59, 130, 246, 0.3);
+            --fg: #f8fafc;
+            --fg-dim: #94a3b8;
+            --fg-muted: #64748b;
+            --ok: #10b981;
+            --warn: #f59e0b;
+            --err: #ef4444;
+            --sidebar-bg: #10151f;
+            --radius: 8px;
+            --radius-sm: 6px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: 'Inter', system-ui, sans-serif;
+            font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--fg-muted);
+        }
+
+        /* ── Page-specific styles ── */
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--fg-muted);
+        }
+
+        /* ── Page-specific styles ── */
+        /* ── Status Badge override if any ── */
+        .status-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--side-fg-dim);
+            padding: 8px;
+            border-radius: 50%;
+            background: rgba(63, 185, 80, 0.06);
+            border: 1px solid rgba(63, 185, 80, 0.15);
+        }
+
+        .status-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #3fb950;
+            animation: pulse 2s infinite alternate;
+        }
+
+        @keyframes pulse {
+            to {
+                opacity: 0.4;
+            }
+        }
+
+        .main-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .top-header {
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .top-header h1 {
+            font-family: 'Manrope', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--fg);
+        }
+
+        .top-header .sub {
+            font-size: 0.78rem;
+            color: var(--fg-dim);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--fg-dim);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 4px 10px;
+        }
+
+        .header-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--ok);
+            animation: blink 2s infinite alternate;
+        }
+
+        @keyframes blink {
+            to {
+                opacity: 0.4;
+            }
+        }
+
+        /* ── Content ── */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px 28px 40px;
+        }
+
+        /* ── Welcome Banner ── */
+        .welcome-banner {
+            background: linear-gradient(135deg, hsl(222, 56%, 12%) 0%, hsl(217, 70%, 18%) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+            border-radius: 14px;
+            padding: 28px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        html[data-theme="light"] .welcome-banner {
+            background: linear-gradient(135deg, hsl(217, 70%, 93%) 0%, hsl(210, 60%, 88%) 100%);
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .welcome-banner::after {
+            content: '';
+            position: absolute;
+            right: -60px;
+            top: -60px;
+            width: 260px;
+            height: 260px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.18) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .welcome-text h2 {
+            font-family: 'Manrope', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+
+        html[data-theme="light"] .welcome-text h2 {
+            color: #1e3a5f;
+        }
+
+        .welcome-text p {
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.65);
+            line-height: 1.6;
+            max-width: 480px;
+        }
+
+        html[data-theme="light"] .welcome-text p {
+            color: #374a60;
+        }
+
+        .welcome-logo svg {
+            opacity: 0.12;
+        }
+
+        /* ── KPI strip ── */
+        .kpi-strip {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+
+        .kpi-mini {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .kpi-mini-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--fg-muted);
+        }
+
+        .kpi-mini-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: 'Manrope', sans-serif;
+            color: var(--fg);
+        }
+
+        .kpi-mini-sub {
+            font-size: 0.72rem;
+            color: var(--fg-muted);
+        }
+
+        .kpi-accent {
+            width: 3px;
+            height: 20px;
+            border-radius: 2px;
+            margin-bottom: 4px;
+        }
+
+        .accent-blue {
+            background: #3b82f6;
+        }
+
+        .accent-green {
+            background: #10b981;
+        }
+
+        .accent-purple {
+            background: #a855f7;
+        }
+
+        .accent-yellow {
+            background: #f59e0b;
+        }
+
+        /* ── Two column layout ── */
+        .home-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .home-grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .card-header {
+            padding: 16px 20px 12px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-title {
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--fg);
+        }
+
+        .card-icon {
+            font-size: 1rem;
+        }
+
+        .card-
+
+        /* ── Quick Links ── */
+        .quick-links {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .quick-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            background: var(--card-hover);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            text-decoration: none;
+            color: var(--fg);
+            font-size: 0.84rem;
+            font-weight: 500;
+            transition: all 0.15s;
+        }
+
+        .quick-link:hover {
+            border-color: var(--primary);
+            background: var(--primary-dim);
+            color: var(--primary);
+        }
+
+        .quick-link-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: var(--primary-dim);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: var(--primary);
+        }
+
+        .quick-link-label {
+            font-weight: 600;
+            font-size: 0.82rem;
+        }
+
+        .quick-link-desc {
+            font-size: 0.72rem;
+            color: var(--fg-muted);
+            margin-top: 1px;
+        }
+
+        /* ── Status Grid ── */
+        .status-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .status-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--card-hover);
+            border-radius: var(--radius-sm);
+            font-size: 0.82rem;
+        }
+
+        .status-row-label {
+            color: var(--fg-dim);
+            font-weight: 500;
+        }
+
+        .pill-ok {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 999px;
+            padding: 2px 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .pill-warn {
+            background: rgba(245, 158, 11, 0.1);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            border-radius: 999px;
+            padding: 2px 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .pill-err {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: 999px;
+            padding: 2px 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        /* ── About / MOTD ── */
+        .motd {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--primary);
+            border-radius: var(--radius);
+            padding: 18px 22px;
+            margin-bottom: 16px;
+        }
+
+        .motd-label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .motd-
+
+        /* ── Feature tiles (About NORT) ── */
+        .feature-tile {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px 20px;
+            transition: border-color 0.15s;
+        }
+
+        .feature-tile:hover {
+            border-color: rgba(59, 130, 246, 0.35);
+        }
+
+        .feature-tile-icon {
+            font-size: 1.4rem;
+            margin-bottom: 10px;
+        }
+
+        .feature-tile-title {
+            font-weight: 700;
+            font-size: 0.875rem;
+            color: var(--fg);
+            margin-bottom: 6px;
+        }
+
+        .feature-tile-desc {
+            font-size: 0.78rem;
+            color: var(--fg-muted);
+            line-height: 1.55;
+        }
+
+        /* ── Footer bar ── */
+
+        /* ── Footer (canonical - matches dashboard) ── */
+        .status-footer {
+            background: var(--card);
+            border-top: 1px solid var(--border);
+            padding: 8px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--fg-muted);
+        }
+
+        .status-footer .left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-footer .connected {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-footer .connected .dot {
+            width: 5px;
+            height: 5px;
+            background: var(--ok);
+            border-radius: 50%;
+            animation: pulse 2s infinite alternate;
+        }
+
+
+        @keyframes pulse {
+            to {
+                opacity: 0.4;
+            }
+        }
+
+        @keyframes pulse {
+            to {
+                opacity: 0.4;
+            }
+        }
+
+        @keyframes nort-flip-y {
+            0% {
+                transform: rotateY(0deg);
+                animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            }
+
+            50% {
+                transform: rotateY(1800deg);
+                animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            }
+
+            100% {
+                transform: rotateY(0deg);
+                animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            }
+        }
+
+        #nort-loader {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: transparent;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s ease;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #nort-loader.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .loader-logo-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .loader-glow {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(36, 182, 252, 0.15) 0%, transparent 70%);
+            filter: blur(10px);
+            pointer-events: none;
+        }
+
+        .loader-logo {
+            width: 48px;
+            height: 48px;
+            animation: nort-flip-y 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        .loader-footer {
+            position: absolute;
+            bottom: 15%;
+            text-align: center;
+        }
+
+        .loader-title {
+            font-family: 'Manrope', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .loader-desc {
+            font-size: 11px;
+            color: #546A7B;
+        }
+
+        /* ── Floating Toasts (Bottom Right) ── */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            pointer-events: none;
+        }
+
+        .toast {
+            pointer-events: auto;
+            min-width: 300px;
+            max-width: 400px;
+            padding: 14px 18px;
+            border-radius: 10px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        @keyframes toast-in {
+            from {
+                transform: translateX(100%) scale(0.9);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        .toast-err {
+            background: #2a1215;
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #ff8080;
+        }
+
+        .toast-ok {
+            background: #0d1a14;
+            border-color: rgba(16, 185, 129, 0.4);
+            color: #80ffc0;
+        }
+
+        .toast-icon {
+            font-size: 1.2rem;
+        }
+
+        .toast-content {
+            flex: 1;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .toast-close {
+            opacity: 0.5;
+            font-size: 1.1rem;
+        }
+
+        .toast:hover .toast-close {
+            opacity: 1;
+        }
+
+        .lang-btn {
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 700;
+            transition: all .2s;
+            text-decoration: none;
+            background: transparent;
+            color: var(--fg-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        .lang-btn:hover {
+            background: var(--side-hover-bg);
+            color: var(--fg);
+            border-color: var(--border);
+        }
+
+        .lang-btn.active {
+            color: var(--primary) !important;
+            background: var(--primary-dim) !important;
+            border-color: var(--primary-glow) !important;
+        }
+
+        .header-lang-switcher {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding-right: 12px;
+            margin-right: 4px;
+            border-right: 1px solid var(--border);
+        }
+
+        /* Standardized Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #ffffff;
+            border: none;
+        }
+
+        .btn-primary:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--fg-dim);
+        }
+
+        .btn-outline:hover {
+            background: var(--card-hover);
+            color: var(--fg);
+            border-color: var(--primary-glow);
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        /* ── Sidebar CSS ── CANONICAL ── */
+        .sidebar {
+            width: 224px;
+            background: var(--side-bg);
+            border-right: 1px solid var(--side-border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            position: relative;
+            transition: width 0.3s ease;
+        }
+
+        .sidebar.collapsed {
+            width: 80px;
+        }
+
+        .sidebar-header {
+            padding: 0 16px;
+            height: 56px;
+            border-bottom: 1px solid var(--side-border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .sidebar.collapsed .sidebar-header {
+            justify-content: center;
+            padding: 0 8px;
+        }
+
+        .logo-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .sidebar.collapsed .logo-wrapper {
+            display: none !important;
+        }
+
+        .logo-text {
+            font-family: 'Manrope', sans-serif;
+            font-size: 0.875rem;
+            letter-spacing: 3px;
+            font-weight: 700;
+            color: var(--side-logo);
+        }
+
+        .sidebar nav {
+            flex: 1;
+            padding: 8px;
+            overflow-y: auto;
+        }
+
+        .sidebar.collapsed nav {
+            padding: 8px 6px;
+        }
+
+        .nav-section-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--side-fg-dim);
+            padding: 16px 12px 4px;
+        }
+
+        .sidebar.collapsed .nav-section-label {
+            display: none;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: var(--side-fg-dim);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.875rem;
+            transition: all 0.15s;
+            margin-bottom: 2px;
+            border: 1px solid transparent;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .sidebar.collapsed .nav-link {
+            justify-content: center;
+            padding-left: 0;
+            padding-right: 0;
+            width: 48px;
+            height: 40px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .sidebar.collapsed .nav-link span {
+            display: none;
+        }
+
+        .nav-link:hover {
+            background: var(--side-hover-bg);
+            color: var(--side-fg);
+        }
+
+        .nav-link.active {
+            background: var(--side-active-bg);
+            color: var(--side-primary);
+            border-color: var(--side-primary-dim);
+        }
+
+        .nav-link.active::before {
+            content: '';
+            position: absolute;
+            left: -1px;
+            top: 6px;
+            bottom: 6px;
+            width: 2px;
+            border-radius: 0 2px 2px 0;
+            background: var(--side-primary);
+        }
+
+        .nav-icon {
+            flex-shrink: 0;
+            width: 16px;
+            height: 16px;
+        }
+
+        .sidebar-footer {
+            padding: 12px;
+            border-top: 1px solid var(--side-border);
+        }
+
+        .sidebar.collapsed .sidebar-footer {
+            padding: 12px 6px;
+        }
+
+        .sidebar.collapsed .sidebar-footer .nav-link {
+            width: 40px;
+            height: 40px;
+        }
+
+        .beta-tag {
+            font-size: 9px;
+            font-weight: 600;
+            background: rgba(59, 130, 246, 0.1);
+            color: hsl(217, 91%, 60%);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 4px;
+            padding: 2px 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            flex-shrink: 0;
+        }
+
+        .logout-link {
+            margin-top: 4px;
+        }
+
+        .logout-link:hover {
+            background: rgba(239, 68, 68, 0.1) !important;
+            color: #ef4444 !important;
+        }
+
+        /* ── Definitive Light Theme ── */
+        html[data-theme="light"] {
+            --bg: #f0f3f7;
+            --card: #ffffff;
+            --card-hover: #e8edf4;
+            --border: #cbd5e1;
+            --fg: #1e2d40;
+            --fg-dim: #475569;
+            --fg-muted: #6b7fa0;
+
+            --sidebar-bg: #e8edf4;
+            --console-bg: #f1f5f9;
+
+            --side-bg: #ffffff;
+            --side-border: #cbd5e1;
+            --side-fg: #1e2d40;
+            --side-fg-dim: #64748b;
+            --side-hover-bg: #f8fafc;
+            --side-active-bg: rgba(59, 130, 246, 0.1);
+            --side-primary: #3b82f6;
+            --side-primary-dim: rgba(59, 130, 246, 0.15);
+            --side-logo: #0f172a;
+        }
+
+        html[data-theme="light"]
+
+        /* ── UI Controls ── */
+        .theme-toggle {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--fg-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            padding: 0;
+            z-index: 100;
+        }
+
+        .theme-toggle:hover {
+            background: var(--side-hover-bg);
+            color: var(--fg);
+        }
+
+
+
+        .theme-toggle svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .sidebar-collapse-btn {
+            position: absolute;
+            top: 64px;
+            right: -12px;
+            z-index: 101;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--card);
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            color: var(--fg-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .sidebar-collapse-btn:hover {
+            color: var(--fg);
+            border-color: var(--primary);
+            transform: scale(1.1);
+        }
+
+        /* ── Profile Missing CSS ── */
+        .profile-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .profile-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .profile-row:last-child {
+            border-bottom: none;
+        }
+
+        .p-label {
+            color: var(--fg-dim);
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .p-value {
+            color: var(--fg);
+            font-size: 0.85rem;
+            font-weight: 600;
+            font-family: 'Manrope', sans-serif;
+            text-align: right;
+        }
+
+        .p-value.masked {
+            cursor: pointer;
+            filter: blur(4px);
+            transition: filter 0.2s;
+            user-select: none;
+        }
+
+        .p-value.masked.revealed {
+            filter: none;
+            user-select: text;
+        }
+
+        .boolean-pill {
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            display: inline-block;
+        }
+
+        .bool-true {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--ok);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+
+        .bool-false {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--err);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+        }
+
+        .card-body {
+            padding: 0;
+        }
+
+        .header-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--fg-dim);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 4px 10px;
+        }
+
+        .header-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--ok);
+        }
+    
+    .sidebar.collapsed .sidebar-header > div {
+      display: none !important;
+    }
+    .sidebar.collapsed .sidebar-header .beta-tag {
+      display: none !important;
+    }
+
+  </style>
+    <script>
+        if (localStorage.getItem('nort-theme') === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    </script>
+</head>
+
+<body>
+    <!-- Standardized NORT Loader -->
+    <div id="nort-loader">
+        <div class="loader-logo-container">
+            <div class="loader-glow"></div>
+            <img src="/static/favicon.svg" class="loader-logo" alt="NORT Logo" />
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const loader = document.getElementById('nort-loader');
+            const showTimer = setTimeout(() => {
+                if (loader) {
+                    loader.style.opacity = '1';
+                    loader.style.pointerEvents = 'all';
+                }
+            }, 400);
+
+            window.addEventListener('load', () => {
+                clearTimeout(showTimer);
+                if (loader) {
+                    loader.style.opacity = '0';
+                    loader.style.pointerEvents = 'none';
+                    setTimeout(() => loader.remove(), 500);
+                }
+            });
+        })();
+    </script>
+
+    <!-- ── Sidebar ── -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path
+                    d="M11.2966 4.12501C11.5853 3.62501 12.307 3.62501 12.5957 4.12501L21.2787 19.1645C21.638 19.7867 21.0013 20.5092 20.3388 20.231L12.2365 16.8289C12.0508 16.751 11.8415 16.751 11.6558 16.8289L3.55346 20.231C2.89106 20.5092 2.25435 19.7867 2.61357 19.1645L11.2966 4.12501Z"
+                    fill="var(--primary)" />
+            </svg>
+            <div style="display: flex; flex-direction: column; gap: 0;">
+                <span class="logo-text" style="letter-spacing: 2px;">NORT</span>
+                <span
+                    style="font-size: 9px; font-weight: 700; color: var(--side-primary); opacity: 0.9; margin-top: -2px; letter-spacing: 0.5px;">STORE
+                    MANAGER</span>
+            </div>
+            <span class="beta-tag">BETA</span>
+        </div>
+        <nav>
+            <div class="nav-section-label">{{ t('nav.section_platform') }}</div>
+            <a href="/home" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
+                </svg><span>{{ t('nav.home') }}</span></a>
+            <a href="/" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                </svg><span>{{ t('nav.dashboard') }}</span></a>
+            <a href="/streams" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+                    <circle cx="12" cy="13" r="3" />
+                </svg><span>{{ t('nav.streams') }}</span></a>
+            <a href="/cameras" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2" />
+                    <line x1="8" y1="21" x2="16" y2="21" />
+                    <line x1="12" y1="17" x2="12" y2="21" />
+                </svg><span>{{ t('nav.cameras') }}</span></a>
+            <a href="/zones" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                    <polyline points="2 17 12 22 22 17" />
+                    <polyline points="2 12 12 17 22 12" />
+                </svg><span>{{ t('nav.zones') }}</span></a>
+            <a href="/floorplan" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="3" y1="9" x2="21" y2="9"></line>
+                    <line x1="9" y1="21" x2="9" y2="9"></line>
+                </svg><span>{{ t('nav.floorplan') }}</span></a>
+            <a href="/help" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg><span>{{ t('nav.help') }}</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <a href="/profile" class="nav-link active"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg><span>{{ t('nav.profile') }}</span></a>
+            <a href="/settings" class="nav-link"><svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg><span>{{ t('nav.settings') }}</span></a>
+            <a href="#" class="nav-link logout-link"
+                onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='/')"><svg class="nav-icon" width="16"
+                    height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                </svg><span>{{ t('nav.logout') }}</span></a>
+        </div>
+        <button class="sidebar-collapse-btn" onclick="toggleSidebar()"><svg width="14" height="14" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m15 18-6-6 6-6" />
+            </svg></button>
+    </div>
+
+    <!-- ── Main ── -->
+    <div class="main-wrapper">
+        <div class="top-header">
+            <div style="display:flex; align-items:center; gap:20px;">
+                <h1>{{ t('nav.profile', 'Perfil & Sistema') }}</h1>
+            </div>
+            <div class="header-actions" style="display:flex;align-items:center;gap:10px;">
+                <div class="sub" style="display:flex;align-items:center;gap:6px;"><span>{{ store_id }} &middot; {{
+                        device_id
+                        }}</span><span style="opacity:0.5;">&bull;</span><span id="clock"
+                        style="font-variant-numeric:tabular-nums; font-weight:600; color:var(--fg);"></span></div>
+                <button class="theme-toggle" onclick="toggleTheme()"><svg width="16" height="16" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5" />
+                        <line x1="12" y1="1" x2="12" y2="3" />
+                        <line x1="12" y1="21" x2="12" y2="23" />
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                        <line x1="1" y1="12" x2="3" y2="12" />
+                        <line x1="21" y1="12" x2="23" y2="12" />
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                    </svg></button>
+                <div class="header-lang-switcher">
+                    <a href="/set_lang/pt" class="lang-btn {% if current_lang == 'pt' %}active{% endif %}">PT</a>
+                    <a href="/set_lang/en" class="lang-btn {% if current_lang == 'en' %}active{% endif %}">EN</a>
+                    <a href="/set_lang/es" class="lang-btn {% if current_lang == 'es' %}active{% endif %}">ES</a>
+                </div>
+                <div class="header-badge"><span class="dot"></span>{{ t('header.active', 'Active') }}</div>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <div class="toast-container">
+                {% if error_msg %}
+                <div class="toast toast-err" onclick="this.remove()">
+                    <div class="toast-icon">✗</div>
+                    <div class="toast-content">{{ error_msg }}</div>
+                    <div class="toast-close">×</div>
+                </div>
+                {% endif %}
+                {% if flash_msg %}
+                <div class="toast toast-ok" onclick="this.remove()">
+                    <div class="toast-icon">✓</div>
+                    <div class="toast-content">{{ flash_msg }}</div>
+                    <div class="toast-close">×</div>
+                </div>
+                {% endif %}
+            </div>
+
+            <script>
+                function toggleMask(el) {
+                    el.classList.toggle('revealed');
+                }
+            </script>
+
+            <div class="profile-grid">
+                <!-- Device Identity -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                style="margin-right:6px;">
+                                <rect width="18" height="14" x="3" y="5" rx="2" ry="2" />
+                                <path d="M7 15V9" />
+                                <path d="M11 15h2a2 2 0 1 0 0-4h-2v4Z" />
+                            </svg></span>
+                        <span class="card-title">{{ t('profile.identity', 'Device Identity') }}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="profile-row">
+                            <div class="p-label">Device ID</div>
+                            <div class="p-value">{{ config.get('device_id', 'N/A') }}</div>
+                        </div>
+                        <div class="profile-row">
+                            <div class="p-label">Client ID</div>
+                            <div class="p-value">{{ config.get('client_id', 'N/A') }}</div>
+                        </div>
+                        <div class="profile-row">
+                            <div class="p-label">Store ID</div>
+                            <div class="p-value">{{ config.get('store_id', 'N/A') }}</div>
+                        </div>
+                        <div class="profile-row">
+                            <div class="p-label">ReID Enabled</div>
+                            <div class="p-value">
+                                <span
+                                    class="boolean-pill {{ 'bool-true' if config.get('enable_reid') else 'bool-false' }}">
+                                    {{ 'ENABLED' if config.get('enable_reid') else 'DISABLED' }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+            </div>
+
+            <!-- VLM Configuration -->
+            {% set vlm = config.get('vlm', {}) %}
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <span class="card-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            style="margin-right:6px;">
+                            <path
+                                d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+                            <path
+                                d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+                            <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4" />
+                            <path d="M17.599 6.5a3 3 0 0 0 .399-1.375" />
+                        </svg></span>
+                    <span class="card-title">{{ t('profile.vlm', 'VLM Pipeline Setup') }}</span>
+                </div>
+                <div class="card-body">
+                    <div class="profile-grid" style="margin-bottom: 0;">
+                        <div>
+                            <div class="profile-row">
+                                <div class="p-label">VLM Global Enabled</div>
+                                <div class="p-value">
+                                    <span
+                                        class="boolean-pill {{ 'bool-true' if vlm.get('enabled') else 'bool-false' }}">
+                                        {{ 'ON' if vlm.get('enabled') else 'OFF' }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="profile-row">
+                                <div class="p-label">Warmup on Start</div>
+                                <div class="p-value">
+                                    <span
+                                        class="boolean-pill {{ 'bool-true' if vlm.get('warmup_on_start') else 'bool-false' }}">
+                                        {{ 'YES' if vlm.get('warmup_on_start') else 'NO' }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="profile-row">
+                                <div class="p-label">Prefer Local VLM</div>
+                                <div class="p-value">
+                                    <span
+                                        class="boolean-pill {{ 'bool-true' if vlm.get('prefer_local') else 'bool-false' }}">
+                                        {{ 'YES' if vlm.get('prefer_local') else 'NO' }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="profile-row">
+                                <div class="p-label">Cloud Fallback</div>
+                                <div class="p-value">
+                                    <span
+                                        class="boolean-pill {{ 'bool-true' if vlm.get('allow_cloud_fallback') else 'bool-false' }}">
+                                        {{ 'ALLOWED' if vlm.get('allow_cloud_fallback') else 'DENIED' }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="profile-row">
+                                <div class="p-label">Capture Interval</div>
+                                <div class="p-value">{{ vlm.get('capture_interval_frames', 0) }} frames</div>
+                            </div>
+                            <div class="profile-row">
+                                <div class="p-label">Max Queue Size</div>
+                                <div class="p-value">{{ vlm.get('max_queue_size', 0) }}</div>
+                            </div>
+                            <div class="profile-row">
+                                <div class="p-label">Min Sharpness</div>
+                                <div class="p-value">{{ vlm.get('min_sharpness', 0.0) }}</div>
+                            </div>
+                            <div class="profile-row">
+                                <div class="p-label">Min Crop Area</div>
+                                <div class="p-value">{{ vlm.get('min_crop_area', 0) }} px²</div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                </div>
+            </div>
+
+        </div> <!-- End of content div -->
+
+        <!-- Footer -->
+
+        <!-- Status Footer -->
+        <div class="status-footer">
+            <div class="left">
+                <span>System Online</span>
+                <div class="connected"><span class="dot"></span><span>Connected</span></div>
+            </div>
+            <div>&copy; 2026 NORT Analytics</div>
+        </div>
+    </div>
+    <script>
+        // Clock
+        function updateClock() {
+            const el = document.getElementById('clock');
+            if (el) el.textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        updateClock();
+        setInterval(updateClock, 1000);
+
+        // Theme Toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const isLight = html.getAttribute('data-theme') === 'light';
+            if (isLight) {
+                html.removeAttribute('data-theme');
+                localStorage.setItem('nort-theme', 'dark');
+            } else {
+                html.setAttribute('data-theme', 'light');
+                localStorage.setItem('nort-theme', 'light');
+            }
+        }
+
+        // Sidebar Toggle
+        function toggleSidebar() {
+            const sb = document.querySelector('.sidebar');
+            if (sb) {
+                sb.classList.toggle('collapsed');
+                localStorage.setItem('nort-sidebar-collapsed', sb.classList.contains('collapsed'));
+            }
+        }
+
+        // Initialize Sidebar State
+        (function () {
+            const sb = document.querySelector('.sidebar');
+            if (sb && localStorage.getItem('nort-sidebar-collapsed') === 'true') {
+                sb.classList.add('collapsed');
+            }
+            const theme = localStorage.getItem('nort-theme') || 'dark';
+            if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+        })();
+
+        // Toast utils
+        function showToast(msg, type = 'ok') {
+            const container = document.querySelector('.toast-container') || document.body;
+            const t = document.createElement('div');
+            t.className = `toast toast-${type}`;
+            t.innerHTML = `
+                <span class="toast-icon">${type === 'ok' ? '✓' : '⚠️'}</span>
+                <div class="toast-content">${msg}</div>
+                <span class="toast-close" onclick="this.parentElement.remove()">×</span>
+            `;
+            container.appendChild(t);
+            setTimeout(() => t.remove(), 5000);
+        }
+
+        function toggleMask(el) {
+            el.classList.toggle('revealed');
+        }
+    </script>
+</body>
+
+</html>

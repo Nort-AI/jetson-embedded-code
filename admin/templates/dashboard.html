@@ -1,0 +1,1611 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nort — Store Manager Panel · {{ store_id }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;600;700;800&display=swap"
+    rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      /* Sidebar Dark Tokens */
+      --side-bg: hsl(222, 28%, 8%);
+      --side-border: hsl(222, 22%, 14%);
+      --side-fg: hsl(213, 28%, 90%);
+      --side-fg-dim: hsl(213, 18%, 52%);
+      --side-hover-bg: hsl(222, 24%, 14%);
+      --side-active-bg: rgba(59, 130, 246, 0.1);
+      --side-primary: hsl(217, 91%, 60%);
+      --side-primary-dim: rgba(59, 130, 246, 0.2);
+      --side-logo: #ffffff;
+
+
+      --bg: #0f1117;
+      --card: #161b27;
+      --card-hover: #1c2333;
+      --border: #212c3f;
+      --primary: #3b82f6;
+      --primary-dim: rgba(59, 130, 246, 0.15);
+      --primary-glow: rgba(59, 130, 246, 0.3);
+      --fg: #f8fafc;
+      --fg-dim: #94a3b8;
+      --fg-muted: #64748b;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --ok-dim: rgba(16, 185, 129, 0.1);
+      --warn-dim: rgba(245, 158, 11, 0.1);
+      --err-dim: rgba(239, 68, 68, 0.1);
+      --console-bg: #0a0d12;
+      --sidebar-bg: #10151f;
+      --radius: 8px;
+      --radius-sm: 6px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--fg-muted);
+    }
+
+
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 224px;
+      background: var(--side-bg);
+      border-right: 1px solid var(--side-border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: relative;
+      transition: width 0.3s ease;
+    }
+
+    .sidebar.collapsed {
+      width: 80px;
+    }
+
+    .sidebar-header {
+      padding: 0 16px;
+      height: 56px;
+      /* h-14 */
+      border-bottom: 1px solid var(--side-border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header {
+      justify-content: center;
+      padding: 0 8px;
+    }
+
+    .logo-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .sidebar.collapsed .logo-wrapper {
+      display: none !important;
+    }
+
+    .logo-text {
+      font-family: 'Manrope', sans-serif;
+      font-size: 0.875rem;
+      letter-spacing: 3px;
+      font-weight: 700;
+      color: var(--side-logo);
+    }
+
+    .sidebar nav {
+      flex: 1;
+      padding: 8px;
+      overflow-y: auto;
+    }
+
+    .sidebar.collapsed nav {
+      padding: 8px 6px;
+    }
+
+    .nav-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--side-fg-dim);
+      padding: 16px 12px 4px;
+    }
+
+    .sidebar.collapsed .nav-section-label {
+      display: none;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: var(--side-fg-dim);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.875rem;
+      transition: all 0.15s;
+      margin-bottom: 2px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      position: relative;
+    }
+
+    .sidebar.collapsed .nav-link {
+      justify-content: center;
+      padding-left: 0;
+      padding-right: 0;
+      width: 48px;
+      height: 40px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .sidebar.collapsed .nav-link span {
+      display: none;
+    }
+
+    .nav-link:hover {
+      background: var(--side-hover-bg);
+      color: var(--side-fg);
+    }
+
+    .nav-link.active {
+      background: var(--side-active-bg);
+      color: var(--side-primary);
+      border-color: var(--side-primary-dim);
+    }
+
+    .nav-link.active::before {
+      content: '';
+      position: absolute;
+      left: -1px;
+      top: 6px;
+      bottom: 6px;
+      width: 2px;
+      border-radius: 0 2px 2px 0;
+      background: var(--side-primary);
+    }
+
+    .nav-icon {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+    }
+
+    .sidebar-footer {
+      padding: 12px;
+      border-top: 1px solid var(--side-border);
+    }
+
+    .sidebar.collapsed .sidebar-footer {
+      padding: 12px 6px;
+    }
+
+    .sidebar.collapsed .sidebar-footer .nav-link {
+      width: 40px;
+      height: 40px;
+    }
+
+    .beta-tag {
+      font-size: 9px;
+      font-weight: 600;
+      background: rgba(59, 130, 246, 0.1);
+      color: hsl(217, 91%, 60%);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 4px;
+      padding: 2px 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+
+    .logout-link {
+      margin-top: 4px;
+    }
+
+    .logout-link:hover {
+      background: rgba(239, 68, 68, 0.1) !important;
+      color: #ef4444 !important;
+    }
+
+    .logout-link:hover .nav-icon {
+      color: #ef4444;
+    }
+
+    /* ── Status Badge override if any ── */
+    .status-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--side-fg-dim);
+      padding: 8px;
+      border-radius: 50%;
+      background: rgba(63, 185, 80, 0.06);
+      border: 1px solid rgba(63, 185, 80, 0.15);
+    }
+
+    .status-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #3fb950;
+      animation: pulse 2s infinite alternate;
+    }
+
+    @keyframes pulse {
+      to {
+        opacity: 0.4;
+      }
+    }
+
+
+
+
+    /* ── Main Content ────────────────────────────────────── */
+    .main-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    /* Top Header */
+    .top-header {
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .top-header h1 {
+      font-family: 'Manrope', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--fg);
+    }
+
+    .top-header .sub {
+      font-size: 0.78rem;
+      color: var(--fg-dim);
+      font-weight: 400;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: var(--fg-dim);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 10px;
+    }
+
+    .header-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ok);
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    /* ── Flash Messages ──────────────────────────────────── */
+    .flash {
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 16px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .flash-ok {
+      background: var(--ok-dim);
+      border: 1px solid rgba(63, 185, 80, 0.25);
+      color: var(--ok);
+    }
+
+    .flash-err {
+      background: var(--err-dim);
+      border: 1px solid rgba(248, 81, 73, 0.25);
+      color: var(--err);
+    }
+
+    /* ── Notification Cards ──────────────────────────────── */
+    #notif-section {
+      margin-bottom: 20px;
+    }
+
+    .notif-list {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    }
+
+    .notif-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      transition: all 0.3s;
+    }
+
+    .notif-card.level-ok {
+      background: var(--ok-dim);
+      border-color: rgba(63, 185, 80, 0.2);
+    }
+
+    .notif-card.level-info {
+      background: var(--primary-dim);
+      border-color: rgba(36, 182, 252, 0.2);
+    }
+
+    .notif-card.level-warning {
+      background: var(--warn-dim);
+      border-color: rgba(240, 165, 0, 0.2);
+    }
+
+    .notif-card.level-error {
+      background: var(--err-dim);
+      border-color: rgba(248, 81, 73, 0.2);
+    }
+
+    .notif-card.dismissed {
+      opacity: 0;
+      transform: scale(0.95);
+      pointer-events: none;
+    }
+
+    .notif-icon {
+      font-size: 1.4rem;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
+    .notif-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .notif-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      margin-bottom: 3px;
+    }
+
+    .notif-card.level-ok .notif-title {
+      color: var(--ok);
+    }
+
+    .notif-card.level-info .notif-title {
+      color: var(--primary);
+    }
+
+    .notif-card.level-warning .notif-title {
+      color: var(--warn);
+    }
+
+    .notif-card.level-error .notif-title {
+      color: var(--err);
+    }
+
+    .notif-msg {
+      font-size: 0.8rem;
+      color: var(--fg-dim);
+      line-height: 1.4;
+      margin-bottom: 10px;
+    }
+
+    .notif-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-action {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 5px 12px;
+      border-radius: var(--radius-sm);
+      border: none;
+      cursor: pointer;
+      transition: filter 0.2s;
+    }
+
+    .btn-action:hover {
+      filter: brightness(1.15);
+    }
+
+    .level-ok .btn-action {
+      background: var(--ok);
+      color: #000;
+    }
+
+    .level-warning .btn-action {
+      background: var(--warn);
+      color: #000;
+    }
+
+    .level-error .btn-action {
+      background: var(--err);
+      color: #000;
+    }
+
+    .btn-dismiss {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg-dim);
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-dismiss:hover {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--fg);
+    }
+
+    /* ── KPI Cards ────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .kpi-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+      transition: .2s;
+    }
+
+    .kpi-card:hover {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary);
+    }
+
+    .kpi-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--fg-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .kpi-icon {
+      font-size: 13px;
+    }
+
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--fg);
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+
+    .kpi-sub {
+      font-size: 11px;
+      color: var(--fg-muted);
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .delta-up {
+      color: var(--ok);
+      font-weight: 600;
+    }
+
+    .delta-down {
+      color: var(--err);
+      font-weight: 600;
+    }
+
+    .kpi-accent-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 3px;
+      height: 100%;
+      border-radius: var(--radius) 0 0 var(--radius);
+    }
+
+    .bar-blue {
+      background: var(--primary);
+    }
+
+    .bar-green {
+      background: var(--ok);
+    }
+
+    .bar-purple {
+      background: #a855f7;
+    }
+
+    .bar-yellow {
+      background: var(--warn);
+    }
+
+    /* ── Cards ────────────────────────────────────────────── */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 1100px) {
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 24px 24px 8px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--fg);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title .card-icon {
+      color: var(--primary);
+    }
+
+    .card-desc {
+      font-size: 0.75rem;
+      color: var(--fg-dim);
+      margin-top: 4px;
+      font-weight: 500;
+    }
+
+    .card-body {
+      padding: 8px 24px 24px;
+    }
+
+    /* ── Stats Rows ──────────────────────────────────────── */
+    .stat-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .stat-row:last-child {
+      border-bottom: none;
+    }
+
+    .stat-lbl {
+      font-size: 0.82rem;
+      color: var(--fg-dim);
+      font-weight: 500;
+    }
+
+    .stat-val {
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pbar {
+      width: 90px;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 999px;
+      overflow: hidden;
+      display: inline-block;
+    }
+
+    .pbar-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.4s ease;
+    }
+
+    .pbar-fill.ok {
+      background: var(--ok);
+    }
+
+    .pbar-fill.warn {
+      background: var(--warn);
+    }
+
+    .pbar-fill.err {
+      background: var(--err);
+    }
+
+    .text-ok {
+      color: var(--ok);
+    }
+
+    .text-warn {
+      color: var(--warn);
+    }
+
+    .text-err {
+      color: var(--err);
+    }
+
+    /* ── Camera Table ────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-muted);
+      padding: 0 0 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      font-size: 0.85rem;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .cam-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .pill-ok {
+      background: var(--ok-dim);
+      color: var(--ok);
+      border: 1px solid rgba(63, 185, 80, 0.25);
+    }
+
+    .pill-err {
+      background: var(--err-dim);
+      color: var(--err);
+      border: 1px solid rgba(248, 81, 73, 0.25);
+    }
+
+    .pill .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* ── Controls Bar ────────────────────────────────────── */
+    .controls-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .controls-info {
+      flex: 1;
+    }
+
+    .controls-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--fg);
+      margin-bottom: 2px;
+    }
+
+    .controls-sub {
+      font-size: 0.78rem;
+      color: var(--fg-muted);
+    }
+
+    /* Standardized Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+    }
+
+    .btn-primary:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg-dim);
+    }
+
+    .btn-outline:hover {
+      background: var(--card-hover);
+      color: var(--fg);
+      border-color: var(--primary-glow);
+    }
+
+    .btn-danger {
+      background: var(--err-dim);
+      border: 1px solid rgba(248, 81, 73, 0.25);
+      color: var(--err);
+    }
+
+    .btn-danger:hover {
+      background: rgba(248, 81, 73, 0.18);
+    }
+
+    /* ── Console ─────────────────────────────────────────── */
+    .console {
+      background: var(--console-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      max-height: 280px;
+      overflow-y: auto;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 0.78rem;
+      color: var(--fg-muted);
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    /* ── Chart ────────────────────────────────────────────── */
+    .chart-wrap {
+      height: 160px;
+    }
+
+    /* ── Footer ──────────────────────────────────────────── */
+    
+        /* ── Footer (canonical - matches dashboard) ── */
+        .status-footer {
+            background: var(--card);
+            border-top: 1px solid var(--border);
+            padding: 8px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--fg-muted);
+        }
+
+        .status-footer .left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-footer .connected {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-footer .connected .dot {
+            width: 5px;
+            height: 5px;
+            background: var(--ok);
+            border-radius: 50%;
+            animation: pulse 2s infinite alternate;
+        }
+
+
+    /* ── Floating Toasts (Bottom Right) ── */
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      pointer-events: none;
+    }
+
+    .toast {
+      pointer-events: auto;
+      min-width: 300px;
+      max-width: 400px;
+      padding: 14px 18px;
+      border-radius: 10px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    @keyframes toast-in {
+      from {
+        transform: translateX(100%) scale(0.9);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0) scale(1);
+        opacity: 1;
+      }
+    }
+
+    .toast-err {
+      background: #2a1215;
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #ff8080;
+    }
+
+    .toast-ok {
+      background: #0d1a14;
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #80ffc0;
+    }
+
+    .toast-icon {
+      font-size: 1.2rem;
+    }
+
+    .toast-content {
+      flex: 1;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .toast-close {
+      opacity: 0.5;
+      font-size: 1.1rem;
+    }
+
+    .toast:hover .toast-close {
+      opacity: 1;
+    }
+
+    /* ── Light Theme & Collapse ── */
+    :root {
+
+      --console-bg: #0a0d12;
+    }
+
+
+
+
+
+
+
+
+
+    @keyframes nort-flip-y {
+      0% {
+        transform: rotateY(0deg);
+      }
+
+      100% {
+        transform: rotateY(360deg);
+      }
+    }
+
+    #nort-loader {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.5s ease;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #nort-loader.hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .loader-logo-container {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .loader-glow {
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      background: radial-gradient(circle, rgba(36, 182, 252, 0.15) 0%, transparent 70%);
+      filter: blur(10px);
+      pointer-events: none;
+    }
+
+    .loader-logo {
+      width: 48px;
+      height: 48px;
+      animation: nort-flip-y 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+
+    .lang-btn {
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      transition: all .2s;
+      text-decoration: none;
+      background: transparent;
+      color: var(--fg-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .lang-btn:hover {
+      background: var(--side-hover-bg);
+      color: var(--fg);
+      border-color: var(--border);
+    }
+
+    .lang-btn.active {
+      color: var(--primary) !important;
+      background: var(--primary-dim) !important;
+      border-color: var(--primary-glow) !important;
+    }
+
+    .header-lang-switcher {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding-right: 12px;
+      margin-right: 4px;
+      border-right: 1px solid var(--border);
+    }
+
+    /* ── Definitive Light Theme ── */
+    html[data-theme="light"] {
+      --bg: #f0f3f7;
+      --card: #ffffff;
+      --card-hover: #e8edf4;
+      --border: #cbd5e1;
+      --fg: #1e2d40;
+      --fg-dim: #475569;
+      --fg-muted: #6b7fa0;
+
+      --sidebar-bg: #e8edf4;
+      --console-bg: #f1f5f9;
+
+      --side-bg: #ffffff;
+      --side-border: #cbd5e1;
+      --side-fg: #1e2d40;
+      --side-fg-dim: #64748b;
+      --side-hover-bg: #f8fafc;
+      --side-active-bg: rgba(59, 130, 246, 0.1);
+      --side-primary: #3b82f6;
+      --side-primary-dim: rgba(59, 130, 246, 0.15);
+      --side-logo: #0f172a;
+    }
+
+    /* ── UI Controls ── */
+    .theme-toggle {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--fg-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    padding: 0;
+    z-index: 100;
+}
+
+.theme-toggle:hover {
+    background: var(--side-hover-bg);
+    color: var(--fg);
+}
+
+    
+
+    .theme-toggle svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .sidebar-collapse-btn {
+      position: absolute;
+      top: 64px;
+      right: -12px;
+      z-index: 101;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      color: var(--fg-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .sidebar-collapse-btn:hover {
+      color: var(--fg);
+      border-color: var(--primary);
+      transform: scale(1.1);
+    }
+  
+    .sidebar.collapsed .sidebar-header > div {
+      display: none !important;
+    }
+    .sidebar.collapsed .sidebar-header .beta-tag {
+      display: none !important;
+    }
+
+  </style>
+  <script>
+    if (localStorage.getItem('nort-theme') === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  </script>
+</head>
+
+<body>
+  <!-- Standardized NORT Loader -->
+  <div id="nort-loader">
+    <div class="loader-logo-container">
+      <div class="loader-glow"></div>
+      <img src="/static/favicon.svg" class="loader-logo" alt="NORT Logo" />
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const loader = document.getElementById('nort-loader');
+      const showTimer = setTimeout(() => {
+        if (loader) {
+          loader.style.opacity = '1';
+          loader.style.pointerEvents = 'all';
+        }
+      }, 400);
+
+      window.addEventListener('load', () => {
+        clearTimeout(showTimer);
+        if (loader) {
+          loader.style.opacity = '0';
+          loader.style.pointerEvents = 'none';
+          setTimeout(() => loader.remove(), 500);
+        }
+      });
+    })();
+  </script>
+
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M11.2966 4.12501C11.5853 3.62501 12.307 3.62501 12.5957 4.12501L21.2787 19.1645C21.638 19.7867 21.0013 20.5092 20.3388 20.231L12.2365 16.8289C12.0508 16.751 11.8415 16.751 11.6558 16.8289L3.55346 20.231C2.89106 20.5092 2.25435 19.7867 2.61357 19.1645L11.2966 4.12501Z"
+          fill="var(--primary)" />
+      </svg>
+      <div style="display: flex; flex-direction: column; gap: 0;">
+        <span class="logo-text" style="letter-spacing: 2px;">NORT</span>
+        <span
+          style="font-size: 9px; font-weight: 700; color: var(--side-primary); opacity: 0.9; margin-top: -2px; letter-spacing: 0.5px;">STORE
+          MANAGER</span>
+      </div>
+      <span class="beta-tag">BETA</span>
+    </div>
+
+    <nav>
+      <div class="nav-section-label">{{ t('nav.section_platform') }}</div>
+      <a href="/home" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+        <span>{{ t('nav.home') }}</span>
+      </a>
+      <a href="/" class="nav-link active">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+        </svg>
+        <span>{{ t('nav.dashboard') }}</span>
+      </a>
+      <a href="/streams" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+          <circle cx="12" cy="13" r="3" />
+        </svg>
+        <span>{{ t('nav.streams') }}</span>
+      </a>
+      <a href="/cameras" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <line x1="8" y1="21" x2="16" y2="21" />
+          <line x1="12" y1="17" x2="12" y2="21" />
+        </svg>
+        <span>{{ t('nav.cameras') }}</span>
+      </a>
+      <a href="/zones" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 2 7 12 12 22 7 12 2" />
+          <polyline points="2 17 12 22 22 17" />
+          <polyline points="2 12 12 17 22 12" />
+        </svg>
+        <span>{{ t('nav.zones') }}</span>
+      </a>
+      <a href="/floorplan" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="3" y1="9" x2="21" y2="9"></line>
+          <line x1="9" y1="21" x2="9" y2="9"></line>
+        </svg>
+        <span>{{ t('nav.floorplan') }}</span>
+      </a>
+      <a href="/help" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <span>{{ t('nav.help') }}</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <a href="/profile" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+        <span>{{ t('nav.profile') }}</span>
+      </a>
+      <a href="/settings" class="nav-link">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        <span>{{ t('nav.settings') }}</span>
+      </a>
+      <a href="#" class="nav-link logout-link" onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='/')">
+        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+        <span>{{ t('nav.logout') }}</span>
+      </a>
+    </div>
+    <button class="sidebar-collapse-btn" onclick="toggleSidebar()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="m15 18-6-6 6-6" />
+      </svg>
+    </button>
+  </div>
+  <!-- ── Main ── -->
+  <div class="main-wrapper">
+
+    <!-- Top Header -->
+    <div class="top-header">
+      <div>
+        <h1>{{ t('dashboard.title') }}</h1>
+        <div class="sub" style="display:flex;align-items:center;gap:6px;"><span>{{ store_id }} &middot; {{ device_id
+            }}</span><span style="opacity:0.5;">&bull;</span><span id="clock"
+            style="font-variant-numeric:tabular-nums; font-weight:600; color:var(--fg);"></span></div>
+      </div>
+      <div class="header-actions" style="display:flex;align-items:center;gap:10px;">
+        <div class="header-lang-switcher">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-muted)" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; opacity:0.7">
+            <circle cx="12" cy="12" r="10" />
+            <path
+              d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+          </svg>
+          <a href="/set_lang/pt" class="lang-btn {% if current_lang == 'pt' %}active{% endif %}">PT</a>
+          <a href="/set_lang/en" class="lang-btn {% if current_lang == 'en' %}active{% endif %}">EN</a>
+          <a href="/set_lang/es" class="lang-btn {% if current_lang == 'es' %}active{% endif %}">ES</a>
+        </div>
+        <div class="header-badge"><span class="dot"></span>{{ t('header.active') }}</div>
+      </div>
+    </div>
+
+    <!-- Content Area -->
+    <div class="content">
+      <div class="toast-container">
+        {% if error_msg %}
+        <div class="toast toast-err" onclick="this.remove()">
+          <div class="toast-icon">✗</div>
+          <div class="toast-content">{{ error_msg }}</div>
+          <div class="toast-close">×</div>
+        </div>
+        {% endif %}
+        {% if flash_msg %}
+        <div class="toast toast-ok" onclick="this.remove()">
+          <div class="toast-icon">✓</div>
+          <div class="toast-content">{{ flash_msg }}</div>
+          <div class="toast-close">×</div>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if notifications %}
+      <div id="notif-section">
+        <div class="notif-list" id="notif-list">
+          {% for n in notifications %}
+          <div class="notif-card level-{{ n.level }}" id="notif-{{ n.id }}">
+            <div class="notif-icon">{{ n.icon }}</div>
+            <div class="notif-body">
+              <div class="notif-title">{{ n.title }}</div>
+              <div class="notif-msg">{{ n.message }}</div>
+              <div class="notif-actions">
+                {% if n.action_label %}
+                <form method="POST" action="{{ n.action_url }}" style="margin:0;"><button type="submit"
+                    class="btn-action">{{ n.action_label }}</button></form>
+                {% endif %}
+                {% if n.id != 'all_clear' %}<button class="btn-dismiss" onclick="dismissNotif('{{ n.id }}', this)">{{
+                  t('dashboard.notifications.dismiss') }}</button>{% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- KPI Row -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-accent-bar bar-blue"></div>
+          <div class="kpi-label"><span class="kpi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>{{ t('dashboard.today_stats.occ_label') }}</div>
+          <div class="kpi-value" id="kpi-occ">{{ current_occupancy }}</div>
+          <div class="kpi-sub"><span class="delta-up">▲</span> {{ t('dashboard.today_stats.occ_sub') }}</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-accent-bar bar-green"></div>
+          <div class="kpi-label"><span class="kpi-icon">↗</span>{{ t('dashboard.today_stats.visitors') }}</div>
+          <div class="kpi-value" id="kpi-visitors">{{ visitors_today if visitors_today >= 0 else '—' }}</div>
+          <div class="kpi-sub"><span class="delta-up">▲</span> {{ t('dashboard.today_stats.visitors_sub') }}</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-accent-bar bar-purple"></div>
+          <div class="kpi-label"><span class="kpi-icon">⏱</span>{{ t('dashboard.today_stats.peak_hour') }}</div>
+          <div class="kpi-value" id="kpi-peak">{{ peak_hour }}</div>
+          <div class="kpi-sub"><span class="text-muted">{{ t('dashboard.today_stats.peak_sub') }}</span></div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-accent-bar bar-yellow"></div>
+          <div class="kpi-label"><span class="kpi-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></span>{{ t('dashboard.today_stats.active_cameras') }}</div>
+          <div class="kpi-value" id="kpi-cameras">{{ active_cameras }} / {{ total_cameras }}</div>
+          <div class="kpi-sub"><span class="text-muted">{{ t('dashboard.today_stats.cameras_sub') }}</span></div>
+        </div>
+      </div>
+
+      <!-- Main Grid -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></span> {{ t('kpi.camera_pipeline') }}</div>
+              <div class="card-desc">{{ t('kpi.realtime_status') }}</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead>
+                <tr>
+                  <th>{{ t('dashboard.cameras.id') }}</th>
+                  <th>{{ t('dashboard.cameras.status') }}</th>
+                  <th style="text-align:right;">{{ t('dashboard.cameras.fps') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for cam_id, cam in cameras.items() %}
+                <tr>
+                  <td>
+                    <div class="cam-name"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg> {{ cam_id }}</div>
+                  </td>
+                  <td>{% if cam.active %}<span class="pill pill-ok"><span class="dot"></span>{{
+                      t('dashboard.cameras.active') }}</span>{% else
+                    %}<span class="pill pill-err"><span class="dot"></span>{{ t('dashboard.cameras.inactive')
+                      }}</span>{% endif %}</td>
+                  <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ cam.fps }}</td>
+                </tr>
+                {% else %}<tr>
+                  <td colspan="3" style="text-align:center; padding:32px 0; color:var(--fg-muted);">{{
+                    t('dashboard.cameras.no_cameras') }}</td>
+                </tr>{% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title"><span class="card-icon">⚡</span> {{ t('dashboard.system_health.title') }}</div>
+              <div class="card-desc">{{ t('dashboard.system_health.desc') }}</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap" style="margin-bottom:14px;"><canvas id="perfChart"></canvas></div>
+            <div class="stat-list">
+              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.cpu') }}</span><span
+                  class="stat-val"><span class="pbar"><span class="pbar-fill {{ cpu_class }}" id="bar-cpu"
+                      style="width:{{ cpu_pct }}%"></span></span><span id="txt-cpu">{{ cpu_pct }}%</span></span></div>
+              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.ram') }}</span><span
+                  class="stat-val"><span class="pbar"><span class="pbar-fill {{ ram_class }}" id="bar-ram"
+                      style="width:{{ ram_pct }}%"></span></span><span id="txt-ram">{{ ram_pct }}%</span></span></div>
+              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.gpu') }}</span><span
+                  class="stat-val"><span class="pbar"><span class="pbar-fill {{ gpu_class }}" id="bar-gpu"
+                      style="width:{{ gpu_pct }}%"></span></span><span id="txt-gpu">{{ gpu_pct }}%</span></span></div>
+              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.disk') }}</span><span
+                  class="stat-val"><span class="pbar"><span class="pbar-fill {{ disk_class }}"
+                      style="width:{{ disk_pct }}%"></span></span><span
+                    class="{{ 'text-ok' if disk_class == 'ok' else ('text-warn' if disk_class == 'warn' else 'text-err') }}">{{
+                    disk_pct }}%</span></span></div>
+              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.uptime') }}</span><span
+                  class="stat-val text-ok">{{ uptime
+                  }}</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Device Operations -->
+      <div class="controls-bar">
+        <div class="controls-info">
+          <div class="controls-title">{{ t('dashboard.controls.title') }}</div>
+          <div class="controls-sub">{{ t('dashboard.controls.desc', url=(API_URL if API_URL else 'API')) }}
+          </div>
+        </div>
+        <form method="POST" action="/action/upload" style="margin:0;"><button type="submit" class="btn btn-outline">☁
+            {{ t('dashboard.controls.sync') }}</button></form>
+        <form method="POST" action="/action/restart" style="margin:0;"><button type="submit" class="btn btn-danger">↻
+            {{ t('dashboard.controls.restart') }}</button></form>
+      </div>
+
+      <!-- Terminal -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title"><span class="card-icon">⌨</span> {{ t('dashboard.terminal.title') }}</div>
+            <div class="card-desc">{{ t('dashboard.terminal.desc') }}</div>
+          </div>
+        </div>
+        <div class="card-body" id="log-body">
+          <div class="console" id="console">{{ logs }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Footer -->
+
+    <!-- Status Footer -->
+    <div class="status-footer">
+      <div class="left">
+        <span>System Online</span>
+        <div class="connected"><span class="dot"></span><span>Connected</span></div>
+      </div>
+      <div>&copy; 2026 NORT Analytics</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      // Theme & Sidebar Persistence
+      const theme = localStorage.getItem('nort-theme') || 'dark';
+      if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+      const sb = document.querySelector('.sidebar');
+      if (sb && localStorage.getItem('nort-sidebar-collapsed') === 'true') sb.classList.add('collapsed');
+
+      // Clock
+      function updateClock() {
+        const el = document.getElementById('clock');
+        if (el) el.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+      updateClock(); setInterval(updateClock, 1000);
+    })();
+
+    // Charts & KPI Refresh
+    const ctx = document.getElementById('perfChart').getContext('2d');
+    const perfChart = new Chart(ctx, { type: 'line', data: { labels: {{ time_hist | safe }}, datasets: [
+      { label: 'CPU', data: {{ cpu_hist | safe }}, borderColor: '#24B6FC', backgroundColor: 'rgba(36,182,252,0.08)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 0 },
+      { label: 'RAM', data: {{ ram_hist | safe }}, borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,0.08)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 0 },
+      { label: 'GPU', data: {{ gpu_hist | safe }}, borderColor: '#F0A500', backgroundColor: 'rgba(240,165,0,0.08)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 0 }
+    ]}, options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { labels: { color: '#7A9CAF', font: { size: 11, family: 'Inter' }, boxWidth: 10 } } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#546A7B', maxTicksLimit: 5, font: { size: 10 } } }, y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#546A7B', stepSize: 25, font: { size: 10 } } } } }});
+
+    function dismissNotif(id, btn) {
+      const card = document.getElementById('notif-' + id);
+      if (card) { card.classList.add('dismissed'); setTimeout(() => card.remove(), 300); fetch('/api/notifications/' + id + '/dismiss', { method: 'POST' }).catch(e => console.log(e)); }
+    }
+
+    function refreshKPIs() {
+      fetch('/api/status').then(r => r.json()).then(d => {
+        const oEl = document.getElementById('kpi-occ'); if (oEl) oEl.textContent = d.current_occupancy;
+        const vEl = document.getElementById('kpi-visitors'); if (vEl) vEl.textContent = d.visitors_today >= 0 ? d.visitors_today : '—';
+        const cEl = document.getElementById('kpi-cameras'); if (cEl) cEl.textContent = d.active_cameras + ' / ' + d.total_cameras;
+        if (d.cpu_hist) { perfChart.data.labels = d.time_hist; perfChart.data.datasets[0].data = d.cpu_hist; perfChart.data.datasets[1].data = d.ram_hist; perfChart.data.datasets[2].data = d.gpu_hist; perfChart.update('none'); }
+      }).catch(e => { });
+    }
+    setInterval(refreshKPIs, 10000);
+
+    function toggleTheme() {
+      const isL = document.documentElement.getAttribute('data-theme') === 'light';
+      const next = isL ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('nort-theme', next);
+    }
+    function toggleSidebar() {
+      const sb = document.querySelector('.sidebar');
+      sb.classList.toggle('collapsed');
+      localStorage.setItem('nort-sidebar-collapsed', sb.classList.contains('collapsed'));
+    }
+  </script>
+</body>
+
+</html>
+
+<!-- i18n.js is no longer needed as we use server-side t() -->
+</body>
+
+</html>
