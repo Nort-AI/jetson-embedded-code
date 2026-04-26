@@ -623,8 +623,12 @@ class CameraProcessor:
                                 output['age'] = _age_val
                                 output['age_category'] = categorize_age(_age_val)
                             else:
-                                from core.utils_body import classify_full_body
-                                output = classify_full_body(frame, x1, y1, x2, y2, self.attribute_model, DEVICE)
+                                if self._attr_onnx_session is not None:
+                                    from core.utils_body import classify_body_onnx
+                                    output = classify_body_onnx(frame, x1, y1, x2, y2, self._attr_onnx_session)
+                                else:
+                                    # Fallback if no model is loaded
+                                    output = {"gender": "Unknown", "age": "adult", "age_category": "adult"}
                             attrs['gender']       = output.get("gender", "Unknown")
                             attrs['age_category'] = output.get("age_category", "adult")
                             attrs['attributes']   = output
@@ -805,27 +809,26 @@ class CameraProcessor:
                     # Determine zone based on EMA-smoothed position (prevents flickering at zone edges)
                     zone = find_zone(smoothed_position, self.zones)
                     
-                    # ENHANCED: Track first zone interaction after entrance
-                    if (self.is_entrance_camera and attrs.get("has_entered") and 
-                        attrs.get("first_zone_after_entry") is None and zone and zone != "Unknown"):
-                        
-                        # Only consider valid zones, not when they're just crossing the entrance line
-                        entrance_line_distance = self.entrance_detector.get_distance_to_line(current_position) if self.entrance_detector else float('inf')
-                        
-                        # If they're far enough from the entrance line and in a defined zone
-                        if entrance_line_distance > 100:  # 100 pixels away from entrance line
-                            attrs["first_zone_after_entry"] = zone
+                    # ENHANCED: Track first zone interaction
+                    if attrs.get("first_zone_after_entry") is None and zone and zone != "Unknown":
+                        attrs["first_zone_after_entry"] = zone
+                        time_since_entry = 0.0
+                        if attrs.get("entrance_timestamp"):
                             time_since_entry = (datetime.now() - attrs["entrance_timestamp"]).total_seconds()
-                            self.logger.debug(f"FIRST ZONE INTERACTION: Track {track_id} -> {zone} (after {time_since_entry:.1f}s)")
-                            
-                            # Store in global tracker for analytics
-                            self.first_zone_tracker[track_id] = {
-                                'zone': zone,
-                                'timestamp': datetime.now(),
-                                'time_to_first_interaction': time_since_entry,
-                                'gender': attrs.get('gender', 'Unknown'),
-                                'age_category': attrs.get('age_category', 'adult')  # Use age_category from attributes
-                            }
+                        
+                        self.logger.debug(f"FIRST ZONE INTERACTION: Track {track_id} -> {zone} (after {time_since_entry:.1f}s)")
+                        
+                        # Store in global tracker for analytics
+                        self.first_zone_tracker[track_id] = {
+                            'zone': zone,
+                            'timestamp': datetime.now(),
+                            'time_to_first_interaction': time_since_entry,
+                            'gender': attrs.get('gender', 'Unknown'),
+                            'age_category': attrs.get('age_category', 'adult')  # Use age_category from attributes
+                        }
+                        
+                        if not attrs.get("has_entered"):
+                            attrs["has_entered"] = True
 
                     # Draw entrance debug (on draw_frame)
                     if DRAW_ENTRANCE_DEBUG and self.entrance_detector:
