@@ -13,6 +13,7 @@ NORT V1 edge processing system. Pure Python multi-threaded pipeline that runs YO
 - Logs all tracking data as CSV → uploads to GCS → triggers the Cloud Functions pipeline
 - Sends heartbeats to Nort API for fleet monitoring
 - Handles OTA updates and remote commands from the cloud
+- Runs a local VLM microservice (Google Gemini) for scene-level natural-language descriptions
 - Serves a local admin web panel on port 8080
 
 ## Architecture
@@ -33,16 +34,26 @@ run.py  →  1 CameraProcessor thread per camera
              Heartbeat thread    →  Nort API
              OTA agent thread    →  Remote commands
              Local admin thread  →  Flask web panel (port 8080)
+             VLM microservice    →  Gemini scene analysis (port 5001)
 ```
+
+`master_processing.py` is the integrated single-file variant used for direct device deployments where all logic runs in one process.
 
 ## Project Structure
 
 ```
 Jetson-Embedded-code-3/
-├── run.py                        # Main entry point
+├── run.py                        # Main entry point (multi-threaded)
+├── master_processing.py          # All-in-one deployment variant
+├── vlm_microservice.py           # Gemini-based scene description service (port 5001)
+├── reid_gallery_window.py        # Re-ID gallery inspection utility
+├── export_tensorrt.py            # TensorRT engine export helper
 ├── requirements.txt
 ├── cameras.json                  # Camera source definitions
+├── device.json                   # Device identity + cloud config (never commit)
+├── device.json.example           # Template for device.json
 ├── zones_per_camera.json         # Zone polygons + entrance lines
+├── env.yml                       # Conda environment definition
 ├── core/
 │   ├── camera_processor.py       # Per-camera inference + analytics loop
 │   ├── reid_manager.py           # Cross-camera Re-ID (OSNet ONNX)
@@ -67,6 +78,8 @@ Jetson-Embedded-code-3/
 │   ├── homographies.json         # Per-camera homography matrices
 │   ├── label.json                # YOLO class labels
 │   └── attribute.json            # Attribute classifier labels
+├── models/                       # ONNX model files (not committed)
+├── scripts/                      # Utility scripts (simulator, setup)
 └── tracker_configs/
     ├── custom_bytetrack.yaml
     └── fast_botsort.yaml
@@ -79,10 +92,15 @@ Jetson-Embedded-code-3/
 - Google Cloud credentials (`gcloud auth application-default login`)
 
 ```bash
+# Conda (recommended on Jetson)
+conda env create -f env.yml
+conda activate nort
+
+# Or pip
 pip install -r requirements.txt
 ```
 
-ONNX Runtime will auto-detect and use TensorRT on Jetson, CUDA on other NVIDIA GPUs, or CPU as fallback. TensorRT engines are cached on first run.
+ONNX Runtime will auto-detect and use TensorRT on Jetson, CUDA on other NVIDIA GPUs, or CPU as fallback. TensorRT engines are cached on first run (`export_tensorrt.py` can pre-bake them).
 
 ## Setup
 
@@ -130,10 +148,24 @@ Use the admin panel at `http://<device-ip>:8080` after first run, or edit `zones
 ### 4. Run
 
 ```bash
+# Multi-threaded (standard)
 python run.py
+
+# All-in-one variant (production devices)
+python master_processing.py
 ```
 
-### 5. Install as systemd service (production)
+### 5. VLM Microservice (optional)
+
+The VLM microservice exposes a local HTTP API for Gemini-based scene descriptions. It runs independently and is polled by the main pipeline:
+
+```bash
+python vlm_microservice.py   # Starts on port 5001
+```
+
+Set `GOOGLE_API_KEY` in your environment before starting.
+
+### 6. Install as systemd service (production)
 
 ```bash
 sudo tee /etc/systemd/system/nort-tracking.service > /dev/null << 'EOF'
@@ -178,7 +210,7 @@ python run.py   # uses video files defined in cameras.json
 
 Or use the lightweight heartbeat + data simulator (no vision pipeline):
 ```bash
-python ../scripts/jetson_simulator.py
+python scripts/jetson_simulator.py
 ```
 
 ## Key Configuration Parameters
@@ -207,3 +239,4 @@ All config from `device.json`. Runtime tuning in `system/config.py`:
 - [ ] `run.py` starts without errors
 - [ ] No `device.json`, `tracking.log`, `*.csv`, `*.db` committed
 - [ ] `APP_VERSION` bumped in `system/config.py` if releasing an OTA update
+- [ ] VLM microservice tested independently if `vlm_microservice.py` was modified
