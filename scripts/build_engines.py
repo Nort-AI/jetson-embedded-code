@@ -9,6 +9,9 @@ copy them between an Orin Nano, Orin NX, and AGX Orin (different SMs).
 Usage:
     python3 scripts/build_engines.py [--fp32] [--workspace 4096]
 
+Note: TRT 10+ (JetPack 6.x) uses --memPoolSize=workspace:NMiB instead of
+--workspace=N. This script detects the TRT version and uses the correct flag.
+
 After this script completes, run.py will automatically prefer .engine files
 over .onnx files. No code changes needed.
 
@@ -75,6 +78,24 @@ def _find_trtexec() -> str:
     )
 
 
+def _workspace_flag(trtexec: str, workspace_mb: int) -> str:
+    """
+    TRT 8/9 used --workspace=N; TRT 10+ replaced it with --memPoolSize=workspace:NMiB.
+    Detect which flag is supported by checking trtexec --help output.
+    """
+    try:
+        result = subprocess.run(
+            [trtexec, "--help"], capture_output=True, text=True, timeout=5
+        )
+        help_text = result.stdout + result.stderr
+        if "--memPoolSize" in help_text:
+            return f"--memPoolSize=workspace:{workspace_mb}MiB"
+    except Exception:
+        pass
+    # Fallback: TRT 8/9 style
+    return f"--workspace={workspace_mb}"
+
+
 def engine_path_for(onnx_path: str) -> str:
     """Return the .engine path next to the .onnx file."""
     base, _ = os.path.splitext(onnx_path)
@@ -113,7 +134,7 @@ def build_engine(
         trtexec,
         f"--onnx={onnx_path}",
         f"--saveEngine={out_path}",
-        f"--workspace={workspace_mb}",
+        _workspace_flag(trtexec, workspace_mb),
         "--verbose",
     ]
     if fp16:
