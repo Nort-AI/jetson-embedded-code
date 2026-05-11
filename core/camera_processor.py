@@ -360,9 +360,48 @@ class CameraProcessor:
                     self.camera_id
                 ])
 
+    # ── GStreamer / VideoCapture factory ─────────────────────────────────────
+    @staticmethod
+    def _open_capture(video_source: str, use_gstreamer: bool = True):
+        """
+        Open a VideoCapture, preferring hardware-accelerated GStreamer on Jetson.
+
+        For RTSP streams on Jetson: nvv4l2decoder offloads H.264/H.265 decode
+        to the dedicated NVDEC engine — frees ~1 CPU core per camera and drops
+        decode latency by 40–80 ms vs. software FFmpeg decode.
+
+        Falls back to the standard OpenCV backend silently if GStreamer is not
+        available (e.g. dev machines) or if the pipeline fails to open.
+        """
+        import platform
+        _src = str(video_source)
+        _is_rtsp = _src.startswith("rtsp://") or _src.startswith("rtsps://")
+        _is_jetson = (platform.machine() in ("aarch64",) and platform.system() == "Linux")
+
+        if use_gstreamer and _is_rtsp and _is_jetson:
+            # Hardware-accelerated H.264 decode via Jetson NVDEC.
+            # nvv4l2decoder → nvvidconv → appsink
+            gst_pipeline = (
+                f"rtspsrc location={_src} latency=100 ! "
+                "rtph264depay ! h264parse ! "
+                "nvv4l2decoder enable-max-performance=1 ! "
+                "nvvidconv ! "
+                "video/x-raw,format=BGRx ! "
+                "videoconvert ! "
+                "video/x-raw,format=BGR ! "
+                "appsink drop=1 max-buffers=1 sync=false"
+            )
+            cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
+            if cap.isOpened():
+                return cap
+            # GStreamer pipeline failed — fall through to default backend
+
+        return cv2.VideoCapture(video_source)
+
     def run(self):
-        cap = cv2.VideoCapture(self.video_source)
+        cap = self._open_capture(self.video_source)
         if not cap.isOpened():
+            cap.release()  # C2-fix: always release to avoid FD leak on failure
             self.logger.error(f"Failed to open video source: {self.video_source}")
             self.barrier.abort()
             return
@@ -410,8 +449,8 @@ class CameraProcessor:
                         return
                     time.sleep(0.5)
 
-                # Attempt to reopen the stream
-                cap = cv2.VideoCapture(self.video_source)
+                # Attempt to reopen the stream (re-use hardware pipeline)
+                cap = self._open_capture(self.video_source)
                 if cap.isOpened():
                     self.logger.info(
                         f"Reconnected to {self.video_source} "
@@ -427,6 +466,7 @@ class CameraProcessor:
                     except Exception:
                         pass  # safe to ignore — tracker resets on its own
                 else:
+                    cap.release()  # C2-reconnect-fix: release failed cap to avoid FD leak
                     self.logger.error(f"Reconnect failed. Will retry in {min(2 ** (_consecutive_failures + 1), _MAX_RECONNECT_WAIT)}s...")
                 continue
 
@@ -485,17 +525,36 @@ class CameraProcessor:
 
             import supervision as sv
 
-            # YOLOX ONNX detection on the CLEAN frame (no drawings)
-            detections_array = self.yolo.detect(frame)
-            
-            if len(detections_array) > 0:
-                xyxy = detections_array[:, :4]
-                confidence = detections_array[:, 4]
-                class_id = detections_array[:, 5].astype(int)
-                detections = sv.Detections(xyxy=xyxy, confidence=confidence, class_id=class_id)
+            # ── Inference throttle: run YOLOX every N frames ──────────────────
+            # On skipped frames ByteTrack continues via Kalman prediction —
+            # track positions stay valid and all downstream logic still runs.
+            _detect_every = getattr(config, 'DETECT_EVERY_N_FRAMES', 1)
+            _run_detection = (self.frame_count % max(1, _detect_every) == 0)
+
+            if _run_detection:
+                # YOLOX ONNX detection on the CLEAN frame (no drawings)
+                detections_array = self.yolo.detect(frame)
+
+                # M5-fix: guard against unexpected model output shape before slicing
+                _arr_ok = (
+                    len(detections_array) > 0
+                    and hasattr(detections_array, 'ndim')
+                    and detections_array.ndim == 2
+                    and detections_array.shape[1] >= 6
+                )
+                if _arr_ok:
+                    xyxy = detections_array[:, :4]
+                    confidence = detections_array[:, 4]
+                    class_id = detections_array[:, 5].astype(int)
+                    detections = sv.Detections(xyxy=xyxy, confidence=confidence, class_id=class_id)
+                else:
+                    detections_array = []
+                    detections = sv.Detections.empty()
             else:
+                # Skipped frame: pass empty detections so ByteTrack predicts forward
+                detections_array = []
                 detections = sv.Detections.empty()
-                
+
             # Update independent supervision tracker
             tracked_detections = self.tracker.update_with_detections(detections)
             
@@ -637,6 +696,15 @@ class CameraProcessor:
                             attrs.setdefault('gender', 'Unknown')
                             attrs.setdefault('age_category', 'adult')
                             attrs.setdefault('attributes', {})
+                        finally:
+                            # C1-fix: free any GPU tensors created during attr inference
+                            # to prevent VRAM accumulation across frames (OOM after ~8h)
+                            try:
+                                import torch as _torch
+                                if _torch.cuda.is_available():
+                                    _torch.cuda.empty_cache()
+                            except Exception:
+                                pass
 
                     gender       = attrs.get("gender") or "Unknown"
                     age_category = attrs.get("age_category") or "adult"
@@ -979,15 +1047,17 @@ class CameraProcessor:
                 ]
                 self._vlm_session.tick(_active_gids)
 
-            # Clean up old tracking data
-            if self.frame_count % 100 == 0:
+            # M6-fix: clean up old tracking data more aggressively to prevent
+            # unbounded dict growth on busy retail scenes (many unique people/day)
+            if self.frame_count % 30 == 0 or len(self.track_attributes) > 500:
                 self._cleanup_old_tracks()
 
             # ── Privacy Mode / Face Blurring ─────────────────────────────────
             if time.time() - self._last_config_check > 5.0:
                 try:
                     import json
-                    with open("device.json", "r") as f:
+                    _dev_json = os.path.join(BASE_DIR, "device.json")
+                    with open(_dev_json, "r") as f:
                         cfg = json.load(f)
                         self._privacy_mode = cfg.get("ui_settings", {}).get("privacy_mode", "disabled")
                         # Handle old boolean fallback
@@ -1208,7 +1278,7 @@ class CameraProcessor:
             blob = bucket.blob(destination)
             
             self.logger.debug(f"Uploading snapshot: {local_filename} -> gs://{bucket_name}/{destination}")
-            blob.upload_from_filename(local_filename)
+            blob.upload_from_filename(local_filename, timeout=15)  # M4-fix: avoid blocking camera thread
             
             if os.path.exists(local_filename):
                 os.remove(local_filename)

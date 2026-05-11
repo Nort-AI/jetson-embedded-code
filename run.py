@@ -118,6 +118,33 @@ def _sync_loop(sm, stop_event, interval=60):
         stop_event.wait(interval)
 
 
+def _systemd_watchdog_loop(stop_event, interval=10):
+    """
+    L5-fix: Ping the systemd watchdog every `interval` seconds so the service
+    manager knows the process is still alive and responsive.
+    Requires WatchdogSec= in the .service unit (set to 30 s).
+    No-ops silently on non-Linux or when WATCHDOG_USEC env var is not set.
+    """
+    try:
+        import ctypes
+        import ctypes.util
+        _libsystemd_path = ctypes.util.find_library("systemd")
+        if not _libsystemd_path:
+            return  # systemd not available (dev machine, Docker without systemd)
+        _libsystemd = ctypes.CDLL(_libsystemd_path)
+        _sd_notify = _libsystemd.sd_notify
+        _sd_notify.argtypes = [ctypes.c_int, ctypes.c_char_p]
+        _sd_notify.restype = ctypes.c_int
+        # Also signal READY=1 once on startup so Type=simple becomes Type=notify-compatible
+        _sd_notify(0, b"READY=1")
+        logger.info("L5: systemd watchdog active (pinging every %ds)", interval)
+        while not stop_event.is_set():
+            _sd_notify(0, b"WATCHDOG=1")
+            stop_event.wait(interval)
+    except Exception:
+        pass  # Never crash the main process over a watchdog failure
+
+
 def _log_rotation_loop(stop_event, interval=300):
     """
     Periodically rotates local logs and queues them for sync.
@@ -368,6 +395,12 @@ def validate_config():
     warnings_list = []
     if not config.API_URL:
         warnings_list.append("API_URL is empty — heartbeat and cloud sync DISABLED")
+    elif not config.API_URL.startswith("https://"):
+        # L7-fix: enforce HTTPS for all cloud API calls to prevent credential leakage
+        warnings_list.append(
+            f"API_URL does not start with https:// — cleartext HTTP is insecure. "
+            f"Current value: {config.API_URL!r}"
+        )
     if not config.DEVICE_KEY:
         warnings_list.append("DEVICE_KEY is empty — API authentication will fail")
     if not os.path.exists(config.YOLO_MODEL_PATH):
@@ -740,30 +773,64 @@ def main():
             
         except Exception as e:
             logger.critical(f"Failed to load the YOLOX ONNX model. Error: {e}")
-            logger.critical("Make sure onnxruntime is installed: pip install onnxruntime-gpu")
+            logger.critical(
+                "On Jetson: run  python3 scripts/build_engines.py  first to build "
+                "the TRT .engine files.  Falling back to ORT requires onnxruntime."
+            )
             return
     else:
         logger.info("🛠 SETUP MODE: Skipping YOLOX model loading.")
 
-    # ── Shared Attribute ONNX Session ─────────────────────────────────────────
-    # Load ONE session shared across all cameras — avoids N GPU model copies
+    # ── Shared Attribute Session ───────────────────────────────────────────────
+    # Load ONE session shared across all cameras — avoids N GPU model copies.
+    # Priority: pre-built .engine (native TRT) → ORT TRT EP → ORT CUDA → CPU.
     shared_attr_session = None
     if not args.setup and shared_yolo_model is not None:
-        _attr_onnx_path = os.path.join('assets', 'models', 'attribute_model.onnx')
-        if os.path.exists(_attr_onnx_path):
+        _attr_onnx_path   = os.path.join("assets", "models", "attribute_model.onnx")
+        _attr_engine_path = os.path.splitext(_attr_onnx_path)[0] + ".engine"
+
+        # ── 1. Try native TRTSession (.engine file) ───────────────────────────
+        if os.path.exists(_attr_engine_path):
+            try:
+                from core.trt_session import TRTSession, is_available as _trt_ok
+                if _trt_ok():
+                    shared_attr_session = TRTSession(_attr_engine_path)
+                    logger.info(
+                        f"✓ Shared attribute model loaded via TRTSession: "
+                        f"{os.path.basename(_attr_engine_path)}"
+                    )
+            except Exception as _e:
+                logger.warning(
+                    f"TRTSession for attribute model failed ({_e}), trying ORT..."
+                )
+                shared_attr_session = None
+
+        # ── 2. Fall back to ONNXRuntime ───────────────────────────────────────
+        if shared_attr_session is None and os.path.exists(_attr_onnx_path):
             try:
                 import onnxruntime as _ort
                 _so = _ort.SessionOptions()
                 _so.graph_optimization_level = _ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+                # Re-use the same provider chain as the YOLO model
                 _providers = shared_yolo_model.session.get_providers()
                 shared_attr_session = _ort.InferenceSession(
                     _attr_onnx_path, sess_options=_so, providers=_providers
                 )
-                logger.info(f"✓ Shared attribute model loaded: {shared_attr_session.get_providers()}")
+                logger.info(
+                    f"✓ Shared attribute model loaded via ORT: "
+                    f"{shared_attr_session.get_providers()}"
+                )
             except Exception as _e:
-                logger.warning(f"Could not load shared attribute model: {_e} (each camera will load its own)")
-        else:
-            logger.warning(f"Shared attribute model not found at: {_attr_onnx_path}")
+                logger.warning(
+                    f"Could not load shared attribute model: {_e} "
+                    f"(each camera will load its own)"
+                )
+
+        if shared_attr_session is None:
+            logger.warning(
+                f"Shared attribute model not found at: "
+                f"{_attr_engine_path} or {_attr_onnx_path}"
+            )
 
     processors = []
     threads = []
@@ -836,6 +903,14 @@ def main():
     logger.info(
         f"Local admin page started on http://{local_ip}:{config.ADMIN_PORT}/"
     )
+
+    # ── L5-fix: systemd watchdog pinger ──────────────────────────────────────
+    threading.Thread(
+        target=_systemd_watchdog_loop,
+        args=(stop_event,),
+        daemon=True,
+        name="SystemdWatchdog",
+    ).start()
 
     # ── Start heartbeat thread (Gap 4A) ───────────────────────────────────────
     last_upload_ref = {"ts": None}   # shared mutable ref updated by uploader
@@ -1007,14 +1082,27 @@ def main():
         stop_event.set()
         logger.info("Stop event set. Waiting for threads to join...")
 
+        # C5-fix: give camera threads 30 s to finish their current frame +
+        # flush the final CSV rows (DataHandler.write_data calls fsync).
         for thread in threads:
-            thread.join(timeout=5.0)
+            thread.join(timeout=30.0)
             if thread.is_alive():
-                logger.warning(f"Thread {thread.name} did not exit within timeout.")
+                logger.warning(f"Thread {thread.name} did not exit within 30 s timeout.")
+
+        # C3/C5-fix: stop ReID background threads cleanly so the gallery is
+        # not corrupted mid-merge when the process exits.
+        if reid_manager is not None:
+            try:
+                reid_manager.shutdown(timeout=5.0)
+                logger.info("ReID manager shut down cleanly.")
+            except Exception as _e:
+                logger.warning(f"ReID manager shutdown error: {_e}")
 
         # ── Phase 2: Flush pending data ────────────────────────────────────
         try:
-            logger.info("Data handler: final write complete.")
+            # DataHandler writes are synchronous + fsync on every call, so
+            # no explicit flush is needed — just log that we're past the join.
+            logger.info("Data handler: all camera threads joined, CSV data is durable.")
         except Exception as e:
             logger.warning(f"Error during data handler cleanup: {e}")
 

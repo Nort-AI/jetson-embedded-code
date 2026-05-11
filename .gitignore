@@ -26,6 +26,11 @@ reid_gallery/
 device.json
 .env
 .env.local
+# Auto-generated TLS certs (never commit private keys)
+admin/admin_cert.pem
+admin/admin_key.pem
+# Rate-limiter persistent store (runtime data)
+admin/rate_limit.db
 
 # IDE & agent worktrees
 .claude/
@@ -33,3 +38,12 @@ device.json
 .vscode/
 *.swp
 *~
+
+# Runtime data (PII — never commit)
+spatial_log.db
+sync_queue.db
+tracking.log
+tracking_log.csv
+pending_uploads/
+nort_data/
+*.db

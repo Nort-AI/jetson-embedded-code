@@ -2,7 +2,6 @@
 import json
 import os
 import sys
-import torch
 
 APP_VERSION = "0.1.3"
 
@@ -81,7 +80,17 @@ ADMIN_PORT = _d.get("admin_port", 8080)
 # ── General Settings ──────────────────────────────────────────────────────────
 LOG_LEVEL  = "INFO"
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-DEVICE     = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+# H2-fix: lazy torch import so the system boots even when torch is not yet
+# installed (common on a fresh Jetson before the pip wheel is deployed).
+def _get_torch_device():
+    try:
+        import torch as _torch
+        return _torch.device('cuda:0' if _torch.cuda.is_available() else 'cpu')
+    except ImportError:
+        return 'cpu'
+
+DEVICE = _get_torch_device()
 
 # ── YOLO & RE-ID SETTINGS ──────────────────────────────────────────────────
 # All model paths are absolute so the process works from any working directory.
@@ -137,12 +146,24 @@ REID_DEVICE               = ""   # "" = auto
 # 30 frames @ 30 fps = every 1 second. Keeps the gallery fresh as appearance changes.
 REID_UPDATE_INTERVAL_FRAMES = 30
 
+# ── Inference Throttle ────────────────────────────────────────────────────────
+# Run YOLOX detection every N frames; ByteTrack coasts via Kalman between them.
+# 1  = run every frame (original behaviour, highest accuracy)
+# 2  = detect every other frame (~2× throughput, undetectable for retail analytics)
+# 3  = good for 4+ cameras on Orin Nano; ByteTrack handles occlusion gaps well
+# Set in device.json as "detect_every_n_frames": 2 to tune per deployment.
+DETECT_EVERY_N_FRAMES = _d.get("detect_every_n_frames", 1)
+
 # ── Data Handling ─────────────────────────────────────────────────────────────
 CSV_FILENAME = "tracking_log.csv"
 
-# YOLO26 Performance Optimizations (RTX 3050)
-YOLO_IMGSZ = 1280  # Higher resolution = FAR better detection of distant/small people
-YOLO_HALF = True   # Use FP16 for faster inference (GPU only)
+# YOLO26 Performance Optimizations
+# NOTE: 1280 was a dev/RTX setting. On Jetson Orin Nano, 640 is the
+# sweet spot — TRT FP16 at 640 gives 2-3x the FPS vs 1280 with no
+# meaningful accuracy loss at typical retail camera distances.
+# Use 416 for 4+ camera configs or Orin Nano 8 GB constrained deployments.
+YOLO_IMGSZ = 640   # Jetson-tuned: 640 matches the ONNX model's native input
+YOLO_HALF = True   # FP16 via TRT (handled by TensorrtExecutionProvider)
 
 # Additional GPU optimizations
 YOLO_MAX_DET = 300            # Allow tracking up to 300 people per frame
@@ -218,7 +239,7 @@ SHOPLIFTING_MODEL_PATH = os.path.join(_BASE_DIR, "models", "shoplifting_wights.p
 ENABLE_SHOPLIFTING_DETECTION = False
 SHOPLIFTING_DETECTION_INTERVAL = 5  # Run shoplifting detection every N frames
 
-DRAW_ENTRANCE_DEBUG = True  # Set to False in production
+DRAW_ENTRANCE_DEBUG = os.getenv("DRAW_ENTRANCE_DEBUG", "false").lower() == "true"
 ENTRANCE_DETECTION_SENSITIVITY = 1e-6  # For parallel line detection
 
 # --- Age Detection Settings ---

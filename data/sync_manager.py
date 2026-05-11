@@ -31,6 +31,9 @@ class SyncManager:
         except Exception as e:
             logger.warning(f"GCS Client init failed (safe if simulator/local): {e}")
 
+    # H8-fix: stop retrying permanently broken files after this many attempts
+    MAX_UPLOAD_ATTEMPTS = 10
+
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
@@ -41,6 +44,17 @@ class SyncManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     attempts INTEGER DEFAULT 0,
                     last_attempt TIMESTAMP
+                )
+            """)
+            # H8-fix: dead-letter table for files that exceeded MAX_UPLOAD_ATTEMPTS
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS upload_dead_letter (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_path TEXT,
+                    destination_blob TEXT,
+                    created_at TIMESTAMP,
+                    attempts INTEGER,
+                    failed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
@@ -83,20 +97,38 @@ class SyncManager:
                     continue
 
                 success = self._upload_file(file_path, dest_blob)
-                
+
                 if success:
                     os.remove(file_path)
                     conn.execute("DELETE FROM upload_queue WHERE id = ?", (row_id,))
                     logger.debug(f"Successfully synced: {dest_blob}")
                     # Keep processing next
                 else:
-                    # Increment attempts and stop for this cycle (avoid clogging)
-                    conn.execute(
-                        "UPDATE upload_queue SET attempts = attempts + 1, last_attempt = ? WHERE id = ?",
-                        (datetime.now().isoformat(), row_id)
-                    )
-                    logger.warning(f"Sync failed for {file_path}. Will retry later.")
-                    break 
+                    new_attempts = attempts + 1
+                    if new_attempts >= self.MAX_UPLOAD_ATTEMPTS:
+                        # H8-fix: move to dead-letter after MAX_UPLOAD_ATTEMPTS failures
+                        # so the queue doesn't grow unbounded and burn CPU forever
+                        conn.execute(
+                            "INSERT INTO upload_dead_letter "
+                            "(file_path, destination_blob, created_at, attempts) VALUES (?, ?, ?, ?)",
+                            (file_path, dest_blob,
+                             datetime.now().isoformat(), new_attempts)
+                        )
+                        conn.execute("DELETE FROM upload_queue WHERE id = ?", (row_id,))
+                        logger.error(
+                            f"Upload permanently failed after {new_attempts} attempts: "
+                            f"{file_path} — moved to dead-letter queue."
+                        )
+                    else:
+                        conn.execute(
+                            "UPDATE upload_queue SET attempts = attempts + 1, last_attempt = ? WHERE id = ?",
+                            (datetime.now().isoformat(), row_id)
+                        )
+                        logger.warning(
+                            f"Sync failed for {file_path} "
+                            f"(attempt {new_attempts}/{self.MAX_UPLOAD_ATTEMPTS}). Will retry later."
+                        )
+                    break
             
             conn.commit()
 

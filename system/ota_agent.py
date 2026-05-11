@@ -286,6 +286,25 @@ def _handle_ota_upgrade(command_id, payload):
 
         logger.info("  ✓ New code extracted and preserved files restored")
 
+        # M8-fix: post-extract validation — make sure the new code at least imports
+        # cleanly before we commit to the restart.  A bad update (syntax error, missing
+        # dependency) would otherwise brick the device until a manual SSH intervention.
+        logger.info("  Validating new code (dry-run import check)...")
+        try:
+            validate_result = subprocess.run(
+                [sys.executable, "-c", "import run"],
+                cwd=INSTALL_DIR,
+                timeout=30,
+                capture_output=True,
+                text=True
+            )
+            if validate_result.returncode != 0:
+                err_detail = (validate_result.stderr or validate_result.stdout or "").strip()
+                raise OTAError(f"Post-extract import check failed: {err_detail[:500]}")
+            logger.info("  ✓ Import check passed")
+        except subprocess.TimeoutExpired:
+            raise OTAError("Post-extract import check timed out (30 s) — aborting update")
+
         # ── SUCCESS ───────────────────────────────────────────────────────────
         logger.info(f"=== OTA UPGRADE COMPLETE: v{target_version} ===")
         _report_result(command_id, "COMPLETED", None)

@@ -63,7 +63,50 @@ _dismissed_notifications: set = set()
 OCCUPANCY_LOG_PATH = os.path.join(os.path.dirname(__file__), "occupancy_log.csv")
 
 app = Flask(__name__)
-app.secret_key = os.urandom(16)
+
+# Derive a stable secret key from the device identity so sessions survive
+# process restarts (OTA updates, systemd restarts) without forcing re-login.
+# Falls back to a random key if device.json is not yet available.
+try:
+    import hashlib as _hashlib, json as _json
+    _dj = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "device.json")
+    with open(_dj) as _f:
+        _did = _json.load(_f).get("device_id", "")
+    app.secret_key = _hashlib.sha256(f"nort-admin-{_did}".encode()).digest()
+except Exception:
+    app.secret_key = os.urandom(16)  # fallback: sessions reset on restart
+
+# ── M7-fix: CSRF / same-origin protection ────────────────────────────────────
+# Reject state-changing requests (POST/PUT/DELETE/PATCH) whose Origin or Referer
+# header does not match the server's own host.  This defeats CSRF attacks from
+# malicious web pages on the same LAN without requiring flask-wtf or any new
+# dependency.  Requests from curl/scripts that omit both headers are allowed
+# (same as a browser on the same machine); browsers always send at least one.
+_CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+@app.before_request
+def _csrf_origin_check():
+    if request.method in _CSRF_SAFE_METHODS:
+        return  # read-only — no state to protect
+    # Determine the server's own authority (host:port)
+    server_host = request.host  # e.g. "192.168.1.10:8080"
+    for header in ("Origin", "Referer"):
+        value = request.headers.get(header)
+        if not value:
+            continue
+        try:
+            parsed = urlparse(value)
+            request_host = parsed.netloc or parsed.path  # Origin has netloc; bare Referer may not
+            if request_host and request_host != server_host:
+                logger.warning(
+                    f"CSRF check blocked {request.method} {request.path} — "
+                    f"{header}: {value!r} does not match server host {server_host!r}"
+                )
+                return jsonify({"error": "CSRF check failed"}), 403
+        except Exception:
+            pass  # malformed header — let it through (conservative)
+    return  # all headers present matched, or no headers present (CLI/curl)
+
 
 # ── NumPy-aware JSON encoder ──────────────────────────────────────────────────
 # NumPy scalar types (int64, float32, …) are not serializable by stdlib json.
@@ -168,27 +211,58 @@ def set_lang(lang):
 
 class _RateLimiter:
     """
-    Lightweight IP-based rate limiter (no external deps).
+    L2-fix: Lightweight IP-based rate limiter with SQLite-backed persistence.
+    Lockouts survive process restarts (important on a device that auto-restarts
+    after OTA updates — an attacker can't bypass lockout by triggering a restart).
+
     Tracks failed auth attempts per IP. After `max_attempts` failures
     within `window_seconds`, the IP is blocked for `lockout_seconds`.
     """
+    _DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rate_limit.db")
+
     def __init__(self, max_attempts=5, window_seconds=300, lockout_seconds=900):
         self.max_attempts = max_attempts
         self.window = window_seconds
         self.lockout = lockout_seconds
-        self._failures = {}   # ip → deque of timestamps
-        self._lockouts = {}   # ip → lockout_until timestamp
+        self._failures = {}   # ip → deque of wall-clock timestamps (epoch)
+        self._init_db()
+
+    def _init_db(self):
+        import sqlite3 as _sqlite3
+        try:
+            with _sqlite3.connect(self._DB_PATH) as _conn:
+                _conn.execute("""
+                    CREATE TABLE IF NOT EXISTS lockouts (
+                        ip TEXT PRIMARY KEY,
+                        until_epoch REAL NOT NULL
+                    )
+                """)
+        except Exception:
+            pass  # non-fatal — fall back to in-memory only
+
+    def _now_epoch(self):
+        return time.time()
 
     def is_locked(self, ip):
-        until = self._lockouts.get(ip, 0)
-        if time.monotonic() < until:
-            return True
-        if until:
-            del self._lockouts[ip]
+        import sqlite3 as _sqlite3
+        now = self._now_epoch()
+        try:
+            with _sqlite3.connect(self._DB_PATH) as _conn:
+                row = _conn.execute(
+                    "SELECT until_epoch FROM lockouts WHERE ip = ?", (ip,)
+                ).fetchone()
+                if row:
+                    if now < row[0]:
+                        return True
+                    # Expired — remove it
+                    _conn.execute("DELETE FROM lockouts WHERE ip = ?", (ip,))
+        except Exception:
+            pass
         return False
 
     def record_failure(self, ip):
-        now = time.monotonic()
+        import sqlite3 as _sqlite3
+        now = self._now_epoch()
         if ip not in self._failures:
             self._failures[ip] = deque()
         q = self._failures[ip]
@@ -197,12 +271,26 @@ class _RateLimiter:
         while q and q[0] < now - self.window:
             q.popleft()
         if len(q) >= self.max_attempts:
-            self._lockouts[ip] = now + self.lockout
+            # Persist lockout so it survives restarts
+            until = now + self.lockout
+            try:
+                with _sqlite3.connect(self._DB_PATH) as _conn:
+                    _conn.execute(
+                        "INSERT OR REPLACE INTO lockouts (ip, until_epoch) VALUES (?, ?)",
+                        (ip, until)
+                    )
+            except Exception:
+                pass
             self._failures.pop(ip, None)
 
     def record_success(self, ip):
+        import sqlite3 as _sqlite3
         self._failures.pop(ip, None)
-        self._lockouts.pop(ip, None)
+        try:
+            with _sqlite3.connect(self._DB_PATH) as _conn:
+                _conn.execute("DELETE FROM lockouts WHERE ip = ?", (ip,))
+        except Exception:
+            pass
 
 
 _rate_limiter = _RateLimiter(max_attempts=5, window_seconds=300, lockout_seconds=900)
@@ -1266,6 +1354,11 @@ def api_config_zones(camera_id):
                 zones=data,
                 camera_type="standard_camera"  # Keep standard by default unless explicitly changed
             )
+            # H6-fix: missing return caused Flask to return None → HTTP 500
+            if success:
+                return jsonify({"status": "ok", "camera_id": camera_id, "zones_saved": len(data)}), 200
+            else:
+                return jsonify({"error": "Failed to save zones to disk"}), 500
 
         except Exception as e:
             return jsonify({"error": str(e)}), 400
@@ -4351,6 +4444,80 @@ def logout():
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
+def _ensure_self_signed_cert() -> tuple:
+    """
+    H5-fix: Generate a self-signed TLS certificate on first run so the admin
+    panel is served over HTTPS instead of cleartext HTTP.
+
+    Returns (cert_path, key_path).  Both files live next to local_admin.py
+    so they survive process restarts but are never committed (add *.pem to
+    .gitignore).
+    """
+    _admin_dir = os.path.dirname(os.path.abspath(__file__))
+    cert_path = os.path.join(_admin_dir, "admin_cert.pem")
+    key_path  = os.path.join(_admin_dir, "admin_key.pem")
+
+    if os.path.exists(cert_path) and os.path.exists(key_path):
+        return cert_path, key_path
+
+    # Try cryptography library first (no external process needed)
+    try:
+        import datetime as _dt
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        _key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        _name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, u"nort-jetson-admin")])
+        _now = _dt.datetime.utcnow()
+        _cert = (
+            x509.CertificateBuilder()
+            .subject_name(_name)
+            .issuer_name(_name)
+            .public_key(_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(_now)
+            .not_valid_after(_now + _dt.timedelta(days=3650))
+            .add_extension(x509.SubjectAlternativeName([
+                x509.DNSName(u"localhost"),
+                x509.IPAddress(__import__('ipaddress').IPv4Address('127.0.0.1')),
+            ]), critical=False)
+            .sign(_key, hashes.SHA256())
+        )
+        with open(key_path, "wb") as _f:
+            _f.write(_key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.TraditionalOpenSSL,
+                serialization.NoEncryption(),
+            ))
+        with open(cert_path, "wb") as _f:
+            _f.write(_cert.public_bytes(serialization.Encoding.PEM))
+        logger.info("H5: Generated self-signed TLS cert via cryptography library.")
+        return cert_path, key_path
+    except Exception as _exc:
+        # Catch both ImportError and any runtime failure (PermissionError, crypto error…)
+        if not isinstance(_exc, ImportError):
+            logger.warning(f"H5: cryptography cert generation failed: {_exc}")
+
+    # Fallback: use openssl subprocess
+    try:
+        result = subprocess.run([
+            "openssl", "req", "-x509", "-newkey", "rsa:2048",
+            "-keyout", key_path, "-out", cert_path,
+            "-days", "3650", "-nodes",
+            "-subj", "/CN=nort-jetson-admin",
+        ], capture_output=True, timeout=30)
+        if result.returncode == 0:
+            logger.info("H5: Generated self-signed TLS cert via openssl.")
+            return cert_path, key_path
+        logger.warning(f"H5: openssl cert generation failed: {result.stderr.decode()}")
+    except Exception as _exc:
+        logger.warning(f"H5: Could not generate TLS cert: {_exc}")
+
+    return None, None
+
+
 def start_local_admin(port: int = 8080):
     """
     Start the Flask admin server as a daemon thread from main.py:
@@ -4359,11 +4526,25 @@ def start_local_admin(port: int = 8080):
         local_admin.DEVICE_ID = config.DEVICE_ID
         ...
         threading.Thread(target=local_admin.start_local_admin, daemon=True).start()
+
+    The panel is served over HTTPS (self-signed cert auto-generated on first run).
+    Accept the browser security warning once; subsequent visits are cached.
     """
     from data import spatial_logger as _sl
     _sl.init_db()
 
     import logging as _logging
     _logging.getLogger("werkzeug").setLevel(_logging.WARNING)
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False, threaded=True)
+
+    # H5-fix: use HTTPS so credentials and the live video stream are not sent
+    # in cleartext over the store LAN.
+    cert_path, key_path = _ensure_self_signed_cert()
+    ssl_context = (cert_path, key_path) if (cert_path and key_path) else None
+    if ssl_context:
+        logger.info(f"Admin panel starting on https://0.0.0.0:{port}/ (self-signed TLS)")
+    else:
+        logger.warning("Admin panel starting on HTTP (TLS cert unavailable — install cryptography or openssl)")
+
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False,
+            threaded=True, ssl_context=ssl_context)
 

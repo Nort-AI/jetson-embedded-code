@@ -1,0 +1,44 @@
+[Unit]
+Description=Nort Edge AI Retail Analytics
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nort
+WorkingDirectory=/opt/nort
+ExecStartPre=/usr/bin/nvpmodel -m 0
+ExecStartPre=/usr/bin/jetson_clocks
+ExecStart=/usr/bin/python3 /opt/nort/run.py --headless --no-gallery
+Restart=on-failure
+RestartSec=10
+
+# Real-time priority — keeps inference threads from being preempted
+Nice=-10
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=50
+
+# Memory limits — prevents OOM from killing the process silently
+# L4-fix: on Orin Nano 8 GB, reserve 2 GB headroom for kernel/GPU; add a soft
+# MemoryHigh warning threshold so cgroups throttle before triggering OOM killer.
+MemoryMax=6G
+MemoryHigh=5G
+OOMScoreAdjust=-500
+
+# L5-fix: enable systemd Watchdog so the service is restarted if the main
+# thread hangs (e.g. deadlock, unresponsive RTSP stream).  The process must
+# call sd_notify("WATCHDOG=1") at least every WatchdogSec/2 = 15 s.
+WatchdogSec=30
+NotifyAccess=main
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+Environment=ORT_TENSORRT_ENGINE_CACHE_ENABLE=1
+
+# Log to journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nort
+
+[Install]
+WantedBy=multi-user.target

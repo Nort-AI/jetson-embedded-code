@@ -143,9 +143,15 @@ class ReIDManager:
         self._max_emb = max_embeddings_per_entry
         self._min_crop = min_crop_size
 
+        # LOW-fix: honour the `device` parameter — "cpu" forces CPU-only inference;
+        # None or "" means auto-detect (prefer GPU).  The value is forwarded to
+        # _load_model() via self._forced_device so it can skip GPU EP selection.
+        _dev_str = str(device) if device else ""
+        self._forced_cpu = _dev_str.lower() in ("cpu", "cpu:0")
+
         # Check CUDA availability without importing torch
         self._has_cuda = False
-        if _HAS_ORT:
+        if _HAS_ORT and not self._forced_cpu:
             self._has_cuda = 'CUDAExecutionProvider' in ort.get_available_providers()
 
         self._lock = threading.Lock()
@@ -159,7 +165,10 @@ class ReIDManager:
         self._extractor = None
         self._load_model()
 
-        # Background merge thread — deduplicates every 5 s
+        # C3-fix: shutdown event so background threads exit cleanly on SIGTERM
+        self._stop = threading.Event()
+
+        # Background merge thread — deduplicates every 2 s
         self._merge_thread = threading.Thread(
             target=self._merge_loop, daemon=True, name="ReID-Merge"
         )
@@ -171,79 +180,134 @@ class ReIDManager:
         )
         self._sanitize_thread.start()
 
+    def shutdown(self, timeout: float = 5.0):
+        """Signal background threads to stop and wait for them to exit cleanly."""
+        self._stop.set()
+        self._merge_thread.join(timeout=timeout)
+        self._sanitize_thread.join(timeout=timeout)
+        if self._merge_thread.is_alive():
+            logger.warning("[ReID] Merge thread did not exit within timeout")
+        if self._sanitize_thread.is_alive():
+            logger.warning("[ReID] Sanitize thread did not exit within timeout")
+
     # ── Model loading ─────────────────────────────────────────────────────────
 
     def _load_model(self):
-        """Load OSNet-AIN as an ONNX model with TensorRT/CUDA/CPU auto-selection."""
+        """
+        Load OSNet-AIN for cross-camera Re-ID.
+
+        Loading priority (Jetson-first):
+          1. Pre-built .engine file → native TRTSession (no onnxruntime-gpu needed)
+          2. ORT TensorrtExecutionProvider → auto-engine-cache
+          3. ORT CUDAExecutionProvider
+          4. ORT CPUExecutionProvider (last resort — slow)
+
+        On Jetson aarch64, onnxruntime-gpu does NOT ship as a pip wheel.
+        Run `python3 scripts/build_engines.py` once to build osnet_ain_x1_0.engine
+        so the TRT-first path is used.
+        """
+        # ── Candidate model paths (ONNX + engine) ────────────────────────────
+        _model_dirs = [
+            os.path.join("assets", "models"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "models"),
+        ]
+
+        onnx_path   = None
+        engine_path = None
+        for d in _model_dirs:
+            _e = os.path.join(d, "osnet_ain_x1_0.engine")
+            _o = os.path.join(d, "osnet_ain_x1_0.onnx")
+            if os.path.exists(_e):
+                engine_path = _e
+            if os.path.exists(_o):
+                onnx_path = _o
+            if engine_path:
+                break
+
+        # ── 1. Try native TRTSession (.engine) ────────────────────────────────
+        if engine_path and not self._forced_cpu:
+            try:
+                from core.trt_session import TRTSession, is_available as _trt_ok
+                if _trt_ok():
+                    self._extractor = TRTSession(engine_path)
+                    logger.info(
+                        f"[ReID] ✓ TRT native session: {os.path.basename(engine_path)}"
+                    )
+                    return
+            except Exception as _e:
+                logger.warning(
+                    f"[ReID] TRTSession failed ({_e}), falling back to ORT"
+                )
+
+        # ── 2. Fall back to ORT ───────────────────────────────────────────────
         if not _HAS_ORT:
             logger.warning(
-                "[ReID] onnxruntime not installed - Re-ID disabled. "
-                "Install with: pip install onnxruntime-gpu"
+                "[ReID] onnxruntime not installed and no .engine file found — "
+                "Re-ID disabled. Run: python3 scripts/build_engines.py"
             )
             self._extractor = None
             return
 
-        # Search for the ONNX model
-        possible_paths = [
-            os.path.join("assets", "models", "osnet_ain_x1_0.onnx"),
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "models", "osnet_ain_x1_0.onnx"),
-        ]
-        model_path = None
-        for p in possible_paths:
-            if os.path.exists(p):
-                model_path = p
-                break
-
-        if model_path is None:
+        if onnx_path is None:
             logger.warning(
-                "[ReID] osnet_ain_x1_0.onnx not found - Re-ID disabled. "
-                "Run: python scripts/export_osnet_onnx.py")
+                "[ReID] osnet_ain_x1_0.onnx not found — Re-ID disabled. "
+                "Run: python3 scripts/export_osnet_onnx.py"
+            )
             self._extractor = None
             return
 
         try:
-            logger.info("[ReID] Loading OSNet-AIN ONNX model for cross-camera tracking...")
-            # Build TensorRT > CUDA > CPU provider chain
-            model_dir = os.path.dirname(os.path.abspath(model_path))
-            trt_cache = os.path.join(model_dir, "trt_engine_cache")
+            logger.info("[ReID] Loading OSNet-AIN via ORT (no .engine found)...")
+            model_dir = os.path.dirname(os.path.abspath(onnx_path))
+            trt_cache  = os.path.join(model_dir, "trt_engine_cache")
             os.makedirs(trt_cache, exist_ok=True)
 
             providers = []
-            if os.name != 'nt':
-                providers.append(
-                    ('TensorrtExecutionProvider', {
-                        'trt_max_workspace_size': str(2 * 1024 * 1024 * 1024),
-                        'trt_fp16_enable': 'True',
-                        'trt_engine_cache_enable': 'True',
-                        'trt_engine_cache_path': trt_cache,
-                    })
-                )
-            providers.extend([
-                'CUDAExecutionProvider',
-                'CPUExecutionProvider',
-            ])
+            if not self._forced_cpu:
+                if os.name != "nt":  # Linux (Jetson): enable TRT EP auto-cache
+                    providers.append((
+                        "TensorrtExecutionProvider", {
+                            "trt_max_workspace_size": str(2 * 1024 * 1024 * 1024),
+                            "trt_fp16_enable":        "True",
+                            "trt_engine_cache_enable": "True",
+                            "trt_engine_cache_path":  trt_cache,
+                        }
+                    ))
+                providers.append("CUDAExecutionProvider")
+            providers.append("CPUExecutionProvider")
+
             available = ort.get_available_providers()
-            valid = [p for p in providers if (p if isinstance(p, str) else p[0]) in available]
+            valid = [p for p in providers
+                     if (p if isinstance(p, str) else p[0]) in available]
             if not valid:
-                valid = ['CPUExecutionProvider']
+                valid = ["CPUExecutionProvider"]
 
             so = ort.SessionOptions()
             so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
-            # Try full provider chain; if TRT DLL fails, silently retry without it
             try:
-                self._extractor = ort.InferenceSession(model_path, sess_options=so, providers=valid)
+                self._extractor = ort.InferenceSession(
+                    onnx_path, sess_options=so, providers=valid
+                )
             except Exception:
                 fallback = [p for p in valid
-                            if (p if isinstance(p, str) else p[0]) != 'TensorrtExecutionProvider']
+                            if (p if isinstance(p, str) else p[0])
+                            != "TensorrtExecutionProvider"]
                 if not fallback:
-                    fallback = ['CPUExecutionProvider']
-                self._extractor = ort.InferenceSession(model_path, sess_options=so, providers=fallback)
+                    fallback = ["CPUExecutionProvider"]
+                self._extractor = ort.InferenceSession(
+                    onnx_path, sess_options=so, providers=fallback
+                )
 
             active = self._extractor.get_providers()
-            logger.info(f"[ReID] OSNet-AIN ONNX loaded - active providers: {active}")
+            logger.info(f"[ReID] OSNet-AIN ORT loaded — active providers: {active}")
+            if "CPUExecutionProvider" in active and len(active) == 1:
+                logger.warning(
+                    "[ReID] Running on CPU — performance will be limited. "
+                    "Run: python3 scripts/build_engines.py to build the TRT engine."
+                )
         except Exception as exc:
-            logger.error(f"[ReID] Model load failed: {exc} - Re-ID disabled.")
+            logger.error(f"[ReID] Model load failed: {exc} — Re-ID disabled.")
             self._extractor = None
 
     @property
@@ -339,7 +403,8 @@ class ReIDManager:
 
             # Window exhausted with no match → mint new global_id using best-quality buffered embedding
             self._pending.pop(key, None)
-            best_emb, best_attr, _ = max(buf, key=lambda x: x[2]) if buf else (embedding, attr_vec, crop_sharpness)
+            # M2-fix: attr_vec is not in scope here; use None as fallback
+            best_emb, best_attr, _ = max(buf, key=lambda x: x[2]) if buf else (embedding, None, crop_sharpness)
 
             gid = self._next_global_id
             self._next_global_id += 1
@@ -497,9 +562,12 @@ class ReIDManager:
         # Store/EMA-blend raw attribute probabilities
         if raw_probs is not None:
             if entry.raw_attr_probs is None:
+                # M1-fix: initialise cleanly on first observation; do NOT blend yet
                 entry.raw_attr_probs = raw_probs.copy()
                 entry.attr_label_list = label_list
-                # Locked: 95% original pristine colors, 5% new bleed. Defends against lighting/shadow drift.
+            else:
+                # Subsequent updates: 95% original, 5% new — defends against
+                # lighting/shadow drift while slowly adapting to appearance changes.
                 entry.raw_attr_probs = 0.95 * entry.raw_attr_probs + 0.05 * raw_probs
 
         entry.last_seen = time.monotonic()
@@ -514,13 +582,16 @@ class ReIDManager:
 
     def _merge_loop(self):
         """Background thread: deduplicates the gallery every 2 s."""
-        while True:
-            time.sleep(2)
+        while not self._stop.is_set():  # C3-fix: honour shutdown event
+            self._stop.wait(timeout=2)
+            if self._stop.is_set():
+                break
             try:
+                self._prune_expired()          # M3-fix: expire entries even when quiet
                 self._merge_duplicates(merge_threshold=0.55)
             except Exception as e:
                 logger.error(f"ReID merge loop error (will retry): {e}", exc_info=True)
-                time.sleep(5)  # brief pause before retrying
+                self._stop.wait(timeout=5)
 
     def _max_anchor_similarity(self, e1: GalleryEntry, e2: GalleryEntry) -> float:
         """Finds the maximum cosine similarity between any two anchors from two gallery entries."""
@@ -624,13 +695,15 @@ class ReIDManager:
 
     def _sanitize_loop(self):
         """Background thread: scans for hijacked/corrupted IDs every 10 s."""
-        while True:
-            time.sleep(10)
+        while not self._stop.is_set():  # C3-fix: honour shutdown event
+            self._stop.wait(timeout=10)
+            if self._stop.is_set():
+                break
             try:
                 self._sanitize_gallery()
             except Exception as e:
                 logger.error(f"ReID sanitize loop error (will retry): {e}", exc_info=True)
-                time.sleep(5)  # brief pause before retrying
+                self._stop.wait(timeout=5)
 
     def _sanitize_gallery(self):
         """

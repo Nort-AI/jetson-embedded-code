@@ -22,8 +22,13 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=nort-agent
 
-# Watchdog
-WatchdogSec=120
+# Memory limits (L4-fix: leave 2 GB headroom for kernel/GPU on 8 GB Orin Nano)
+MemoryMax=6G
+MemoryHigh=5G
+OOMScoreAdjust=-500
+
+# Watchdog (L5-fix: 30 s; run.py sends sd_notify("WATCHDOG=1") every 10 s)
+WatchdogSec=30
 NotifyAccess=main
 
 [Install]

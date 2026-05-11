@@ -1,10 +1,13 @@
 import os, re, json
 
-locales_file = r'c:/Users/enzog/PycharmProjects/PYTHON/NortV0.1.3/Jetson-Embedded-code-3/admin/locales/en.json'
+# H4-fix: use paths relative to this file so the script works on any machine
+_ADMIN_DIR = os.path.dirname(os.path.abspath(__file__))
+
+locales_file = os.path.join(_ADMIN_DIR, 'locales', 'en.json')
 with open(locales_file, encoding='utf-8') as f:
     en_data = json.load(f)
 
-html_dir = r'c:/Users/enzog/PycharmProjects/PYTHON/NortV0.1.3/Jetson-Embedded-code-3/admin/templates'
+html_dir = os.path.join(_ADMIN_DIR, 'templates')
 keys = set()
 for f in os.listdir(html_dir):
     if f.endswith('.html'):
