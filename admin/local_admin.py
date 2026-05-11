@@ -30,6 +30,9 @@ import queue
 import logging
 from system.logger_setup import setup_logger
 
+# Module-level logger — used by functions that don't have their own local logger
+_log = logging.getLogger("nort.admin")
+
 from flask import Flask, render_template_string, jsonify, request, redirect, Response, send_file
 from urllib.parse import urlparse
 from functools import wraps
@@ -98,7 +101,7 @@ def _csrf_origin_check():
             parsed = urlparse(value)
             request_host = parsed.netloc or parsed.path  # Origin has netloc; bare Referer may not
             if request_host and request_host != server_host:
-                logger.warning(
+                _log.warning(
                     f"CSRF check blocked {request.method} {request.path} — "
                     f"{header}: {value!r} does not match server host {server_host!r}"
                 )
@@ -4453,7 +4456,6 @@ def _ensure_self_signed_cert() -> tuple:
     so they survive process restarts but are never committed (add *.pem to
     .gitignore).
     """
-    _log = logging.getLogger("nort.admin")
     _admin_dir = os.path.dirname(os.path.abspath(__file__))
     cert_path = os.path.join(_admin_dir, "admin_cert.pem")
     key_path  = os.path.join(_admin_dir, "admin_key.pem")
@@ -4542,9 +4544,9 @@ def start_local_admin(port: int = 8080):
     cert_path, key_path = _ensure_self_signed_cert()
     ssl_context = (cert_path, key_path) if (cert_path and key_path) else None
     if ssl_context:
-        logger.info(f"Admin panel starting on https://0.0.0.0:{port}/ (self-signed TLS)")
+        _log.info(f"Admin panel starting on https://0.0.0.0:{port}/ (self-signed TLS)")
     else:
-        logger.warning("Admin panel starting on HTTP (TLS cert unavailable — install cryptography or openssl)")
+        _log.warning("Admin panel starting on HTTP (TLS cert unavailable — install cryptography or openssl)")
 
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False,
             threaded=True, ssl_context=ssl_context)
