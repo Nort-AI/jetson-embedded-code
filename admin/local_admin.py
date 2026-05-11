@@ -4453,6 +4453,7 @@ def _ensure_self_signed_cert() -> tuple:
     so they survive process restarts but are never committed (add *.pem to
     .gitignore).
     """
+    _log = logging.getLogger("nort.admin")
     _admin_dir = os.path.dirname(os.path.abspath(__file__))
     cert_path = os.path.join(_admin_dir, "admin_cert.pem")
     key_path  = os.path.join(_admin_dir, "admin_key.pem")
@@ -4493,12 +4494,12 @@ def _ensure_self_signed_cert() -> tuple:
             ))
         with open(cert_path, "wb") as _f:
             _f.write(_cert.public_bytes(serialization.Encoding.PEM))
-        logger.info("H5: Generated self-signed TLS cert via cryptography library.")
+        _log.info("H5: Generated self-signed TLS cert via cryptography library.")
         return cert_path, key_path
     except Exception as _exc:
         # Catch both ImportError and any runtime failure (PermissionError, crypto error…)
         if not isinstance(_exc, ImportError):
-            logger.warning(f"H5: cryptography cert generation failed: {_exc}")
+            _log.warning(f"H5: cryptography cert generation failed: {_exc}")
 
     # Fallback: use openssl subprocess
     try:
@@ -4509,11 +4510,11 @@ def _ensure_self_signed_cert() -> tuple:
             "-subj", "/CN=nort-jetson-admin",
         ], capture_output=True, timeout=30)
         if result.returncode == 0:
-            logger.info("H5: Generated self-signed TLS cert via openssl.")
+            _log.info("H5: Generated self-signed TLS cert via openssl.")
             return cert_path, key_path
-        logger.warning(f"H5: openssl cert generation failed: {result.stderr.decode()}")
+        _log.warning(f"H5: openssl cert generation failed: {result.stderr.decode()}")
     except Exception as _exc:
-        logger.warning(f"H5: Could not generate TLS cert: {_exc}")
+        _log.warning(f"H5: Could not generate TLS cert: {_exc}")
 
     return None, None
 
