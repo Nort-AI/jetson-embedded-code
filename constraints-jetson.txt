@@ -1,0 +1,12 @@
+# ============================================================
+# constraints-jetson.txt — hard version pins for Jetson envs
+# Usage: pip install -r requirements-jetson.txt -c constraints-jetson.txt
+# ============================================================
+
+# NumPy MUST stay at 1.x on JetPack.
+# onnxruntime-gpu (and the JetPack PyTorch wheel from ~/.local) are
+# compiled against the NumPy 1.x C ABI.  NumPy 2.x breaks them silently:
+#   - onnxruntime throws "Numpy is not available" on every inference call
+#   - torch warns "Failed to initialize NumPy: _ARRAY_API not found"
+# ultralytics requires numpy>=1.23.0, which is satisfied by 1.26.4.
+numpy==1.26.4
