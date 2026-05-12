@@ -2263,6 +2263,9 @@
     //   • bboxOverlay canvas draws ONLY the selection highlight for the clicked track
     //   • Click anywhere on the feed → find which track bbox contains that point
 
+    // Injected by Flask at page render — true only when --live-pose was passed
+    const LIVE_POSE_ENABLED = {{ live_pose | tojson }};
+
     let _vlmTracks = {};        // { global_id → {x1,y1,x2,y2,frame_w,frame_h,...} }
     let _selectedTrackId = null;
     let _scanningActive = false;
@@ -2765,15 +2768,8 @@
         document.getElementById('vlmPoseImg').src             = '';
         cropWrap.style.display = 'none';
 
-        // ── Fire BOTH requests in parallel the instant the panel opens ──
-        // cropFetch  : fast (~150 ms) — shows plain thumbnail
-        // poseFetch  : blocks until inference finishes (~300–500 ms)
-        //              No polling, no retries — route blocks in a real thread.
-        const cropFetch = fetch(cropUrl);
-        const poseFetch = fetch('/api/pose/' + enc);
-
-        // Plain crop
-        cropFetch.then(async r => {
+        // ── Crop fetch (always) ──────────────────────────────────────────────
+        fetch(cropUrl).then(async r => {
           if (!r.ok) { console.warn('[crop] ' + r.status + ' for ' + trackId); return; }
           const blob   = await r.blob();
           const objUrl = URL.createObjectURL(blob);
@@ -2781,31 +2777,41 @@
           cropImg.src = objUrl;
         }).catch(e => console.debug('[crop] error:', e));
 
-        // Pose overlay (arrives ~300 ms later, replaces plain crop)
-        poseFetch.then(async r => {
-          if (trackId !== _selectedTrackId) return;   // panel switched
-          if (r.status === 204 || !r.ok)  return;     // no detection / no crop
-          const blob    = await r.blob();
-          const objUrl  = URL.createObjectURL(blob);
-          const poseImg = document.getElementById('vlmPoseImg');
-          poseImg.onload = () => {
-            document.getElementById('vlmPoseWrap').style.display = 'flex';
-            URL.revokeObjectURL(objUrl);
-          };
-          poseImg.src = objUrl;
-          // Also fetch angles (cache is populated by the time pose returns)
-          fetch('/api/pose/data/' + enc).then(dr => dr.ok ? dr.json() : null).then(data => {
-            if (!data || trackId !== _selectedTrackId) return;
-            const poseAngles = document.getElementById('poseAngles');
-            if (data.detected && Object.keys(data.angles).length > 0) {
-              const lines = ['Postura: <b>' + data.posture + '</b>'];
-              for (const [j, a] of Object.entries(data.angles))
-                lines.push(j.replace(/_/g,' ') + ': ' + a + '°');
-              poseAngles.innerHTML = lines.join('&nbsp;&nbsp;·&nbsp;&nbsp;');
-              poseAngles.style.display = 'block';
-            }
-          }).catch(() => {});
-        }).catch(e => console.debug('[pose] error:', e));
+        // ── Pose: live MJPEG stream (--live-pose) or one-shot (default) ──────
+        const poseImg = document.getElementById('vlmPoseImg');
+        if (LIVE_POSE_ENABLED) {
+          // Point the <img> at the MJPEG stream — browser keeps connection alive
+          // and updates the image automatically as new frames arrive (~6-7 fps).
+          // Setting src='' in closeVlmPanel() closes the connection.
+          poseImg.onload = () => { document.getElementById('vlmPoseWrap').style.display = 'flex'; };
+          poseImg.onerror = () => { console.warn('[pose-stream] failed for ' + trackId); };
+          poseImg.src = '/api/pose/stream/' + enc;
+        } else {
+          // One-shot: single blocking request, pose arrives ~300-500 ms after crop
+          fetch('/api/pose/' + enc).then(async r => {
+            if (trackId !== _selectedTrackId) return;
+            if (r.status === 204 || !r.ok)    return;
+            const blob   = await r.blob();
+            const objUrl = URL.createObjectURL(blob);
+            poseImg.onload = () => {
+              document.getElementById('vlmPoseWrap').style.display = 'flex';
+              URL.revokeObjectURL(objUrl);
+            };
+            poseImg.src = objUrl;
+            // Angles sidebar (cache already populated by the pose route)
+            fetch('/api/pose/data/' + enc).then(dr => dr.ok ? dr.json() : null).then(data => {
+              if (!data || trackId !== _selectedTrackId) return;
+              const poseAngles = document.getElementById('poseAngles');
+              if (data.detected && Object.keys(data.angles).length > 0) {
+                const lines = ['Postura: <b>' + data.posture + '</b>'];
+                for (const [j, a] of Object.entries(data.angles))
+                  lines.push(j.replace(/_/g,' ') + ': ' + a + '°');
+                poseAngles.innerHTML = lines.join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+                poseAngles.style.display = 'block';
+              }
+            }).catch(() => {});
+          }).catch(e => console.debug('[pose] error:', e));
+        }
       }
 
       // Show/hide time range selector

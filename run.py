@@ -507,6 +507,7 @@ examples:
   python run.py --no-reid --headless     # lightweight mode, no Re-ID, no GUI
   python run.py --conf 0.25 --debug      # higher threshold + debug overlays
   python run.py --log-level DEBUG        # verbose logging
+  python run.py --live-pose --headless   # enable live pose stream in admin panel
 """,
     )
 
@@ -585,6 +586,18 @@ examples:
         help="Run in SETUP MODE (ai-off): no YOLOX/Re-ID loading, camera feeds only for configuration.",
     )
 
+    # ── Pose Estimation ──────────────────────────────────────────────────────
+    pose = p.add_argument_group("Pose Estimation")
+    pose.add_argument(
+        "--live-pose", action="store_true",
+        help=(
+            "Enable continuous live pose estimation on the selected person in the "
+            "admin panel (~6-7 fps MJPEG stream). Adds ~10-15%% GPU load while "
+            "a person is selected. Off by default. "
+            "Requires: pip install ultralytics"
+        ),
+    )
+
     # ── Debug & Logging ──────────────────────────────────────────────────────
     dbg = p.add_argument_group("Debug & Logging")
     dbg.add_argument(
@@ -614,6 +627,8 @@ def apply_args_to_config(args):
         config.YOLO_IMGSZ = args.imgsz
     if args.no_reid:
         config.REID_ENABLED = False
+    if args.live_pose:
+        config.LIVE_POSE_ENABLED = True
     if args.reid_threshold is not None:
         config.REID_SIMILARITY_THRESHOLD = args.reid_threshold
     if args.no_zones:
@@ -669,6 +684,7 @@ def main():
     if args.no_heartbeat:   active_flags.append("no-heartbeat")
     if args.no_sync:        active_flags.append("no-sync")
     if args.debug:          active_flags.append("debug")
+    if args.live_pose:      active_flags.append("live-pose")
     if args.cameras:        active_flags.append(f"cameras={args.cameras}")
     if args.conf is not None: active_flags.append(f"conf={args.conf}")
     if active_flags:

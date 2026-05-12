@@ -4025,7 +4025,9 @@ async function runVlmAnalysis() {
 def heatmap_page():
     from flask import render_template
     cameras = _enabled_camera_ids()
-    return render_template('streams.html', cameras=cameras)
+    from system import config as _cfg
+    return render_template('streams.html', cameras=cameras,
+                           live_pose=_cfg.LIVE_POSE_ENABLED)
 
 @app.route("/zones")
 @requires_auth
@@ -4266,6 +4268,57 @@ def api_pose_data(track_id: str):
         data  = entry.get("pose_data") if entry else None
     _empty = {"detected": False, "keypoints": {}, "angles": {}, "posture": "unknown"}
     return jsonify(data if data else _empty)
+
+def _pose_stream_gen(track_id: str):
+    """MJPEG generator for the live pose stream.
+    Registers as the live-pose target while the browser is connected;
+    clears itself on disconnect so the worker idles between sessions.
+    Yields only when the cached pose timestamp advances (new inference result).
+    """
+    try:
+        from gevent import sleep as _gsleep
+    except ImportError:
+        import time as _t; _gsleep = _t.sleep
+    from core import vlm_analyst as _va
+
+    _va.set_live_pose_target(str(track_id))
+    last_ts = -1.0
+    try:
+        while True:
+            with _va._track_crops_lock:
+                entry = _va._track_crops.get(str(track_id))
+                jpeg  = entry.get("pose_jpeg") if entry else None
+                ts    = entry.get("pose_ts", 0.0) if entry else 0.0
+
+            if jpeg and ts != last_ts:
+                last_ts = ts
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
+                )
+            _gsleep(0.05)   # poll cache at 20 fps; worker caps output at ~6-7 fps
+    except GeneratorExit:
+        pass
+    finally:
+        _va.clear_live_pose_target(str(track_id))
+
+
+@app.route("/api/pose/stream/<track_id>")
+@requires_auth
+def api_pose_stream(track_id: str):
+    """MJPEG stream of continuous live pose estimation.
+    Requires the server to be started with --live-pose.
+    Returns 503 otherwise so the client can fall back to single-shot mode.
+    """
+    from system import config as _cfg
+    if not _cfg.LIVE_POSE_ENABLED:
+        return "Live pose disabled — restart with --live-pose", 503
+    return Response(
+        _pose_stream_gen(track_id),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-cache, no-store"},
+    )
+
 
 @app.route("/api/vlm/tracks")
 @requires_auth

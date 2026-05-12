@@ -114,6 +114,12 @@ ATTRIBUTE_MODEL_PATH  = os.path.join(_BASE_DIR, "assets", "models", "net_last.pt
 # 0.35 is a good default at 30 FPS. Raise to 0.5 if tracking feels laggy.
 TRACK_EMA_ALPHA = 0.35
 
+# ── Live pose estimation (admin panel) ──────────────────────────
+# Off by default. Enable with:  python run.py --live-pose
+# Runs YOLOv8n-pose continuously on the selected person at ~6-7 fps.
+# Adds ~10-15 % extra GPU load while a person is selected in the admin panel.
+LIVE_POSE_ENABLED = False
+
 # ── Re-ID Manager Settings ──────────────────────────────────────
 # Set "enable_reid": false in device.json to disable Re-ID and run as a plain multi-camera tracker.
 REID_ENABLED             = _d.get("enable_reid", True)
