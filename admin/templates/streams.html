@@ -1713,16 +1713,7 @@
               <div class="vlm-crop-wrap" id="vlmCropWrap">
                 <img id="vlmCrop" src="" alt="Person crop">
               </div>
-              <!-- Pose estimation button + result area -->
-              <div id="poseBar" style="display:none; margin-bottom:10px; text-align:center;">
-                <button id="poseBtn" onclick="runPose()" style="
-                    background: rgba(99,102,241,0.85); color:#fff; border:none;
-                    border-radius:6px; padding:6px 16px; font-size:0.8rem;
-                    cursor:pointer; letter-spacing:.04em;">
-                  ⚡ Pose Estimation
-                </button>
-                <span id="poseSpin" style="display:none; margin-left:8px; font-size:0.75rem; opacity:.7;">running…</span>
-              </div>
+              <!-- Pose estimation result area (auto-runs on crop load) -->
               <div class="vlm-crop-wrap" id="vlmPoseWrap" style="display:none; margin-bottom:10px;">
                 <img id="vlmPoseImg" src="" alt="Pose overlay">
               </div>
@@ -2773,11 +2764,10 @@
             cropImg.onload = () => {
               cropWrap.style.display = 'flex';
               URL.revokeObjectURL(objUrl);
-              // Show pose button once crop is loaded
-              document.getElementById('poseBar').style.display = 'block';
-              // Reset any previous pose result
+              // Reset any previous pose result then auto-run
               document.getElementById('vlmPoseWrap').style.display = 'none';
               document.getElementById('poseAngles').style.display = 'none';
+              runPose(trackId);   // auto-trigger, passes captured ID
             };
             cropImg.src = objUrl;
           })
@@ -2805,12 +2795,9 @@
       if (_vlmPollTimer) { clearInterval(_vlmPollTimer); _vlmPollTimer = null; }
 
       // Reset pose elements
-      document.getElementById('poseBar').style.display = 'none';
       document.getElementById('vlmPoseWrap').style.display = 'none';
       document.getElementById('poseAngles').style.display = 'none';
       document.getElementById('vlmPoseImg').src = '';
-      document.getElementById('poseSpin').style.display = 'none';
-      document.getElementById('poseBtn').disabled = false;
 
       // Clear backend selection highlight
       try {
@@ -2818,53 +2805,46 @@
       } catch (e) { }
     }
 
-    async function runPose() {
-      if (!_selectedTrackId) return;
-      const btn       = document.getElementById('poseBtn');
-      const spin      = document.getElementById('poseSpin');
-      const poseWrap  = document.getElementById('vlmPoseWrap');
-      const poseAngles= document.getElementById('poseAngles');
-      btn.disabled = true;
-      spin.style.display = 'inline';
-      poseWrap.style.display = 'none';
-      poseAngles.style.display = 'none';
+    async function runPose(trackId) {
+      // trackId is passed explicitly so a quick click on another person
+      // doesn't corrupt this in-flight request
+      const tid = trackId || _selectedTrackId;
+      if (!tid) return;
+      const poseWrap   = document.getElementById('vlmPoseWrap');
+      const poseAngles = document.getElementById('poseAngles');
       try {
-        const tid = encodeURIComponent(_selectedTrackId);
+        const enc = encodeURIComponent(tid);
         const [imgRes, dataRes] = await Promise.all([
-          fetch('/api/pose/' + tid),
-          fetch('/api/pose/data/' + tid)
+          fetch('/api/pose/' + enc),
+          fetch('/api/pose/data/' + enc)
         ]);
+        // Only paint results if this person's panel is still open
+        if (tid !== _selectedTrackId) return;
         if (imgRes.ok) {
-          const blob   = await imgRes.blob();
-          const objUrl = URL.createObjectURL(blob);
+          const blob    = await imgRes.blob();
+          const objUrl  = URL.createObjectURL(blob);
           const poseImg = document.getElementById('vlmPoseImg');
           poseImg.onload = () => {
             poseWrap.style.display = 'flex';
             URL.revokeObjectURL(objUrl);
           };
           poseImg.src = objUrl;
-        } else {
-          console.warn('[pose] image ' + imgRes.status + ' – ' + await imgRes.text());
         }
         if (dataRes.ok) {
           const data = await dataRes.json();
           if (data.detected && Object.keys(data.angles).length > 0) {
-            const lines = ['Posture: <b>' + data.posture + '</b>'];
+            const lines = ['Postura: <b>' + data.posture + '</b>'];
             for (const [joint, angle] of Object.entries(data.angles)) {
               lines.push(joint.replace(/_/g, ' ') + ': ' + angle + '°');
             }
             poseAngles.innerHTML = lines.join('&nbsp;&nbsp;·&nbsp;&nbsp;');
             poseAngles.style.display = 'block';
-          } else if (!data.detected) {
-            poseAngles.textContent = 'No person detected in crop.';
-            poseAngles.style.display = 'block';
           }
+          // If not detected or no angles: stay hidden — no error shown to user
         }
       } catch (e) {
-        console.error('[pose] error:', e);
-      } finally {
-        btn.disabled = false;
-        spin.style.display = 'none';
+        // Silent fail — pose is best-effort, don't clutter the UI
+        console.debug('[pose] skipped for ' + tid + ':', e.message);
       }
     }
 

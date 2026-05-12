@@ -19,8 +19,9 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-_model      = None
-_model_lock = threading.Lock()
+_LOAD_FAILED = object()          # sentinel — distinct from None
+_model       = None              # None = not tried yet; _LOAD_FAILED = tried and failed
+_model_lock  = threading.Lock()
 
 # COCO 17-keypoint names
 _KP_NAMES = [
@@ -40,22 +41,26 @@ _SKELETON = [
 
 
 def _get_model():
-    """Lazy-load YOLOv8n-pose once; thread-safe."""
+    """Lazy-load YOLOv8n-pose once; thread-safe.
+    Returns the model on success, None on failure.
+    After the first failed attempt the sentinel prevents repeated retries/log spam.
+    """
     global _model
     if _model is not None:
-        return _model
+        return None if _model is _LOAD_FAILED else _model
     with _model_lock:
         if _model is not None:          # double-checked
-            return _model
+            return None if _model is _LOAD_FAILED else _model
         try:
             from ultralytics import YOLO
             _model = YOLO("yolov8n-pose.pt")   # auto-downloads ~6 MB on first use
             logger.info("[Pose] YOLOv8n-pose model loaded (%.1f MB)",
                         sum(p.numel() * 4 for p in _model.model.parameters()) / 1e6)
         except Exception as e:
-            logger.error("[Pose] Could not load YOLOv8n-pose: %s", e)
-            _model = None
-    return _model
+            logger.error("[Pose] Could not load YOLOv8n-pose: %s — "
+                         "run: pip install ultralytics", e)
+            _model = _LOAD_FAILED
+    return None if _model is _LOAD_FAILED else _model
 
 
 def _angle(a, b, c) -> float:
