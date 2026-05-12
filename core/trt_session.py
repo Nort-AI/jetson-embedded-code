@@ -103,50 +103,50 @@ def _cuda_sync(stream: int):
 
 
 # ── tensorrt import (tries system python3-libnvinfer paths) ──────────────────
+#
+# IMPORTANT: system paths must be prepended ONCE at module load time so that
+# python3-libnvinfer takes priority over the conda/pip tensorrt stub wheel
+# BEFORE any import attempt.  The pop-and-reimport pattern is unsafe: pip stub
+# loads native .so files into process memory on first import, and reloading a
+# different .so on top causes symbol conflicts → segfault.
+
+_TRT_SYSTEM_PATHS = [
+    "/usr/lib/python3/dist-packages",
+    "/usr/lib/python3.10/dist-packages",
+    "/usr/lib/python3.11/dist-packages",
+    "/usr/local/lib/python3.10/dist-packages",
+    "/usr/local/lib/python3.11/dist-packages",
+]
+
+# Prepend once, right now, before any import tensorrt can happen
+for _p in reversed(_TRT_SYSTEM_PATHS):
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
+
+# Cache so we only import once
+_trt_module = None
+
 
 def _import_trt():
     """
-    Import tensorrt, preferring the system python3-libnvinfer package over any
-    pip-installed stub wheel.  The pip tensorrt wheels for Linux x86/aarch64
-    may import successfully but lack the C bindings (no trt.Logger, no
-    trt.Runtime, etc.) — we validate the import before returning it.
-
-    python3-libnvinfer installs to system Python's dist-packages.  On Jetson
-    the system Python and the conda Python share the same CPython ABI, so the
-    extension can be loaded cross-environment once the path is added.
+    Return the tensorrt module with real C bindings (trt.Logger, trt.Runtime).
+    System paths are already prepended above so python3-libnvinfer wins over
+    any pip stub wheel.  Result is cached — called many times per process.
     """
-    system_paths = [
-        "/usr/lib/python3/dist-packages",
-        "/usr/lib/python3.10/dist-packages",
-        "/usr/lib/python3.11/dist-packages",
-        "/usr/local/lib/python3.10/dist-packages",
-        "/usr/local/lib/python3.11/dist-packages",
-    ]
-
-    def _is_valid(trt) -> bool:
-        """Return True only if the module has real C bindings (not a stub wheel)."""
-        return hasattr(trt, "Logger") and hasattr(trt, "Runtime")
-
-    # First try: whatever is already importable (conda env or system)
-    try:
-        import tensorrt as trt
-        if _is_valid(trt):
-            return trt
-        # Stub wheel imported — purge it so we can try the system path
-        sys.modules.pop("tensorrt", None)
-        logger.debug("[TRT] pip tensorrt stub detected (no Logger/Runtime) — trying system path")
-    except ImportError:
-        pass
-
-    # Second try: system dist-packages (python3-libnvinfer)
-    for p in system_paths:
-        if os.path.isdir(p) and p not in sys.path:
-            sys.path.insert(0, p)
+    global _trt_module
+    if _trt_module is not None:
+        return _trt_module
 
     try:
         import tensorrt as trt
-        if _is_valid(trt):
+        if hasattr(trt, "Logger") and hasattr(trt, "Runtime"):
+            _trt_module = trt
             return trt
+        logger.debug(
+            "[TRT] tensorrt imported but has no Logger/Runtime — "
+            "pip stub wheel is shadowing python3-libnvinfer; "
+            "uninstall pip tensorrt or run without conda onnxenv"
+        )
     except ImportError:
         pass
 
