@@ -2733,11 +2733,31 @@
         loadClipPreview();
       } else {
         videoPreview.style.display = 'none';
-        // Crop thumbnail
+        // Crop thumbnail — use fetch first so SSL/404 errors appear in the console
         const cropImg = document.getElementById('vlmCrop');
-        cropImg.src = '/api/crop/' + encodeURIComponent(trackId) + '?t=' + Date.now();
-        cropImg.onload = () => { cropWrap.style.display = 'block'; };
-        cropImg.onerror = () => { cropWrap.style.display = 'none'; };
+        const cropUrl = '/api/crop/' + encodeURIComponent(trackId) + '?t=' + Date.now();
+        fetch(cropUrl)
+          .then(r => {
+            if (!r.ok) {
+              console.warn('[crop] ' + r.status + ' for ' + trackId + ' — crop not yet saved or VLM disabled');
+              cropWrap.style.display = 'none';
+              return;
+            }
+            return r.blob();
+          })
+          .then(blob => {
+            if (!blob) return;
+            const objUrl = URL.createObjectURL(blob);
+            cropImg.onload = () => {
+              cropWrap.style.display = 'block';
+              URL.revokeObjectURL(objUrl);
+            };
+            cropImg.src = objUrl;
+          })
+          .catch(err => {
+            console.error('[crop] fetch error for ' + trackId + ':', err);
+            cropWrap.style.display = 'none';
+          });
       }
 
       // Show/hide time range selector
