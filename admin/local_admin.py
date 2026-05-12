@@ -42,6 +42,10 @@ from collections import deque
 
 try:
     import psutil
+    # psutil.cpu_percent() returns 0.0 on the very first call because it needs a
+    # baseline interval.  Discard one reading now so that _poll_performance gets
+    # accurate data from its very first real sample (~2 s later).
+    psutil.cpu_percent()
 except ImportError:
     psutil = None
 
@@ -509,31 +513,40 @@ def _ping_host(host: str) -> bool:
         return False
 
 
+def _read_temp() -> str:
+    """Read CPU temperature from sysfs. Safe to call from any context."""
+    if os.name != 'posix':
+        return "N/A"
+    _thermal_paths = [
+        "/sys/devices/virtual/thermal/thermal_zone0/temp",
+        "/sys/devices/virtual/thermal/thermal_zone1/temp",
+        "/sys/class/thermal/thermal_zone0/temp",
+    ]
+    for _tp in _thermal_paths:
+        try:
+            with open(_tp) as f:
+                temp_c = int(f.read().strip()) / 1000.0
+                if temp_c > 0:
+                    return f"{temp_c:.1f} °C"
+        except Exception:
+            continue
+    return "N/A"
+
+
 def _perf_info():
+    """Return (cpu_pct, ram_pct, temp_str).
+    Only called from _poll_performance (background OS thread).
+    Route handlers must NOT call this — it calls psutil.cpu_percent() which
+    resets the baseline and corrupts the background thread's readings.
+    Route handlers should read _cpu_hist[-1] / _ram_hist[-1] directly and
+    call _read_temp() for temperature."""
     if psutil:
         cpu = psutil.cpu_percent()
         ram = psutil.virtual_memory().percent
     else:
         cpu = 0
         ram = 0
-    temp = "N/A"
-    if os.name == 'posix':
-        # Try multiple thermal zones; on Jetson Orin the CPU zone varies by board.
-        _thermal_paths = [
-            "/sys/devices/virtual/thermal/thermal_zone0/temp",
-            "/sys/devices/virtual/thermal/thermal_zone1/temp",
-            "/sys/class/thermal/thermal_zone0/temp",
-        ]
-        for _tp in _thermal_paths:
-            try:
-                with open(_tp) as f:
-                    temp_c = int(f.read().strip()) / 1000.0
-                    if temp_c > 0:   # skip zones that read 0 (unused/inactive)
-                        temp = f"{temp_c:.1f} °C"
-                        break
-            except Exception:
-                continue
-    return cpu, ram, temp
+    return cpu, ram, _read_temp()
 
 
 # Cache the discovered Jetson GPU sysfs path so we don't glob on every poll.
@@ -992,7 +1005,7 @@ def index():
     cpu_pct = _cpu_hist[-1]
     ram_pct = _ram_hist[-1]
     gpu_pct = _gpu_hist[-1]
-    _, _, temp_c = _perf_info()
+    temp_c = _read_temp()
 
     # Classify CPU/RAM/GPU for progress bar colour
     cpu_class = "ok" if cpu_pct < 70 else ("warn" if cpu_pct < 85 else "err")
@@ -1063,7 +1076,7 @@ def home_page():
     disk_pct, disk_used, disk_total, disk_class = _disk_info()
     cpu_pct = _cpu_hist[-1]
     ram_pct = _ram_hist[-1]
-    _, _, temp_c = _perf_info()
+    temp_c = _read_temp()
     active_cameras = sum(1 for s in _camera_status.values() if s.get('active'))
     total_cameras  = len(_camera_status)
     from flask import render_template

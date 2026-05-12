@@ -1584,9 +1584,21 @@
         const oEl = document.getElementById('kpi-occ'); if (oEl) oEl.textContent = d.current_occupancy;
         const vEl = document.getElementById('kpi-visitors'); if (vEl) vEl.textContent = d.visitors_today >= 0 ? d.visitors_today : '—';
         const cEl = document.getElementById('kpi-cameras'); if (cEl) cEl.textContent = d.active_cameras + ' / ' + d.total_cameras;
+
+        // Update CPU / RAM / GPU progress bars (Jinja2 only sets the initial value)
+        if (d.cpu_pct !== undefined) {
+          const cpuBar = document.getElementById('bar-cpu'); if (cpuBar) cpuBar.style.width = d.cpu_pct + '%';
+          const cpuTxt = document.getElementById('txt-cpu'); if (cpuTxt) cpuTxt.textContent = d.cpu_pct + '%';
+          const ramBar = document.getElementById('bar-ram'); if (ramBar) ramBar.style.width = d.ram_pct + '%';
+          const ramTxt = document.getElementById('txt-ram'); if (ramTxt) ramTxt.textContent = d.ram_pct + '%';
+          const gpuBar = document.getElementById('bar-gpu'); if (gpuBar) gpuBar.style.width = d.gpu_pct + '%';
+          const gpuTxt = document.getElementById('txt-gpu'); if (gpuTxt) gpuTxt.textContent = d.gpu_pct + '%';
+        }
+
         if (d.cpu_hist) { perfChart.data.labels = d.time_hist; perfChart.data.datasets[0].data = d.cpu_hist; perfChart.data.datasets[1].data = d.ram_hist; perfChart.data.datasets[2].data = d.gpu_hist; perfChart.update('none'); }
       }).catch(e => { });
     }
+    refreshKPIs();               // populate bars immediately on page load
     setInterval(refreshKPIs, 10000);
 
     function toggleTheme() {
