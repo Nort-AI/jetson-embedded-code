@@ -4662,22 +4662,39 @@ def _collect_local_san_ips() -> list:
 
 def _cert_needs_regen(cert_path: str) -> bool:
     """
-    Return True if the existing cert is missing any current local IP as a SAN.
-    This forces regeneration when the device gets a new LAN IP assigned.
+    Return True if the existing cert should be replaced.  Triggers when:
+    - A current local IP is not in the cert's SAN list (DHCP change), OR
+    - The cert is missing the ExtendedKeyUsage=serverAuth extension that
+      Chrome requires to accept self-signed certs on parallel connections.
     """
     try:
         from cryptography import x509 as _x509
-        from cryptography.x509.oid import ExtensionOID as _EOID
+        from cryptography.x509.oid import ExtensionOID as _EOID, ExtendedKeyUsageOID as _EKUOID
         import ipaddress as _ip
 
         with open(cert_path, "rb") as _f:
             _cert = _x509.load_pem_x509_certificate(_f.read())
 
+        # 1. Check IP SANs
         _san_ext = _cert.extensions.get_extension_for_oid(_EOID.SUBJECT_ALTERNATIVE_NAME)
         _cert_ips = set(_san_ext.value.get_values_for_type(_x509.IPAddress))
-
         _current_ips = set(_collect_local_san_ips())
-        return not _current_ips.issubset(_cert_ips)
+        if not _current_ips.issubset(_cert_ips):
+            _log.info("H5: cert SANs outdated — will regenerate")
+            return True
+
+        # 2. Check ExtendedKeyUsage — Chrome requires serverAuth
+        try:
+            _eku = _cert.extensions.get_extension_for_oid(_EOID.EXTENDED_KEY_USAGE)
+            if _EKUOID.SERVER_AUTH not in _eku.value:
+                _log.info("H5: cert missing ExtendedKeyUsage=serverAuth — will regenerate")
+                return True
+        except Exception:
+            # Extension missing entirely
+            _log.info("H5: cert has no ExtendedKeyUsage extension — will regenerate")
+            return True
+
+        return False
     except Exception:
         return False   # if we can't parse the cert, keep it
 
@@ -4712,7 +4729,7 @@ def _ensure_self_signed_cert() -> tuple:
         import datetime as _dt
         import ipaddress as _ip
         from cryptography import x509
-        from cryptography.x509.oid import NameOID
+        from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -4725,6 +4742,11 @@ def _ensure_self_signed_cert() -> tuple:
         for _lip in _collect_local_san_ips():
             _san_entries.append(x509.IPAddress(_lip))
 
+        # Chrome requires BasicConstraints + KeyUsage + ExtendedKeyUsage(serverAuth).
+        # Without ExtendedKeyUsage=serverAuth, Chrome sends certificate_unknown for every
+        # new parallel connection (MJPEG streams, API calls) even after the user clicks
+        # "proceed" for the main page.  All three extensions are mandatory for Chrome
+        # to accept a self-signed cert on concurrent connections.
         _cert = (
             x509.CertificateBuilder()
             .subject_name(_name)
@@ -4734,6 +4756,18 @@ def _ensure_self_signed_cert() -> tuple:
             .not_valid_before(_now)
             .not_valid_after(_now + _dt.timedelta(days=3650))
             .add_extension(x509.SubjectAlternativeName(_san_entries), critical=False)
+            .add_extension(
+                x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(
+                x509.KeyUsage(
+                    digital_signature=True, key_encipherment=True,
+                    content_commitment=False, data_encipherment=False,
+                    key_agreement=False, key_cert_sign=False,
+                    crl_sign=False, encipher_only=False, decipher_only=False,
+                ), critical=True)
+            .add_extension(
+                x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]),
+                critical=False)
             .sign(_key, hashes.SHA256())
         )
         with open(key_path, "wb") as _f:
@@ -4745,7 +4779,10 @@ def _ensure_self_signed_cert() -> tuple:
         with open(cert_path, "wb") as _f:
             _f.write(_cert.public_bytes(serialization.Encoding.PEM))
         _lip_strs = [str(a) for a in _collect_local_san_ips()]
-        _log.info(f"H5: Generated self-signed TLS cert (SANs: localhost, {', '.join(_lip_strs)})")
+        _log.info(
+            "H5: Generated self-signed TLS cert "
+            "(SANs: localhost, %s; extensions: BasicConstraints, KeyUsage, serverAuth)",
+            ", ".join(_lip_strs))
         return cert_path, key_path
     except Exception as _exc:
         # Catch both ImportError and any runtime failure (PermissionError, crypto error…)
