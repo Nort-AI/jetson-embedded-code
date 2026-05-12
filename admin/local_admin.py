@@ -4199,6 +4199,64 @@ def api_vlm_crop(track_id: str):
     return Response(jpeg, mimetype="image/jpeg")
 
 
+@app.route("/api/pose/<track_id>")
+@requires_auth
+def api_pose_jpeg(track_id: str):
+    """
+    Run YOLOv8n-pose on the saved crop for this track and return an
+    annotated JPEG with skeleton overlay.
+    First call triggers a lazy model load (~6 MB download on first ever use).
+    """
+    try:
+        from core import vlm_analyst as _va
+        entry = None
+        with _va._track_crops_lock:
+            entry = _va._track_crops.get(str(track_id))
+        if entry is None:
+            return "No crop available", 404
+        crop = entry["crop"].copy()
+    except Exception as e:
+        _log.error("[pose] crop fetch error: %s", e)
+        return "Error", 500
+
+    try:
+        from core.pose_estimator import estimate_pose_jpeg
+        jpeg = _run_in_thread(estimate_pose_jpeg, crop)
+        if not jpeg:
+            return "Pose estimation failed or no person detected", 422
+        return Response(jpeg, mimetype="image/jpeg")
+    except Exception as e:
+        _log.error("[pose] estimation error: %s", e)
+        return "Error", 500
+
+
+@app.route("/api/pose/data/<track_id>")
+@requires_auth
+def api_pose_data(track_id: str):
+    """
+    Return structured pose keypoints + joint angles as JSON.
+    Useful for downstream analytics or displaying angle readouts.
+    """
+    try:
+        from core import vlm_analyst as _va
+        entry = None
+        with _va._track_crops_lock:
+            entry = _va._track_crops.get(str(track_id))
+        if entry is None:
+            return jsonify({"error": "No crop available"}), 404
+        crop = entry["crop"].copy()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    try:
+        from core.pose_estimator import estimate_pose_data
+        data = _run_in_thread(estimate_pose_data, crop)
+        return jsonify(data)
+    except Exception as e:
+        _log.error("[pose] data error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/vlm/tracks")
 @requires_auth
 def api_vlm_tracks():
