@@ -688,7 +688,17 @@ class CameraProcessor:
                             attrs['age_category'] = output.get("age_category", "adult")
                             attrs['attributes']   = output
                         except Exception as e:
-                            self.logger.error(f"Attr classify error: {e}")
+                            import time as _t
+                            _now = _t.monotonic()
+                            _last = getattr(self, '_attr_err_last', 0)
+                            _cnt  = getattr(self, '_attr_err_cnt',  0) + 1
+                            self._attr_err_cnt  = _cnt
+                            self._attr_err_last = _now if _now - _last >= 60 else _last
+                            if _now - _last >= 60:          # log at most once per minute
+                                self.logger.error(
+                                    "Attr classify error: %s  (suppressing for 60 s; "
+                                    "%d failures since last log)", e, _cnt)
+                                self._attr_err_cnt = 0
                             attrs.setdefault('gender', 'Unknown')
                             attrs.setdefault('age_category', 'adult')
                             attrs.setdefault('attributes', {})
