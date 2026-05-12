@@ -2823,14 +2823,14 @@
         ]);
         // Discard if user already switched to a different person
         if (tid !== _selectedTrackId) return;
+        // 204 is a 2xx (imgRes.ok=true) so must be checked BEFORE the !ok branch
+        if (imgRes.status === 204) {
+          // Server computed but found no person — silent, no retry
+          return;
+        }
         if (!imgRes.ok) {
-          if (imgRes.status === 204) {
-            // Worker ran but got no skeleton (ultralytics not installed / tiny crop)
-            // — stay silent, no point retrying
-            return;
-          }
           if (imgRes.status === 404 && (_retry || 0) < 5) {
-            // Worker hasn't processed yet — retry every 600 ms, up to 5×
+            // Server hasn't processed this crop yet — retry every 600 ms
             setTimeout(() => runPose(tid, (_retry || 0) + 1), 600);
           }
           return;

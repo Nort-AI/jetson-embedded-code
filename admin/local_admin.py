@@ -4203,24 +4203,37 @@ def api_vlm_crop(track_id: str):
 @requires_auth
 def api_pose_jpeg(track_id: str):
     """
-    Serve pre-computed pose skeleton JPEG from cache.
-    Status codes:
-      200 — skeleton ready
-      404 — worker hasn't processed this track yet (client should retry)
-      204 — worker ran but got no result (model unavailable / no person in crop)
+    Serve pose skeleton JPEG.
+    - Cache hit  (background worker pre-computed): instant 200
+    - Cache miss (worker not yet run / failed):    on-demand inference → 200 or 204
+    Status codes: 200 skeleton, 204 no person detected, 404 no crop at all.
     """
     from core import vlm_analyst as _va
     with _va._track_crops_lock:
-        entry    = _va._track_crops.get(str(track_id))
-        jpeg     = entry.get("pose_jpeg")  if entry else None
-        pose_ts  = entry.get("pose_ts", 0) if entry else 0
+        entry = _va._track_crops.get(str(track_id))
+        jpeg  = entry.get("pose_jpeg") if entry else None
+        crop  = entry["crop"].copy()   if entry else None
+
+    # Fast path — background worker already computed this
     if jpeg:
         return Response(jpeg, mimetype="image/jpeg")
-    if pose_ts > 0:
-        # Worker already ran but produced no skeleton (ultralytics missing / tiny crop)
-        return "", 204
-    # pose_ts == 0 → worker hasn't processed yet, ask client to retry
-    return "Pose not ready yet", 404
+
+    if crop is None:
+        return "No crop available", 404
+
+    # Slow path — run inference now (covers first click before worker fires)
+    from core.pose_estimator import estimate_pose_jpeg
+    jpeg = _run_in_thread(estimate_pose_jpeg, crop)
+    if jpeg:
+        # Cache so subsequent clicks are instant
+        with _va._track_crops_lock:
+            e = _va._track_crops.get(str(track_id))
+            if e:
+                e["pose_jpeg"] = jpeg
+                e["pose_ts"]   = time.time()
+        return Response(jpeg, mimetype="image/jpeg")
+
+    return "", 204  # crop exists but no person detected
 
 
 @app.route("/api/pose/data/<track_id>")

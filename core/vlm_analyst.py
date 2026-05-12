@@ -255,13 +255,7 @@ def _pose_worker_loop() -> None:
                     if entry is not None:
                         entry["pose_jpeg"] = jpeg
                         entry["pose_data"] = data
-                        # Only stamp pose_ts when we got a real skeleton image.
-                        # If jpeg is None (model unavailable), leave pose_ts=0 so
-                        # the next crop save re-queues and retries.
-                        if jpeg is not None:
-                            entry["pose_ts"] = now
-                        else:
-                            entry["pose_ts"] = 0.0
+                        entry["pose_ts"]   = now  # always stamp — prevents re-queue storm
                 if jpeg is not None:
                     logger.debug("[Pose] OK track=%s posture=%s",
                                  tid, (data or {}).get("posture", "?"))
