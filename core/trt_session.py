@@ -121,9 +121,20 @@ def _import_trt():
     Return the tensorrt module with real C bindings (trt.Logger, trt.Runtime).
 
     Strategy:
-    1. Try whatever `import tensorrt` resolves to now.  If it has Logger+Runtime
+    1. On aarch64 + Python ≥ 3.11: return None immediately.
+       python3-libnvinfer on JetPack 6.x ships tensorrt.so compiled for Python 3.10
+       only.  The .so exports PyInit_tensorrt with the CPython 3.10 ABI tag; calling
+       any C-level object (trt.Logger(), trt.Runtime(), …) from a Python 3.11
+       interpreter triggers an ABI mismatch that SEGFAULTS the process.
+       hasattr() succeeds (the Python attribute object exists) but actually calling
+       it is fatal — so we must skip before any hasattr check.
+       Fix: run the pipeline in a Python 3.10 environment:
+           conda create -n nort310 python=3.10
+           conda activate nort310
+           pip install -r requirements.txt
+    2. Try whatever `import tensorrt` resolves to now.  If it has Logger+Runtime
        (i.e. it's the real python3-libnvinfer, not a pip stub) use it.
-    2. If the pip stub was imported (no Logger/Runtime), pop it from sys.modules
+    3. If the pip stub was imported (no Logger/Runtime), pop it from sys.modules
        and retry after briefly prepending the JetPack system dist-packages path.
        We REMOVE the added paths afterwards so they don't pollute sys.path for
        the rest of the process (e.g. ORT would otherwise pick up the system
@@ -135,6 +146,26 @@ def _import_trt():
     global _trt_module
     if _trt_module is not None:
         return _trt_module
+
+    import platform as _platform
+
+    # ── Guard: JetPack python3-libnvinfer is Python 3.10-only ABI ────────────
+    # tensorrt.so at /usr/lib/python3.10/dist-packages/tensorrt/tensorrt.so is
+    # compiled against CPython 3.10.  Any call to a C-level symbol (trt.Logger,
+    # trt.Runtime, etc.) from Python 3.11+ causes an immediate SEGFAULT.
+    # hasattr() returns True (the Python attribute wrapper exists) but the
+    # underlying C call is fatal, so we must bail out before any hasattr check.
+    if _platform.machine() == "aarch64" and sys.version_info >= (3, 11):
+        logger.warning(
+            "[TRT] Skipping TRT Python bindings on aarch64 + Python %d.%d: "
+            "python3-libnvinfer only ships for Python 3.10 on JetPack 6.x "
+            "(tensorrt.so has CPython 3.10 ABI — calling it from 3.11 segfaults). "
+            "To enable GPU inference create a Python 3.10 env: "
+            "  conda create -n nort310 python=3.10 && conda activate nort310 && "
+            "  pip install -r requirements.txt",
+            sys.version_info.major, sys.version_info.minor,
+        )
+        return None
 
     def _valid(trt) -> bool:
         return hasattr(trt, "Logger") and hasattr(trt, "Runtime")
