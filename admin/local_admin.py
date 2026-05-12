@@ -4188,14 +4188,31 @@ def api_vlm_result(track_id: str):
 @app.route("/api/crop/<track_id>")
 @requires_auth
 def api_vlm_crop(track_id: str):
-    """Return the latest stored crop for a track as JPEG."""
+    """Return the latest stored crop for a track as JPEG.
+    Also forces a fresh pose estimation job on this exact crop so that
+    /api/pose/ returns the skeleton for the same frame the user sees.
+    """
     try:
-        from core import vlm_analyst
-        jpeg = vlm_analyst.get_crop_jpeg(track_id)
+        from core import vlm_analyst as _va
+        jpeg = _va.get_crop_jpeg(track_id)
+        # Grab the raw crop for pose and invalidate the stale pose cache
+        with _va._track_crops_lock:
+            entry = _va._track_crops.get(str(track_id))
+            crop_for_pose = entry["crop"].copy() if entry else None
+            if entry:
+                entry["pose_jpeg"] = None   # discard stale skeleton
+                entry["pose_ts"]   = 0.0    # mark as not yet computed
     except ImportError:
         jpeg = None
+        crop_for_pose = None
     if not jpeg:
         return "No crop available", 404
+    # Kick off pose on the freshest crop (same one user is about to see)
+    if crop_for_pose is not None:
+        try:
+            _va._enqueue_pose(str(track_id), crop_for_pose, force=True)
+        except Exception:
+            pass
     return Response(jpeg, mimetype="image/jpeg")
 
 
@@ -4203,37 +4220,22 @@ def api_vlm_crop(track_id: str):
 @requires_auth
 def api_pose_jpeg(track_id: str):
     """
-    Serve pose skeleton JPEG.
-    - Cache hit  (background worker pre-computed): instant 200
-    - Cache miss (worker not yet run / failed):    on-demand inference → 200 or 204
-    Status codes: 200 skeleton, 204 no person detected, 404 no crop at all.
+    Serve pose skeleton JPEG from cache.
+    The /api/crop/ route already enqueued fresh pose computation when it was
+    called, so by the time runPose() retries here the worker will have finished.
+    200 = skeleton ready  |  204 = computed, no person detected  |  404 = not yet done
     """
     from core import vlm_analyst as _va
     with _va._track_crops_lock:
-        entry = _va._track_crops.get(str(track_id))
-        jpeg  = entry.get("pose_jpeg") if entry else None
-        crop  = entry["crop"].copy()   if entry else None
+        entry   = _va._track_crops.get(str(track_id))
+        jpeg    = entry.get("pose_jpeg")  if entry else None
+        pose_ts = entry.get("pose_ts", 0) if entry else -1
 
-    # Fast path — background worker already computed this
     if jpeg:
-        return Response(jpeg, mimetype="image/jpeg")
-
-    if crop is None:
-        return "No crop available", 404
-
-    # Slow path — run inference now (covers first click before worker fires)
-    from core.pose_estimator import estimate_pose_jpeg
-    jpeg = _run_in_thread(estimate_pose_jpeg, crop)
-    if jpeg:
-        # Cache so subsequent clicks are instant
-        with _va._track_crops_lock:
-            e = _va._track_crops.get(str(track_id))
-            if e:
-                e["pose_jpeg"] = jpeg
-                e["pose_ts"]   = time.time()
-        return Response(jpeg, mimetype="image/jpeg")
-
-    return "", 204  # crop exists but no person detected
+        return Response(jpeg, mimetype="image/jpeg")   # 200 instant
+    if pose_ts > 0:
+        return "", 204   # worker ran, no skeleton (tiny crop / no detection)
+    return "Pose not ready yet", 404   # worker hasn't finished yet — client retries
 
 
 @app.route("/api/pose/data/<track_id>")

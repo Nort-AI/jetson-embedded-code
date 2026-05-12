@@ -199,15 +199,19 @@ def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str) -> None:
     _enqueue_pose(key, crop_bgr)
 
 
-def _enqueue_pose(key: str, crop_bgr: np.ndarray) -> None:
+def _enqueue_pose(key: str, crop_bgr: np.ndarray, force: bool = False) -> None:
     """Put crop in the pose queue; replaces any pending crop for the same key.
-    Skips if a fresh pose was already computed recently (_POSE_MIN_INTERVAL)."""
+    Skips if a fresh pose was already computed recently (_POSE_MIN_INTERVAL).
+    Pass force=True to bypass the interval (e.g. when user explicitly requests
+    pose on the crop they're currently looking at).
+    """
     global _pose_worker_started
-    # Rate-limit: skip if pose is still fresh
-    with _track_crops_lock:
-        pose_age = time.time() - (_track_crops.get(key) or {}).get("pose_ts", 0.0)
-    if pose_age < _POSE_MIN_INTERVAL:
-        return
+    if not force:
+        # Rate-limit: skip if pose is still fresh
+        with _track_crops_lock:
+            pose_age = time.time() - (_track_crops.get(key) or {}).get("pose_ts", 0.0)
+        if pose_age < _POSE_MIN_INTERVAL:
+            return
     # Dedup: replace any existing pending crop for this track
     with _pose_pending_lock:
         _pose_pending[key] = crop_bgr.copy()
