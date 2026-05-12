@@ -900,8 +900,13 @@ def main():
             return "localhost"
 
     local_ip = _get_local_ip()
+    _admin_cert = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "admin", "admin_cert.pem"
+    )
+    _admin_proto = "https" if os.path.exists(_admin_cert) else "http"
     logger.info(
-        f"Local admin page started on http://{local_ip}:{config.ADMIN_PORT}/"
+        f"Local admin page started on {_admin_proto}://{local_ip}:{config.ADMIN_PORT}/ "
+        f"({'self-signed TLS — accept browser warning' if _admin_proto == 'https' else 'HTTP — no TLS'})"
     )
 
     # ── L5-fix: systemd watchdog pinger ──────────────────────────────────────
