@@ -26,10 +26,42 @@ class SyncManager:
             
         self._init_db()
         self.storage_client = None
-        try:
-            self.storage_client = storage.Client()
-        except Exception as e:
-            logger.warning(f"GCS Client init failed (safe if simulator/local): {e}")
+        # GCS-timeout-fix: storage.Client() calls google.auth.default() which, as a
+        # last-resort credential probe, sends an HTTP request to the GCE metadata
+        # server (169.254.169.254).  On non-GCE hardware (Jetson, dev laptops) that
+        # address is unreachable and the call blocks indefinitely — freezing startup.
+        # Fix: run the init in a daemon thread and join with a 5-second timeout.
+        # The thread is daemon so it can't prevent process exit even if it's still
+        # blocked when the OS later kills it.
+        # KeyboardInterrupt during join() propagates normally (thread.join IS
+        # interruptible), so Ctrl+C still shuts the process down cleanly.
+        import threading as _threading
+        _gcs_exc   = [None]
+        _gcs_ready = [None]
+
+        def _init_gcs():
+            try:
+                _gcs_ready[0] = storage.Client()
+            except Exception as _e:
+                _gcs_exc[0] = _e
+
+        _t = _threading.Thread(target=_init_gcs, daemon=True, name="gcs-init")
+        _t.start()
+        _t.join(timeout=5.0)
+
+        if _gcs_ready[0] is not None:
+            self.storage_client = _gcs_ready[0]
+        elif _gcs_exc[0] is not None:
+            logger.warning(f"GCS Client init failed (safe if simulator/local): {_gcs_exc[0]}")
+        else:
+            # Thread still running → metadata server is unreachable; give up and
+            # continue without cloud sync.  The daemon thread will be abandoned.
+            logger.warning(
+                "[SyncManager] GCS Client init timed out after 5 s "
+                "(no GCE/ADC credentials found on this machine) — "
+                "running without cloud sync.  Set GOOGLE_APPLICATION_CREDENTIALS "
+                "to enable GCS uploads."
+            )
 
     # H8-fix: stop retrying permanently broken files after this many attempts
     MAX_UPLOAD_ATTEMPTS = 10

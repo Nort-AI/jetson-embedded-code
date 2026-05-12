@@ -518,46 +518,89 @@ def _perf_info():
         ram = 0
     temp = "N/A"
     if os.name == 'posix':
-        try:
-            with open("/sys/devices/virtual/thermal/thermal_zone0/temp", "r") as f:
-                temp_c = int(f.read().strip()) / 1000.0
-                temp = f"{temp_c:.1f} °C"
-        except Exception:
-            temp = "N/A"
+        # Try multiple thermal zones; on Jetson Orin the CPU zone varies by board.
+        _thermal_paths = [
+            "/sys/devices/virtual/thermal/thermal_zone0/temp",
+            "/sys/devices/virtual/thermal/thermal_zone1/temp",
+            "/sys/class/thermal/thermal_zone0/temp",
+        ]
+        for _tp in _thermal_paths:
+            try:
+                with open(_tp) as f:
+                    temp_c = int(f.read().strip()) / 1000.0
+                    if temp_c > 0:   # skip zones that read 0 (unused/inactive)
+                        temp = f"{temp_c:.1f} °C"
+                        break
+            except Exception:
+                continue
     return cpu, ram, temp
 
+
 def _gpu_info():
-    """Returns (gpu_usage_pct, gpu_ram_pct). Non-blocking."""
+    """
+    Returns (gpu_usage_pct, gpu_ram_pct). Non-blocking.
+
+    Jetson Orin (JetPack 6.x, aarch64):
+      nvidia-smi and pynvml are NOT available on Jetson — the integrated
+      Ampere GPU is not exposed via NVML.  The correct source is the sysfs
+      load node written by the Jetson kernel driver:
+
+        Orin Nano / Orin NX  →  /sys/devices/17000000.ga10b/load
+        Xavier NX / TX2      →  /sys/devices/gpu.0/load
+
+      Value is 0–1000 (integer tenths of a percent; divide by 10 for %).
+
+    GPU memory on Jetson is unified (shared with system RAM).  We use the
+    overall RAM% as a proxy for the GPU memory bar — it's the same pool.
+
+    x86 with a discrete NVIDIA GPU falls back to pynvml → nvidia-smi.
+    """
+    import platform as _platform
+
+    # ── Jetson / aarch64 ─────────────────────────────────────────────────────
+    if _platform.machine() == "aarch64":
+        _SYSFS_LOAD_PATHS = (
+            "/sys/devices/17000000.ga10b/load",           # Orin Nano, Orin NX
+            "/sys/devices/platform/17000000.ga10b/load",  # alternate device-tree path
+            "/sys/devices/gpu.0/load",                    # Xavier NX, TX2, Nano
+        )
+        for _p in _SYSFS_LOAD_PATHS:
+            try:
+                with open(_p) as _f:
+                    _val = int(_f.read().strip())
+                # Kernel writes 0–1000; convert to 0–100
+                _gpu_pct = min(100, max(0, _val // 10))
+                # Jetson uses unified memory — proxy GPU RAM with system RAM
+                _gpu_mem_pct = int(psutil.virtual_memory().percent) if psutil else 0
+                return _gpu_pct, _gpu_mem_pct
+            except (OSError, ValueError):
+                continue
+        # No sysfs path found — return zeroes (not an error; GPU may be idle/off)
+        return 0, 0
+
+    # ── x86 / discrete NVIDIA GPU ─────────────────────────────────────────────
     try:
         import pynvml
         pynvml.nvmlInit()
         handle = pynvml.nvmlDeviceGetHandleByIndex(0)
         util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-        mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        mem  = pynvml.nvmlDeviceGetMemoryInfo(handle)
         return int(util.gpu), int((mem.used / mem.total) * 100)
     except Exception:
         pass
 
     try:
-        import subprocess
         out = subprocess.check_output(
-            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits"],
-            stderr=subprocess.DEVNULL, text=True
+            ["nvidia-smi",
+             "--query-gpu=utilization.gpu,memory.used,memory.total",
+             "--format=csv,noheader,nounits"],
+            stderr=subprocess.DEVNULL, text=True, timeout=5,
         ).strip().split('\n')[0].split(',')
         if len(out) >= 3:
             return int(out[0]), int((float(out[1]) / float(out[2])) * 100)
     except Exception:
         pass
-        
-    try:
-        import os
-        if os.path.exists('/sys/devices/gpu.0/load'):
-            with open('/sys/devices/gpu.0/load', 'r') as f:
-                load = float(f.read().strip())
-                return int(load / 10), 0
-    except Exception:
-        pass
-        
+
     return 0, 0
 
 
@@ -4468,10 +4511,71 @@ def logout():
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
+def _collect_local_san_ips() -> list:
+    """
+    Return a list of ipaddress.IPv4Address objects for every local interface
+    IP that should appear as a Subject Alternative Name in the TLS cert.
+    Always includes 127.0.0.1; adds every non-loopback LAN IP so the cert
+    is valid when the admin panel is accessed from another machine on the
+    store's network (e.g. 10.x.x.x, 192.168.x.x).
+    """
+    import ipaddress as _ip
+    import socket as _socket
+    ips = set()
+    ips.add(_ip.IPv4Address("127.0.0.1"))
+    try:
+        # socket.getaddrinfo returns all addresses for the local hostname
+        for _res in _socket.getaddrinfo(_socket.gethostname(), None):
+            _addr = _res[4][0]
+            try:
+                _v4 = _ip.IPv4Address(_addr)
+                ips.add(_v4)
+            except ValueError:
+                pass   # skip IPv6
+    except Exception:
+        pass
+    # Also try the UDP trick — connects but sends nothing; gets the outbound IP
+    try:
+        _s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+        _s.connect(("8.8.8.8", 80))
+        ips.add(_ip.IPv4Address(_s.getsockname()[0]))
+        _s.close()
+    except Exception:
+        pass
+    return sorted(ips, key=lambda a: (a != _ip.IPv4Address("127.0.0.1"), str(a)))
+
+
+def _cert_needs_regen(cert_path: str) -> bool:
+    """
+    Return True if the existing cert is missing any current local IP as a SAN.
+    This forces regeneration when the device gets a new LAN IP assigned.
+    """
+    try:
+        from cryptography import x509 as _x509
+        from cryptography.x509.oid import ExtensionOID as _EOID
+        import ipaddress as _ip
+
+        with open(cert_path, "rb") as _f:
+            _cert = _x509.load_pem_x509_certificate(_f.read())
+
+        _san_ext = _cert.extensions.get_extension_for_oid(_EOID.SUBJECT_ALTERNATIVE_NAME)
+        _cert_ips = set(_san_ext.value.get_values_for_type(_x509.IPAddress))
+
+        _current_ips = set(_collect_local_san_ips())
+        return not _current_ips.issubset(_cert_ips)
+    except Exception:
+        return False   # if we can't parse the cert, keep it
+
+
 def _ensure_self_signed_cert() -> tuple:
     """
     H5-fix: Generate a self-signed TLS certificate on first run so the admin
     panel is served over HTTPS instead of cleartext HTTP.
+
+    The cert includes ALL current local interface IPs as SANs so it is valid
+    whether the browser connects via 127.0.0.1, localhost, or the store LAN IP
+    (e.g. 10.10.10.40).  The cert is regenerated automatically when new IPs
+    are detected (e.g. after a DHCP change).
 
     Returns (cert_path, key_path).  Both files live next to local_admin.py
     so they survive process restarts but are never committed (add *.pem to
@@ -4481,12 +4585,17 @@ def _ensure_self_signed_cert() -> tuple:
     cert_path = os.path.join(_admin_dir, "admin_cert.pem")
     key_path  = os.path.join(_admin_dir, "admin_key.pem")
 
-    if os.path.exists(cert_path) and os.path.exists(key_path):
+    _exists = os.path.exists(cert_path) and os.path.exists(key_path)
+    if _exists and not _cert_needs_regen(cert_path):
         return cert_path, key_path
+
+    if _exists:
+        _log.info("H5: Local IP changed — regenerating TLS cert with updated SANs.")
 
     # Try cryptography library first (no external process needed)
     try:
         import datetime as _dt
+        import ipaddress as _ip
         from cryptography import x509
         from cryptography.x509.oid import NameOID
         from cryptography.hazmat.primitives import hashes, serialization
@@ -4495,6 +4604,12 @@ def _ensure_self_signed_cert() -> tuple:
         _key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         _name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, u"nort-jetson-admin")])
         _now = _dt.datetime.utcnow()
+
+        # Build SANs: localhost + every current LAN IP
+        _san_entries = [x509.DNSName(u"localhost")]
+        for _lip in _collect_local_san_ips():
+            _san_entries.append(x509.IPAddress(_lip))
+
         _cert = (
             x509.CertificateBuilder()
             .subject_name(_name)
@@ -4503,10 +4618,7 @@ def _ensure_self_signed_cert() -> tuple:
             .serial_number(x509.random_serial_number())
             .not_valid_before(_now)
             .not_valid_after(_now + _dt.timedelta(days=3650))
-            .add_extension(x509.SubjectAlternativeName([
-                x509.DNSName(u"localhost"),
-                x509.IPAddress(__import__('ipaddress').IPv4Address('127.0.0.1')),
-            ]), critical=False)
+            .add_extension(x509.SubjectAlternativeName(_san_entries), critical=False)
             .sign(_key, hashes.SHA256())
         )
         with open(key_path, "wb") as _f:
@@ -4517,14 +4629,16 @@ def _ensure_self_signed_cert() -> tuple:
             ))
         with open(cert_path, "wb") as _f:
             _f.write(_cert.public_bytes(serialization.Encoding.PEM))
-        _log.info("H5: Generated self-signed TLS cert via cryptography library.")
+        _lip_strs = [str(a) for a in _collect_local_san_ips()]
+        _log.info(f"H5: Generated self-signed TLS cert (SANs: localhost, {', '.join(_lip_strs)})")
         return cert_path, key_path
     except Exception as _exc:
         # Catch both ImportError and any runtime failure (PermissionError, crypto error…)
         if not isinstance(_exc, ImportError):
             _log.warning(f"H5: cryptography cert generation failed: {_exc}")
 
-    # Fallback: use openssl subprocess
+    # Fallback: use openssl subprocess (no SAN support without a config file,
+    # but better than no TLS at all)
     try:
         result = subprocess.run([
             "openssl", "req", "-x509", "-newkey", "rsa:2048",
@@ -4533,7 +4647,7 @@ def _ensure_self_signed_cert() -> tuple:
             "-subj", "/CN=nort-jetson-admin",
         ], capture_output=True, timeout=30)
         if result.returncode == 0:
-            _log.info("H5: Generated self-signed TLS cert via openssl.")
+            _log.info("H5: Generated self-signed TLS cert via openssl (no SAN — install cryptography for LAN IP support).")
             return cert_path, key_path
         _log.warning(f"H5: openssl cert generation failed: {result.stderr.decode()}")
     except Exception as _exc:
