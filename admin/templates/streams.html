@@ -2823,8 +2823,13 @@
         // Discard if user already switched to a different person
         if (tid !== _selectedTrackId) return;
         if (!imgRes.ok) {
-          if (imgRes.status === 404 && (_retry || 0) < 4) {
-            // Worker hasn't finished yet — retry in 600 ms
+          if (imgRes.status === 204) {
+            // Worker ran but got no skeleton (ultralytics not installed / tiny crop)
+            // — stay silent, no point retrying
+            return;
+          }
+          if (imgRes.status === 404 && (_retry || 0) < 5) {
+            // Worker hasn't processed yet — retry every 600 ms, up to 5×
             setTimeout(() => runPose(tid, (_retry || 0) + 1), 600);
           }
           return;

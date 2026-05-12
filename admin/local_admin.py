@@ -4204,16 +4204,23 @@ def api_vlm_crop(track_id: str):
 def api_pose_jpeg(track_id: str):
     """
     Serve pre-computed pose skeleton JPEG from cache.
-    Computed by the background PoseWorker in vlm_analyst as crops arrive.
-    Returns 404 while the first computation is in flight (client should retry).
+    Status codes:
+      200 — skeleton ready
+      404 — worker hasn't processed this track yet (client should retry)
+      204 — worker ran but got no result (model unavailable / no person in crop)
     """
     from core import vlm_analyst as _va
     with _va._track_crops_lock:
-        entry = _va._track_crops.get(str(track_id))
-        jpeg  = entry.get("pose_jpeg") if entry else None
-    if not jpeg:
-        return "Pose not ready yet", 404
-    return Response(jpeg, mimetype="image/jpeg")
+        entry    = _va._track_crops.get(str(track_id))
+        jpeg     = entry.get("pose_jpeg")  if entry else None
+        pose_ts  = entry.get("pose_ts", 0) if entry else 0
+    if jpeg:
+        return Response(jpeg, mimetype="image/jpeg")
+    if pose_ts > 0:
+        # Worker already ran but produced no skeleton (ultralytics missing / tiny crop)
+        return "", 204
+    # pose_ts == 0 → worker hasn't processed yet, ask client to retry
+    return "Pose not ready yet", 404
 
 
 @app.route("/api/pose/data/<track_id>")

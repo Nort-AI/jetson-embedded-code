@@ -227,13 +227,11 @@ def _enqueue_pose(key: str, crop_bgr: np.ndarray) -> None:
 
 
 def _pose_worker_loop() -> None:
-    """Daemon thread: drain _pose_pending, run pose estimation, store results."""
-    try:
-        from core.pose_estimator import estimate_pose_jpeg, estimate_pose_data
-    except Exception as e:
-        logger.error("[Pose] Worker import failed: %s — run: pip install ultralytics", e)
-        return
-
+    """Daemon thread: drain _pose_pending, run pose estimation, store results.
+    Import is done per-crop so the thread survives import failures and recovers
+    automatically once ultralytics is installed (after a server restart).
+    """
+    print("[PoseWorker] Thread started.", flush=True)
     while True:
         _pose_wake_event.wait(timeout=10.0)
         _pose_wake_event.clear()
@@ -247,6 +245,8 @@ def _pose_worker_loop() -> None:
 
         for tid, crop in items:
             try:
+                # Import inside loop: survives failed first attempts gracefully
+                from core.pose_estimator import estimate_pose_jpeg, estimate_pose_data
                 jpeg = estimate_pose_jpeg(crop)
                 data = estimate_pose_data(crop)
                 now  = time.time()
@@ -255,11 +255,26 @@ def _pose_worker_loop() -> None:
                     if entry is not None:
                         entry["pose_jpeg"] = jpeg
                         entry["pose_data"] = data
-                        entry["pose_ts"]   = now
-                logger.debug("[Pose] Computed for track %s  detected=%s", tid,
-                             data.get("detected") if data else False)
+                        # Only stamp pose_ts when we got a real skeleton image.
+                        # If jpeg is None (model unavailable), leave pose_ts=0 so
+                        # the next crop save re-queues and retries.
+                        if jpeg is not None:
+                            entry["pose_ts"] = now
+                        else:
+                            entry["pose_ts"] = 0.0
+                if jpeg is not None:
+                    logger.debug("[Pose] OK track=%s posture=%s",
+                                 tid, (data or {}).get("posture", "?"))
+                else:
+                    # Log at WARNING once so operator knows what to fix.
+                    # (pose_estimator.py already logs the root cause once via
+                    # its _LOAD_FAILED sentinel — this adds context.)
+                    logger.warning(
+                        "[Pose] jpeg=None for track %s — ultralytics not "
+                        "installed or no person in crop. "
+                        "Fix: pip install ultralytics==8.3.168", tid)
             except Exception as e:
-                logger.debug("[Pose] Worker error for %s: %s", tid, e)
+                logger.warning("[Pose] Worker error for %s: %s", tid, e)
 
 
 def is_enabled() -> bool:
