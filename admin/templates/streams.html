@@ -2762,11 +2762,11 @@
             if (!blob) return;
             const objUrl = URL.createObjectURL(blob);
             cropImg.onload = () => {
+              // Ensure plain crop is visible (may have been hidden by previous pose swap)
               cropWrap.style.display = 'flex';
-              URL.revokeObjectURL(objUrl);
-              // Reset any previous pose result then auto-run
               document.getElementById('vlmPoseWrap').style.display = 'none';
               document.getElementById('poseAngles').style.display = 'none';
+              URL.revokeObjectURL(objUrl);
               runPose(trackId);   // auto-trigger, passes captured ID
             };
             cropImg.src = objUrl;
@@ -2794,7 +2794,8 @@
       _selectedTrackId = null;
       if (_vlmPollTimer) { clearInterval(_vlmPollTimer); _vlmPollTimer = null; }
 
-      // Reset pose elements
+      // Reset pose elements and restore original crop visibility
+      document.getElementById('vlmCropWrap').style.display = 'flex';
       document.getElementById('vlmPoseWrap').style.display = 'none';
       document.getElementById('poseAngles').style.display = 'none';
       document.getElementById('vlmPoseImg').src = '';
@@ -2838,6 +2839,8 @@
         const objUrl  = URL.createObjectURL(blob);
         const poseImg = document.getElementById('vlmPoseImg');
         poseImg.onload = () => {
+          // Swap: hide plain crop, show pose overlay in its place
+          document.getElementById('vlmCropWrap').style.display = 'none';
           poseWrap.style.display = 'flex';
           URL.revokeObjectURL(objUrl);
         };

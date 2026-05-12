@@ -93,8 +93,8 @@ def estimate_pose_jpeg(crop_bgr: np.ndarray, min_conf: float = 0.3) -> bytes | N
             return _no_detection_jpeg(crop_bgr)
 
         annotated = results[0].plot(
-            conf=False, labels=False,
-            kpt_radius=4, line_width=2,
+            conf=False, labels=False, boxes=False,
+            kpt_radius=5, line_width=2,
         )
         ok, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 88])
         return buf.tobytes() if ok else None
