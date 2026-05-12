@@ -39,7 +39,7 @@ networkx==3.4.2
 
 # ── ONNX / inference ─────────────────────────────────────────────────────────
 onnx==1.17.0
-onnxruntime==1.26.0
+onnxruntime==1.23.2
 onnxslim==0.1.59
 flatbuffers==25.2.10
 ml-dtypes==0.5.1
