@@ -536,46 +536,90 @@ def _perf_info():
     return cpu, ram, temp
 
 
+# Cache the discovered Jetson GPU sysfs path so we don't glob on every poll.
+_jetson_gpu_sysfs_path: str = ""   # "" = not yet discovered; None = not found
+
+
+def _discover_jetson_gpu_path() -> str:
+    """
+    Walk every plausible sysfs path to find the Jetson GPU load file.
+    Returns the path string on success, None if not found.
+    Called once from _poll_performance (real OS thread, blocking is fine).
+    """
+    import glob as _glob
+    # 1. Explicit known paths (fastest check)
+    _explicit = [
+        "/sys/devices/17000000.ga10b/load",
+        "/sys/devices/platform/17000000.ga10b/load",
+        "/sys/bus/platform/devices/17000000.ga10b/load",
+        "/sys/devices/gpu.0/load",
+        "/sys/devices/platform/gpu.0/load",
+    ]
+    # 2. Dynamic discovery for any board variant
+    _dynamic = (
+        _glob.glob("/sys/devices/*/load")
+        + _glob.glob("/sys/devices/platform/*/load")
+        + _glob.glob("/sys/bus/platform/devices/*/load")
+    )
+    for _p in _explicit + _dynamic:
+        try:
+            _val = int(open(_p).read().strip())
+            if 0 <= _val <= 1000:    # valid range: 0 = idle, 1000 = 100%
+                _log.info("[GPU] Jetson GPU sysfs path: %s  (current load: %d%%)", _p, _val // 10)
+                return _p
+        except (OSError, ValueError):
+            continue
+    _log.warning("[GPU] No Jetson sysfs GPU load path found — falling back to tegrastats")
+    return None
+
+
 def _gpu_info():
     """
-    Returns (gpu_usage_pct, gpu_ram_pct). Non-blocking.
+    Returns (gpu_usage_pct, gpu_ram_pct). Called from _poll_performance (real OS
+    thread) so blocking subprocess calls are safe here.
 
-    Jetson Orin (JetPack 6.x, aarch64):
-      nvidia-smi and pynvml are NOT available on Jetson — the integrated
-      Ampere GPU is not exposed via NVML.  The correct source is the sysfs
-      load node written by the Jetson kernel driver:
-
-        Orin Nano / Orin NX  →  /sys/devices/17000000.ga10b/load
-        Xavier NX / TX2      →  /sys/devices/gpu.0/load
-
-      Value is 0–1000 (integer tenths of a percent; divide by 10 for %).
-
-    GPU memory on Jetson is unified (shared with system RAM).  We use the
-    overall RAM% as a proxy for the GPU memory bar — it's the same pool.
-
-    x86 with a discrete NVIDIA GPU falls back to pynvml → nvidia-smi.
+    Jetson aarch64 (JetPack 6.x):
+      1. Read discovered sysfs 'load' node (0-1000, divide by 10 for %).
+         Path is found once at startup via _discover_jetson_gpu_path().
+      2. If sysfs unavailable: parse one line of tegrastats (GR3D_FREQ).
+    x86: pynvml → nvidia-smi.
     """
+    global _jetson_gpu_sysfs_path
     import platform as _platform
 
     # ── Jetson / aarch64 ─────────────────────────────────────────────────────
     if _platform.machine() == "aarch64":
-        _SYSFS_LOAD_PATHS = (
-            "/sys/devices/17000000.ga10b/load",           # Orin Nano, Orin NX
-            "/sys/devices/platform/17000000.ga10b/load",  # alternate device-tree path
-            "/sys/devices/gpu.0/load",                    # Xavier NX, TX2, Nano
-        )
-        for _p in _SYSFS_LOAD_PATHS:
+        # Discover path on first call
+        if _jetson_gpu_sysfs_path == "":
+            _jetson_gpu_sysfs_path = _discover_jetson_gpu_path()  # may return None
+
+        if _jetson_gpu_sysfs_path:
             try:
-                with open(_p) as _f:
-                    _val = int(_f.read().strip())
-                # Kernel writes 0–1000; convert to 0–100
-                _gpu_pct = min(100, max(0, _val // 10))
-                # Jetson uses unified memory — proxy GPU RAM with system RAM
+                _val = int(open(_jetson_gpu_sysfs_path).read().strip())
+                _gpu_pct    = min(100, max(0, _val // 10))
                 _gpu_mem_pct = int(psutil.virtual_memory().percent) if psutil else 0
                 return _gpu_pct, _gpu_mem_pct
             except (OSError, ValueError):
-                continue
-        # No sysfs path found — return zeroes (not an error; GPU may be idle/off)
+                _jetson_gpu_sysfs_path = ""   # force rediscovery next poll
+
+        # ── tegrastats fallback ────────────────────────────────────────────
+        # Runs in _poll_performance (real OS thread) — blocking is fine.
+        try:
+            import re as _re
+            _proc = subprocess.Popen(
+                ["tegrastats"], stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, text=True
+            )
+            _line = _proc.stdout.readline()
+            _proc.terminate()
+            _m = _re.search(r'GR3D_FREQ\s+(\d+)%', _line)
+            if _m:
+                _gpu_pct     = int(_m.group(1))
+                _gpu_mem_pct = int(psutil.virtual_memory().percent) if psutil else 0
+                return _gpu_pct, _gpu_mem_pct
+        except Exception:
+            pass
+
         return 0, 0
 
     # ── x86 / discrete NVIDIA GPU ─────────────────────────────────────────────
@@ -639,6 +683,31 @@ def _scan_occupancy_log() -> tuple:
     else:
         peak_hour = "N/A"
     return visitor_count, peak_hour
+
+
+# ── Thread-pool helper for blocking I/O in gevent greenlets ──────────────────
+# gevent greenlets run on a SINGLE OS thread (the hub).  Any blocking call
+# (sqlite3, file I/O, subprocess) inside a greenlet freezes the entire event
+# loop until it returns.  The fix: run blocking work in a real OS thread via
+# gevent's thread pool and *await* the result cooperatively.  The current
+# greenlet suspends (yielding to other greenlets) while the thread works.
+#
+# Usage:  result = _run_in_thread(blocking_fn, arg1, arg2)
+_gevent_pool = None
+
+def _run_in_thread(fn, *args, **kwargs):
+    """Run *fn* in a gevent thread-pool worker; yield event loop while waiting."""
+    global _gevent_pool
+    try:
+        if _gevent_pool is None:
+            from gevent.threadpool import ThreadPool as _TP
+            _gevent_pool = _TP(8)   # up to 8 parallel blocking ops
+        _async = _gevent_pool.spawn(fn, *args, **kwargs)
+        return _async.get(timeout=15)
+    except Exception:
+        # If gevent threadpool unavailable, fall back to direct call
+        # (blocks event loop, but at least doesn't crash).
+        return fn(*args, **kwargs)
 
 
 # ── KPI cache: visitor count + peak hour ─────────────────────────────────────
@@ -1289,7 +1358,9 @@ def api_heatmap():
     except Exception:
         pass
 
-    points = _sl.query_heatmap(camera_id, gender, age_group, from_ts, to_ts)
+    # Run SQLite query in a thread — sqlite3 is a blocking C extension and
+    # calling it from a gevent greenlet freezes the entire event loop.
+    points = _run_in_thread(_sl.query_heatmap, camera_id, gender, age_group, from_ts, to_ts)
 
     # 16:9 density grid for professional rendering
     bins_w, bins_h = 320, 180
@@ -1347,7 +1418,8 @@ def api_paths():
     except Exception:
         pass
 
-    paths = _sl.query_paths(camera_id, gender, age_group, from_ts, to_ts)
+    # Run in thread — sqlite3 C extension blocks gevent event loop if called from greenlet
+    paths = _run_in_thread(_sl.query_paths, camera_id, gender, age_group, from_ts, to_ts)
     return jsonify({"paths": [[[round(x, 3), round(y, 3)] for x, y in p] for p in paths]})
 
 
@@ -1394,7 +1466,7 @@ def api_camera_snapshot(camera_id):
     # 2a. Add Heatmap
     if do_heatmap:
         from data import spatial_logger as _sl
-        points = _sl.query_heatmap(camera_id, "all", "all") # Latest data as fallback
+        points = _run_in_thread(_sl.query_heatmap, camera_id, "all", "all")  # Latest data as fallback
         if points:
             # Re-use logic from api_heatmap but bake it directly
             grid = _np.zeros((180, 320), dtype=_np.float32)
