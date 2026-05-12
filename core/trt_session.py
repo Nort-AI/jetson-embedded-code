@@ -106,32 +106,51 @@ def _cuda_sync(stream: int):
 
 def _import_trt():
     """
-    Import tensorrt, checking conda env first then system site-packages.
-    python3-libnvinfer installs to system Python's dist-packages.
-    Since conda Python 3.10 shares the CPython 3.10 ABI with the system
-    Python 3.10, the extension can be imported cross-environment.
-    """
-    try:
-        import tensorrt as trt
-        return trt
-    except ImportError:
-        pass
+    Import tensorrt, preferring the system python3-libnvinfer package over any
+    pip-installed stub wheel.  The pip tensorrt wheels for Linux x86/aarch64
+    may import successfully but lack the C bindings (no trt.Logger, no
+    trt.Runtime, etc.) — we validate the import before returning it.
 
+    python3-libnvinfer installs to system Python's dist-packages.  On Jetson
+    the system Python and the conda Python share the same CPython ABI, so the
+    extension can be loaded cross-environment once the path is added.
+    """
     system_paths = [
         "/usr/lib/python3/dist-packages",
         "/usr/lib/python3.10/dist-packages",
-        "/usr/local/lib/python3.10/dist-packages",
         "/usr/lib/python3.11/dist-packages",
+        "/usr/local/lib/python3.10/dist-packages",
+        "/usr/local/lib/python3.11/dist-packages",
     ]
+
+    def _is_valid(trt) -> bool:
+        """Return True only if the module has real C bindings (not a stub wheel)."""
+        return hasattr(trt, "Logger") and hasattr(trt, "Runtime")
+
+    # First try: whatever is already importable (conda env or system)
+    try:
+        import tensorrt as trt
+        if _is_valid(trt):
+            return trt
+        # Stub wheel imported — purge it so we can try the system path
+        sys.modules.pop("tensorrt", None)
+        logger.debug("[TRT] pip tensorrt stub detected (no Logger/Runtime) — trying system path")
+    except ImportError:
+        pass
+
+    # Second try: system dist-packages (python3-libnvinfer)
     for p in system_paths:
         if os.path.isdir(p) and p not in sys.path:
             sys.path.insert(0, p)
 
     try:
         import tensorrt as trt
-        return trt
+        if _is_valid(trt):
+            return trt
     except ImportError:
-        return None
+        pass
+
+    return None
 
 
 # ── Availability check ────────────────────────────────────────────────────────
