@@ -818,17 +818,26 @@ threading.Thread(target=_refresh_connectivity, daemon=True).start()
 
 
 def _poll_performance():
+    _iter = 0
     while True:
-        cpu, ram, _ = _perf_info()
-        gpu, _ = _gpu_info()
-        now_str = time.strftime("%H:%M:%S")
-        _cpu_hist.append(cpu if isinstance(cpu, (int, float)) else 0)
-        _ram_hist.append(ram if isinstance(ram, (int, float)) else 0)
-        _gpu_hist.append(gpu if isinstance(gpu, (int, float)) else 0)
-        _time_hist.append(now_str)
+        try:
+            cpu, ram, _ = _perf_info()
+            gpu, _ = _gpu_info()
+            now_str = time.strftime("%H:%M:%S")
+            _cpu_hist.append(cpu if isinstance(cpu, (int, float)) else 0)
+            _ram_hist.append(ram if isinstance(ram, (int, float)) else 0)
+            _gpu_hist.append(gpu if isinstance(gpu, (int, float)) else 0)
+            _time_hist.append(now_str)
+            _iter += 1
+            # Log first few readings so startup issues are visible in the console
+            if _iter <= 3:
+                _log.info("[perf] iter=%d  cpu=%.1f%%  ram=%.1f%%  gpu=%.1f%%",
+                          _iter, cpu, ram, gpu)
+        except Exception as _e:
+            _log.error("[perf] poll error (thread stays alive): %s", _e, exc_info=True)
         time.sleep(2)
 
-threading.Thread(target=_poll_performance, daemon=True).start()
+threading.Thread(target=_poll_performance, daemon=True, name="perf-poll").start()
 
 
 # ── Smart Notification Engine ─────────────────────────────────────────────────
