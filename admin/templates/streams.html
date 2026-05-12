@@ -627,14 +627,21 @@
       border-color: rgba(239, 68, 68, 0.2);
     }
 
+    /* Row that holds crop + pose side by side */
+    .vlm-crop-row {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      margin-bottom: 12px;
+    }
+
     .vlm-crop-wrap {
       display: none;          /* toggled to flex by JS on load */
       justify-content: center;
       align-items: center;
-      width: 100%;
+      flex: 1;
       min-height: 120px;
       max-height: 300px;
-      margin-bottom: 12px;
       background: rgba(0,0,0,0.25);
       border-radius: var(--radius);
       overflow: hidden;
@@ -1710,12 +1717,14 @@
               <button class="vlm-close" onclick="closeVlmPanel()" title="Close">✕</button>
             </div>
             <div class="vlm-body">
-              <div class="vlm-crop-wrap" id="vlmCropWrap">
-                <img id="vlmCrop" src="" alt="Person crop">
-              </div>
-              <!-- Pose estimation result area (auto-runs on crop load) -->
-              <div class="vlm-crop-wrap" id="vlmPoseWrap" style="display:none; margin-bottom:10px;">
-                <img id="vlmPoseImg" src="" alt="Pose overlay">
+              <!-- Side-by-side: plain crop (left) + pose overlay (right) -->
+              <div class="vlm-crop-row" id="vlmCropRow">
+                <div class="vlm-crop-wrap" id="vlmCropWrap">
+                  <img id="vlmCrop" src="" alt="Person crop">
+                </div>
+                <div class="vlm-crop-wrap" id="vlmPoseWrap" style="display:none;">
+                  <img id="vlmPoseImg" src="" alt="Pose overlay">
+                </div>
               </div>
               <div id="poseAngles" style="display:none; font-size:0.72rem; color:var(--fg-muted);
                    margin-bottom:10px; line-height:1.7; padding:6px 8px;
@@ -2780,7 +2789,6 @@
           const objUrl  = URL.createObjectURL(blob);
           const poseImg = document.getElementById('vlmPoseImg');
           poseImg.onload = () => {
-            cropWrap.style.display = 'none';          // hide plain crop
             document.getElementById('vlmPoseWrap').style.display = 'flex';
             URL.revokeObjectURL(objUrl);
           };
@@ -2817,11 +2825,12 @@
       _selectedTrackId = null;
       if (_vlmPollTimer) { clearInterval(_vlmPollTimer); _vlmPollTimer = null; }
 
-      // Reset pose elements and restore original crop visibility
-      document.getElementById('vlmCropWrap').style.display = 'flex';
+      // Reset both image panels
+      document.getElementById('vlmCropWrap').style.display = 'none';
       document.getElementById('vlmPoseWrap').style.display = 'none';
-      document.getElementById('poseAngles').style.display = 'none';
+      document.getElementById('poseAngles').style.display  = 'none';
       document.getElementById('vlmPoseImg').src = '';
+      document.getElementById('vlmCrop').src    = '';
 
       // Clear backend selection highlight
       try {
