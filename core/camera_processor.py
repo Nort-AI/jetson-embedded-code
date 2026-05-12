@@ -22,6 +22,60 @@ from data import spatial_logger
 occupancy_log_lock = threading.Lock()
 OCCUPANCY_LOG_FILE = "occupancy_log.csv"
 
+# ── Live pose skeleton overlay ─────────────────────────────────────────────────
+# Used when --live-pose is active. Draws the COCO 17-keypoint skeleton directly
+# onto the annotated video frame using back-projected cached keypoints.
+# No extra inference happens here — keypoints come from the background pose worker.
+_POSE_KP_NAMES = [
+    "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+    "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+    "left_wrist", "right_wrist", "left_hip", "right_hip",
+    "left_knee", "right_knee", "left_ankle", "right_ankle",
+]
+_POSE_SKELETON = [
+    (0, 1), (0, 2), (1, 3), (2, 4),
+    (5, 6), (5, 7), (7, 9), (6, 8), (8, 10),
+    (5, 11), (6, 12), (11, 12),
+    (11, 13), (13, 15), (12, 14), (14, 16),
+]
+_POSE_EDGE_COLOR = (0, 230, 90)   # green skeleton edges
+_POSE_KP_COLOR   = (0, 210, 255)  # cyan keypoint dots
+_POSE_MIN_CONF   = 0.3
+
+
+def _draw_pose_overlay(frame: np.ndarray,
+                       pose_data: dict,
+                       crop_bounds: tuple) -> None:
+    """Back-project normalised pose keypoints onto *frame* and draw skeleton.
+
+    pose_data   — dict from estimate_pose_both(); keypoints are normalised [0,1]
+                  relative to the padded crop that was fed to the model.
+    crop_bounds — (cx1, cy1, cx2, cy2) pixel coords of that crop in *frame*.
+    """
+    if not pose_data or not pose_data.get("detected"):
+        return
+    cx1, cy1, cx2, cy2 = crop_bounds
+    cw = cx2 - cx1
+    ch = cy2 - cy1
+    if cw <= 0 or ch <= 0:
+        return
+
+    fh, fw = frame.shape[:2]
+    kps = pose_data.get("keypoints", {})
+    pts: dict = {}
+    for idx, name in enumerate(_POSE_KP_NAMES):
+        kp = kps.get(name, {})
+        if kp.get("conf", 0) >= _POSE_MIN_CONF:
+            px = int(cx1 + kp["x"] * cw)
+            py = int(cy1 + kp["y"] * ch)
+            pts[idx] = (max(0, min(fw - 1, px)), max(0, min(fh - 1, py)))
+
+    for a, b in _POSE_SKELETON:
+        if a in pts and b in pts:
+            cv2.line(frame, pts[a], pts[b], _POSE_EDGE_COLOR, 2, cv2.LINE_AA)
+    for px, py in pts.values():
+        cv2.circle(frame, (px, py), 4, _POSE_KP_COLOR, -1, cv2.LINE_AA)
+
 # Global occupancy tracker shared across all cameras
 occupancy_tracker_lock = threading.Lock()
 store_occupancy = {}  # Key: (client_id, store_id), Value: current occupancy
@@ -935,8 +989,11 @@ class CameraProcessor:
                             # shows context rather than a tight slice of the person.
                             _pad_x = max(10, int((x2 - x1) * 0.25))
                             _pad_y = max(10, int((y2 - y1) * 0.15))
-                            crop_bgr = frame[max(0, y1 - _pad_y):min(h, y2 + _pad_y),
-                                             max(0, x1 - _pad_x):min(w, x2 + _pad_x)]
+                            _cx1 = max(0, x1 - _pad_x)
+                            _cy1 = max(0, y1 - _pad_y)
+                            _cx2 = min(w, x2 + _pad_x)
+                            _cy2 = min(h, y2 + _pad_y)
+                            crop_bgr = frame[_cy1:_cy2, _cx1:_cx2]
                             if crop_bgr.size > 0:
                                 # Use the SAME key formula as _make_retail_data in run.py:
                                 #   str(global_id) when a ReID global ID has been assigned,
@@ -949,7 +1006,8 @@ class CameraProcessor:
                                     else f"{self.camera_id}_{track_id}"
                                 )
                                 self._vlm_analyst.save_crop(
-                                    _crop_key, crop_bgr, self.camera_id
+                                    _crop_key, crop_bgr, self.camera_id,
+                                    crop_bounds=(_cx1, _cy1, _cx2, _cy2),
                                 )
                         # Fire analysis job only if explicitly enabled (saves GPU/API resources)
                         if self.auto_vlm_enabled:
@@ -973,6 +1031,23 @@ class CameraProcessor:
                         frame_counter=self.frame_counter,
                         reid_enabled=bool(reid_enabled),
                     )
+
+                    # ── Live pose skeleton on video feed (--live-pose) ────────
+                    if getattr(config, "LIVE_POSE_ENABLED", False) and self._vlm_analyst.is_enabled():
+                        try:
+                            _pkey = (
+                                str(attrs.get("global_id"))
+                                if attrs.get("global_id") is not None
+                                else f"{self.camera_id}_{track_id}"
+                            )
+                            with self._vlm_analyst._track_crops_lock:
+                                _pe = self._vlm_analyst._track_crops.get(_pkey)
+                                _pd = _pe.get("pose_data")   if _pe else None
+                                _pb = _pe.get("crop_bounds") if _pe else None
+                            if _pd and _pb:
+                                _draw_pose_overlay(draw_frame, _pd, _pb)
+                        except Exception:
+                            pass
 
                     # Highlight active VLM search targets instantly in the stream
                     if self._vlm_analyst.is_enabled():

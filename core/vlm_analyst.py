@@ -156,99 +156,8 @@ _pose_pending_lock           = threading.Lock()
 _pose_wake_event             = threading.Event()
 _pose_worker_started         = False
 _pose_worker_start_lock      = threading.Lock()
-_POSE_MIN_INTERVAL           = 30.0   # seconds between re-estimates for same track
-
-# ── Live pose: continuous estimation for the selected admin-panel track ───────
-# Enabled only when run.py is started with --live-pose.
-# A single daemon thread runs pose at ~6-7 fps on _live_pose_selected.
-# It idles (waits on _live_pose_event) when nothing is selected.
-_live_pose_selected: "str | None"  = None
-_live_pose_lock                    = threading.Lock()
-_live_pose_event                   = threading.Event()
-_live_pose_worker_started          = False
-_live_pose_worker_lock             = threading.Lock()
-_LIVE_POSE_INTERVAL                = 0.15   # target seconds/frame → ~6-7 fps
-
-
-def set_live_pose_target(track_id: str) -> None:
-    """Called by the MJPEG stream route when the browser connects.
-    Starts (or wakes) the continuous pose worker for this track.
-    """
-    global _live_pose_selected, _live_pose_worker_started
-    with _live_pose_lock:
-        _live_pose_selected = str(track_id)
-    _live_pose_event.set()
-    if not _live_pose_worker_started:
-        with _live_pose_worker_lock:
-            if not _live_pose_worker_started:
-                _live_pose_worker_started = True
-                t = threading.Thread(
-                    target=_live_pose_worker_loop,
-                    name="LivePoseWorker",
-                    daemon=True,
-                )
-                t.start()
-                logger.info("[LivePose] Continuous pose worker started.")
-
-
-def clear_live_pose_target(track_id: str) -> None:
-    """Called when the MJPEG stream is closed (browser tab / panel close).
-    Only clears if the current selection matches, so a fast panel re-open
-    on a different person doesn't accidentally stop the new stream.
-    """
-    global _live_pose_selected
-    with _live_pose_lock:
-        if _live_pose_selected == str(track_id):
-            _live_pose_selected = None
-    _live_pose_event.set()   # wake worker so it notices and idles
-
-
-def _live_pose_worker_loop() -> None:
-    """Daemon thread: continuously runs pose on the selected track.
-    - If no track selected → wait on _live_pose_event (near-zero CPU).
-    - If track selected    → run estimate_pose_both() → write cache → sleep
-      the remaining budget so the net rate is ~_LIVE_POSE_INTERVAL fps.
-    Import is inside the loop so the thread survives ultralytics import
-    failures and auto-recovers if the package is installed later.
-    """
-    logger.info("[LivePose] Worker thread started (idle until a person is selected).")
-    while True:
-        with _live_pose_lock:
-            tid = _live_pose_selected
-
-        if tid is None:
-            _live_pose_event.wait(timeout=5.0)
-            _live_pose_event.clear()
-            continue
-
-        # Grab the freshest crop for this track
-        with _track_crops_lock:
-            entry = _track_crops.get(tid)
-            crop  = entry["crop"].copy() if entry else None
-
-        if crop is None:
-            time.sleep(0.2)
-            continue
-
-        t0 = time.time()
-        try:
-            from core.pose_estimator import estimate_pose_both
-            jpeg, data = estimate_pose_both(crop)
-            now = time.time()
-            with _track_crops_lock:
-                e = _track_crops.get(tid)
-                if e is not None:
-                    e["pose_jpeg"] = jpeg
-                    e["pose_data"] = data
-                    e["pose_ts"]   = now
-        except Exception as exc:
-            logger.warning("[LivePose] Inference error for %s: %s", tid, exc)
-
-        # Sleep only the remaining budget so overall rate ≈ _LIVE_POSE_INTERVAL
-        elapsed   = time.time() - t0
-        remaining = _LIVE_POSE_INTERVAL - elapsed
-        if remaining > 0:
-            time.sleep(remaining)
+_POSE_MIN_INTERVAL           = 30.0   # seconds between re-estimates (normal mode)
+# With --live-pose, interval drops to 0.15 s so the video-feed overlay stays fresh.
 
 
 _active_target_id = None
@@ -268,8 +177,14 @@ def get_active_target():
 
 
 
-def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str) -> None:
-    """Called by camera_processor on each accepted frame for a track."""
+def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str,
+              crop_bounds: "tuple | None" = None) -> None:
+    """Called by camera_processor on each accepted frame for a track.
+
+    crop_bounds — optional (cx1, cy1, cx2, cy2) pixel coords of the padded
+                  crop in the full frame.  Stored so camera_processor can
+                  back-project normalised keypoints onto the video feed.
+    """
     if crop_bgr is None or crop_bgr.size == 0:
         return
     key = str(global_id)
@@ -278,9 +193,10 @@ def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str) -> None:
         if key in _track_crops:
             _track_crops.move_to_end(key)
         _track_crops[key] = {
-            "crop":      crop_bgr.copy(),
-            "ts":        time.time(),
-            "cam":       camera_id,
+            "crop":        crop_bgr.copy(),
+            "ts":          time.time(),
+            "cam":         camera_id,
+            "crop_bounds": crop_bounds,          # (cx1,cy1,cx2,cy2) in full frame
             # preserve pre-computed pose so it survives crop updates
             "pose_jpeg": prev.get("pose_jpeg"),
             "pose_data": prev.get("pose_data"),
@@ -300,10 +216,16 @@ def _enqueue_pose(key: str, crop_bgr: np.ndarray, force: bool = False) -> None:
     """
     global _pose_worker_started
     if not force:
-        # Rate-limit: skip if pose is still fresh
+        # Rate-limit: skip if pose is still fresh.
+        # With --live-pose the interval shrinks to 0.15 s so the video overlay stays fresh.
+        try:
+            from system import config as _cfg
+            min_interval = 0.15 if getattr(_cfg, "LIVE_POSE_ENABLED", False) else _POSE_MIN_INTERVAL
+        except Exception:
+            min_interval = _POSE_MIN_INTERVAL
         with _track_crops_lock:
             pose_age = time.time() - (_track_crops.get(key) or {}).get("pose_ts", 0.0)
-        if pose_age < _POSE_MIN_INTERVAL:
+        if pose_age < min_interval:
             return
     # Dedup: replace any existing pending crop for this track
     with _pose_pending_lock:
