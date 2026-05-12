@@ -1062,7 +1062,7 @@ def _mjpeg_gen(camera_id: str):
                     b"--frame\r\n"
                     b"Content-Type: image/jpeg\r\n\r\n" + _BLANK + b"\r\n"
                 )
-        _time.sleep(0.05)   # ~20 fps cap
+        _time.sleep(0.1)    # ~10 fps — sufficient for monitoring, halves stream CPU load
 
 
 @app.route("/stream/<camera_id>")
@@ -1103,7 +1103,7 @@ def _mjpeg_raw_gen(camera_id: str):
                     b"--frame\r\n"
                     b"Content-Type: image/jpeg\r\n\r\n" + _BLANK + b"\r\n"
                 )
-        _time.sleep(0.05)   # ~20 fps cap
+        _time.sleep(0.1)    # ~10 fps — sufficient for monitoring, halves stream CPU load
 
 
 @app.route("/stream_raw/<camera_id>")
@@ -4542,12 +4542,38 @@ def start_local_admin(port: int = 8080):
     # H5-fix: use HTTPS so credentials and the live video stream are not sent
     # in cleartext over the store LAN.
     cert_path, key_path = _ensure_self_signed_cert()
-    ssl_context = (cert_path, key_path) if (cert_path and key_path) else None
-    if ssl_context:
+    has_tls = bool(cert_path and key_path)
+    if has_tls:
         _log.info(f"Admin panel starting on https://0.0.0.0:{port}/ (self-signed TLS)")
     else:
         _log.warning("Admin panel starting on HTTP (TLS cert unavailable — install cryptography or openssl)")
 
+    # Prefer gevent WSGIServer — it serves MJPEG streams as async greenlets
+    # instead of one blocking thread per stream, which eliminates the GIL
+    # contention and thread exhaustion that makes Flask's dev server sluggish
+    # when 5 cameras are streaming simultaneously.
+    try:
+        from gevent import monkey as _monkey
+        _monkey.patch_all(thread=False)   # patch I/O but NOT threading (camera threads use real threads)
+        from gevent.pywsgi import WSGIServer as _WSGIServer
+        _log.info("[Admin] Using gevent WSGIServer (async MJPEG streaming)")
+        if has_tls:
+            server = _WSGIServer(
+                ("0.0.0.0", port), app,
+                keyfile=key_path, certfile=cert_path,
+            )
+        else:
+            server = _WSGIServer(("0.0.0.0", port), app)
+        server.serve_forever()
+        return
+    except ImportError:
+        _log.warning("[Admin] gevent not installed — falling back to Flask dev server "
+                     "(install gevent for better performance: pip install gevent)")
+    except Exception as _e:
+        _log.warning(f"[Admin] gevent server failed ({_e}) — falling back to Flask dev server")
+
+    # Fallback: Flask dev server (threaded)
+    ssl_context = (cert_path, key_path) if has_tls else None
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False,
             threaded=True, ssl_context=ssl_context)
 
