@@ -604,48 +604,73 @@ def _gpu_info():
     return 0, 0
 
 
-def _today_visitor_count() -> int:
-    """Calculate persistent current occupancy (Total Entries - Total Exits today)."""
+def _scan_occupancy_log() -> tuple:
+    """
+    Single pass over occupancy_log.csv → returns (visitor_count, peak_hour_str).
+
+    Called by the background cache thread every 30 s.  Never called directly
+    from a request handler — that would block the gevent event loop on slow
+    Jetson eMMC I/O (the file grows by ~hundreds of rows per hour).
+    """
     today = date.today().isoformat()
+    count = 0
+    hour_counts: dict = {}
     try:
-        count = 0
         with open(OCCUPANCY_LOG_PATH, newline='', encoding='utf-8') as f:
             reader = csv.reader(f)
             for row in reader:
-                if len(row) >= 3:
-                    ts = row[0]
-                    if ts.startswith(today):
-                        if row[1] == 'entry':
-                            count += 1
-                        elif row[1] == 'exit':
-                            count -= 1
-        return max(0, count)
-    except Exception:
-        return -1
-
-
-def _peak_hour_today() -> str:
-    """Return the hour-bucket with the most entries today, e.g. '14:00–15:00'."""
-    today = date.today().isoformat()
-    try:
-        hour_counts: dict = {}
-        with open(OCCUPANCY_LOG_PATH, newline='', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            for row in reader:
-                if len(row) >= 2:
-                    ts = row[0]
-                    if ts.startswith(today) and row[1] == 'entry':
+                if len(row) >= 2 and row[0].startswith(today):
+                    if row[1] == 'entry':
+                        count += 1
                         try:
-                            hour = int(ts[11:13])
+                            hour = int(row[0][11:13])
                             hour_counts[hour] = hour_counts.get(hour, 0) + 1
                         except Exception:
                             pass
-        if not hour_counts:
-            return "N/A"
-        peak = max(hour_counts, key=hour_counts.get)
-        return f"{peak:02d}:00–{peak+1:02d}:00"
+                    elif row[1] == 'exit':
+                        count -= 1
     except Exception:
-        return "N/A"
+        pass
+
+    visitor_count = max(0, count)
+    if hour_counts:
+        peak = max(hour_counts, key=hour_counts.get)
+        peak_hour = f"{peak:02d}:00–{peak+1:02d}:00"
+    else:
+        peak_hour = "N/A"
+    return visitor_count, peak_hour
+
+
+# ── KPI cache: visitor count + peak hour ─────────────────────────────────────
+# Updated every 30 s by a background thread so request handlers never block
+# on file I/O.  Reads from the cache dict are instantaneous.
+_kpi_cache: dict = {"visitors_today": -1, "peak_hour": "N/A", "updated": 0.0}
+
+
+def _refresh_kpi_cache():
+    """Background thread: refresh visitor count and peak hour every 30 s."""
+    while True:
+        try:
+            visitors, peak = _scan_occupancy_log()
+            _kpi_cache["visitors_today"] = visitors
+            _kpi_cache["peak_hour"]      = peak
+            _kpi_cache["updated"]        = time.time()
+        except Exception:
+            pass
+        time.sleep(30)
+
+
+threading.Thread(target=_refresh_kpi_cache, daemon=True, name="KPI-Cache").start()
+
+
+def _today_visitor_count() -> int:
+    """Return cached visitor count (updated every 30 s by background thread)."""
+    return _kpi_cache["visitors_today"]
+
+
+def _peak_hour_today() -> str:
+    """Return cached peak hour (updated every 30 s by background thread)."""
+    return _kpi_cache["peak_hour"]
 
 
 def _recent_entries(minutes=2) -> list:
@@ -1101,7 +1126,15 @@ def _enabled_camera_ids() -> list:
 
 def _mjpeg_gen(camera_id: str):
     """Generator that yields MJPEG frames for a given camera."""
-    import time as _time
+    # gevent.sleep() is a cooperative yield — other greenlets (page requests)
+    # run during the sleep.  stdlib time.sleep() without monkey-patching blocks
+    # the entire gevent hub OS-thread, making every page navigation wait behind
+    # all active MJPEG streams.  Always use gevent.sleep here.
+    try:
+        from gevent import sleep as _gsleep
+    except ImportError:
+        import time as _t; _gsleep = _t.sleep
+
     _BLANK = None
     while True:
         frame_bytes = _latest_frames.get(camera_id)
@@ -1111,7 +1144,7 @@ def _mjpeg_gen(camera_id: str):
                 b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
             )
         else:
-            # Send a tiny 1×1 grey JPEG if no frame available yet
+            # Send a small grey placeholder if no frame available yet
             if _BLANK is None:
                 try:
                     import cv2 as _cv2, numpy as _np
@@ -1126,7 +1159,7 @@ def _mjpeg_gen(camera_id: str):
                     b"--frame\r\n"
                     b"Content-Type: image/jpeg\r\n\r\n" + _BLANK + b"\r\n"
                 )
-        _time.sleep(0.1)    # ~10 fps — sufficient for monitoring, halves stream CPU load
+        _gsleep(0.1)    # ~10 fps — cooperative yield so other greenlets can run
 
 
 @app.route("/stream/<camera_id>")
@@ -1143,7 +1176,11 @@ def live_stream(camera_id: str):
 
 def _mjpeg_raw_gen(camera_id: str):
     """Generator that yields MJPEG RAW frames for a given camera."""
-    import time as _time
+    try:
+        from gevent import sleep as _gsleep
+    except ImportError:
+        import time as _t; _gsleep = _t.sleep
+
     _BLANK = None
     while True:
         frame_bytes = _latest_raw_frames.get(camera_id)
@@ -1167,7 +1204,7 @@ def _mjpeg_raw_gen(camera_id: str):
                     b"--frame\r\n"
                     b"Content-Type: image/jpeg\r\n\r\n" + _BLANK + b"\r\n"
                 )
-        _time.sleep(0.1)    # ~10 fps — sufficient for monitoring, halves stream CPU load
+        _gsleep(0.1)    # ~10 fps — cooperative yield so other greenlets can run
 
 
 @app.route("/stream_raw/<camera_id>")
