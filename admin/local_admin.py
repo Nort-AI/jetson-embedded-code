@@ -639,6 +639,28 @@ _ram_hist = deque([0] * _perf_history_len, maxlen=_perf_history_len)
 _gpu_hist = deque([0] * _perf_history_len, maxlen=_perf_history_len)
 _time_hist = deque([""] * _perf_history_len, maxlen=_perf_history_len)
 
+# ── Connectivity cache ────────────────────────────────────────────────────────
+# _ping_host() is slow (subprocess + potential DNS timeout up to 10+ seconds).
+# Calling it synchronously on every page load made the dashboard 12+ seconds.
+# Instead a background thread refreshes the cache every 30 s; the route reads
+# the cached values instantly.
+_connectivity = {"internet": False, "api": False}
+
+def _refresh_connectivity():
+    """Background thread: update _connectivity cache every 30 s."""
+    while True:
+        _connectivity["internet"] = _ping_host("8.8.8.8")
+        if API_URL:
+            try:
+                _hostname = urlparse(API_URL).hostname or API_URL
+                _connectivity["api"] = _ping_host(_hostname)
+            except Exception:
+                _connectivity["api"] = False
+        time.sleep(30)
+
+threading.Thread(target=_refresh_connectivity, daemon=True).start()
+
+
 def _poll_performance():
     while True:
         cpu, ram, _ = _perf_info()
@@ -842,11 +864,10 @@ def index():
         if _last_upload_ts else t("header.never")
     )
 
-    ping_internet = _ping_host("8.8.8.8")
-    ping_api = False
-    if API_URL:
-        hostname = urlparse(API_URL).hostname or API_URL
-        ping_api = _ping_host(hostname)
+    # Read from cache — updated every 30 s by _refresh_connectivity() thread.
+    # Never call _ping_host() synchronously here; it blocks for seconds.
+    ping_internet = _connectivity["internet"]
+    ping_api      = _connectivity["api"]
 
     # Dynamically determine log path
     log_path = "tracking.log" if os.path.exists("tracking.log") else "/var/log/nort/tracking.log"
@@ -4553,9 +4574,11 @@ def start_local_admin(port: int = 8080):
     # contention and thread exhaustion that makes Flask's dev server sluggish
     # when 5 cameras are streaming simultaneously.
     try:
-        from gevent import monkey as _monkey
-        _monkey.patch_all(thread=False)   # patch I/O but NOT threading (camera threads use real threads)
         from gevent.pywsgi import WSGIServer as _WSGIServer
+        # Do NOT call monkey.patch_all() here — ssl/urllib3 are already imported
+        # by the time this thread starts and late-patching ssl causes RecursionError
+        # in the heartbeat thread.  gevent WSGIServer handles concurrent greenlets
+        # for MJPEG streams without any monkey-patching.
         _log.info("[Admin] Using gevent WSGIServer (async MJPEG streaming)")
         if has_tls:
             server = _WSGIServer(
