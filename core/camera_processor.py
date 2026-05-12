@@ -924,8 +924,18 @@ class CameraProcessor:
                             crop_bgr = frame[max(0, y1):min(h, y2),
                                              max(0, x1):min(w, x2)]
                             if crop_bgr.size > 0:
+                                # Use the SAME key formula as _make_retail_data in run.py:
+                                #   str(global_id) when a ReID global ID has been assigned,
+                                #   "{camera_id}_{track_id}" otherwise.
+                                # This ensures /api/crop/{track_id} finds the crop because
+                                # the SSE stream sends the same key as the crop store key.
+                                _crop_key = (
+                                    str(attrs.get("global_id"))
+                                    if attrs.get("global_id") is not None
+                                    else f"{self.camera_id}_{track_id}"
+                                )
                                 self._vlm_analyst.save_crop(
-                                    str(global_id), crop_bgr, self.camera_id
+                                    _crop_key, crop_bgr, self.camera_id
                                 )
                         # Fire analysis job only if explicitly enabled (saves GPU/API resources)
                         if self.auto_vlm_enabled:
