@@ -224,38 +224,34 @@ class CameraProcessor:
 
             if os.path.exists(attr_onnx_path):
                 try:
+                    import platform as _platform
                     import onnxruntime as ort
-                    model_dir = os.path.dirname(os.path.abspath(attr_onnx_path))
-                    trt_cache = os.path.join(model_dir, 'trt_engine_cache')
-                    os.makedirs(trt_cache, exist_ok=True)
-                    providers = []
-                    if os.name != 'nt':
-                        providers.append(
+                    so = ort.SessionOptions()
+                    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+                    # On aarch64 (Jetson) never use TRT/CUDA EP via ORT — GPU is
+                    # handled by TRTSession (.engine). ORT TRT EP conflicts with
+                    # system libnvinfer and segfaults on Jetson's integrated GPU.
+                    if _platform.machine() == 'aarch64':
+                        valid = ['CPUExecutionProvider']
+                    else:
+                        model_dir = os.path.dirname(os.path.abspath(attr_onnx_path))
+                        trt_cache = os.path.join(model_dir, 'trt_engine_cache')
+                        os.makedirs(trt_cache, exist_ok=True)
+                        providers = [
                             ('TensorrtExecutionProvider', {
-                                'trt_max_workspace_size': str(4 * 1024 * 1024 * 1024),  # 4GB for better TRT kernel selection
+                                'trt_max_workspace_size': str(4 * 1024 * 1024 * 1024),
                                 'trt_fp16_enable': 'True',
                                 'trt_engine_cache_enable': 'True',
                                 'trt_engine_cache_path': trt_cache,
-                            })
-                        )
-                    providers.extend([
-                        'CUDAExecutionProvider',
-                        'CPUExecutionProvider',
-                    ])
-                    available = ort.get_available_providers()
-                    valid = [p for p in providers if (p if isinstance(p, str) else p[0]) in available]
-                    if not valid:
-                        valid = ['CPUExecutionProvider']
-                    so = ort.SessionOptions()
-                    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-                    try:
-                        self._attr_onnx_session = ort.InferenceSession(attr_onnx_path, sess_options=so, providers=valid)
-                    except Exception:
-                        fallback = [p for p in valid
-                                    if (p if isinstance(p, str) else p[0]) != 'TensorrtExecutionProvider']
-                        if not fallback:
-                            fallback = ['CPUExecutionProvider']
-                        self._attr_onnx_session = ort.InferenceSession(attr_onnx_path, sess_options=so, providers=fallback)
+                            }),
+                            'CUDAExecutionProvider',
+                            'CPUExecutionProvider',
+                        ]
+                        available = ort.get_available_providers()
+                        valid = [p for p in providers if (p if isinstance(p, str) else p[0]) in available]
+                        if not valid:
+                            valid = ['CPUExecutionProvider']
+                    self._attr_onnx_session = ort.InferenceSession(attr_onnx_path, sess_options=so, providers=valid)
                     self.logger.info(f"Attribute ONNX model loaded: {self._attr_onnx_session.get_providers()}")
                     # Cache I/O names and transforms once — hot path uses these instead of rebuilding every frame
                     self._attr_onnx_inp_name = self._attr_onnx_session.get_inputs()[0].name

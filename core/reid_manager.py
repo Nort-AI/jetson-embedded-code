@@ -149,9 +149,12 @@ class ReIDManager:
         _dev_str = str(device) if device else ""
         self._forced_cpu = _dev_str.lower() in ("cpu", "cpu:0")
 
-        # Check CUDA availability without importing torch
+        # Check CUDA availability without importing torch.
+        # On aarch64 (Jetson), never use ORT CUDA/TRT EP — GPU is TRTSession only.
+        import platform as _platform
+        self._is_aarch64 = _platform.machine() == "aarch64"
         self._has_cuda = False
-        if _HAS_ORT and not self._forced_cpu:
+        if _HAS_ORT and not self._forced_cpu and not self._is_aarch64:
             self._has_cuda = 'CUDAExecutionProvider' in ort.get_available_providers()
 
         self._lock = threading.Lock()
@@ -262,9 +265,13 @@ class ReIDManager:
             trt_cache  = os.path.join(model_dir, "trt_engine_cache")
             os.makedirs(trt_cache, exist_ok=True)
 
-            providers = []
-            if not self._forced_cpu:
-                if os.name != "nt":  # Linux (Jetson): enable TRT EP auto-cache
+            # On aarch64 (Jetson), only CPU — ORT TRT/CUDA EP conflicts with
+            # system libnvinfer and segfaults on Jetson's integrated GPU.
+            if self._is_aarch64 or self._forced_cpu:
+                valid = ["CPUExecutionProvider"]
+            else:
+                providers = []
+                if os.name != "nt":
                     providers.append((
                         "TensorrtExecutionProvider", {
                             "trt_max_workspace_size": str(2 * 1024 * 1024 * 1024),
@@ -273,14 +280,12 @@ class ReIDManager:
                             "trt_engine_cache_path":  trt_cache,
                         }
                     ))
-                providers.append("CUDAExecutionProvider")
-            providers.append("CPUExecutionProvider")
-
-            available = ort.get_available_providers()
-            valid = [p for p in providers
-                     if (p if isinstance(p, str) else p[0]) in available]
-            if not valid:
-                valid = ["CPUExecutionProvider"]
+                providers.extend(["CUDAExecutionProvider", "CPUExecutionProvider"])
+                available = ort.get_available_providers()
+                valid = [p for p in providers
+                         if (p if isinstance(p, str) else p[0]) in available]
+                if not valid:
+                    valid = ["CPUExecutionProvider"]
 
             so = ort.SessionOptions()
             so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
