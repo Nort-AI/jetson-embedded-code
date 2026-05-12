@@ -696,18 +696,24 @@ def _scan_occupancy_log() -> tuple:
 _gevent_pool = None
 
 def _run_in_thread(fn, *args, **kwargs):
-    """Run *fn* in a gevent thread-pool worker; yield event loop while waiting."""
+    """Run *fn* in a gevent thread-pool worker; yield event loop while waiting.
+
+    IMPORTANT: Never fall back to fn(*args, **kwargs) on failure — that would
+    call the blocking function directly inside a greenlet, freezing the entire
+    gevent hub OS-thread and making every page navigation time out.
+    Return [] instead; callers already handle empty results gracefully.
+    """
     global _gevent_pool
     try:
         if _gevent_pool is None:
             from gevent.threadpool import ThreadPool as _TP
             _gevent_pool = _TP(8)   # up to 8 parallel blocking ops
         _async = _gevent_pool.spawn(fn, *args, **kwargs)
-        return _async.get(timeout=15)
-    except Exception:
-        # If gevent threadpool unavailable, fall back to direct call
-        # (blocks event loop, but at least doesn't crash).
-        return fn(*args, **kwargs)
+        return _async.get(timeout=20)
+    except Exception as _e:
+        _log.warning("_run_in_thread: %s timed-out or failed (%r) — returning []",
+                     getattr(fn, "__name__", fn), _e)
+        return []  # safe empty result; NEVER call fn() here
 
 
 # ── KPI cache: visitor count + peak hour ─────────────────────────────────────

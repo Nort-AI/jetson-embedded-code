@@ -76,6 +76,10 @@ def log_position(
         # Don't re-raise — logging failure should not crash tracking
 
 
+_HEATMAP_ROW_LIMIT = 50_000   # never return more than this many points
+_DEFAULT_WINDOW_MS  = 86_400_000  # default look-back: 24 hours in milliseconds
+
+
 def query_heatmap(
     camera_id: str,
     gender: Optional[str] = None,
@@ -85,24 +89,28 @@ def query_heatmap(
 ) -> list:
     """
     Return a list of (cx, cy) floats matching the filters.
-    All filter args are optional.
+    When no time range is supplied, defaults to the last 24 hours so the
+    query uses the idx_cam index instead of doing a full table scan.
+    Hard-capped at _HEATMAP_ROW_LIMIT rows to keep response times < 1 s.
     """
-    clauses = ["camera_id = ?"]
-    params: list = [camera_id]
+    # Default to last 24 h — avoids full-table scans on large historical DBs
+    if from_ts is None:
+        from_ts = int(time.time() * 1000) - _DEFAULT_WINDOW_MS
+
+    clauses = ["camera_id = ?", "ts >= ?"]
+    params: list = [camera_id, from_ts]
     if gender and gender != "all":
         clauses.append("gender = ?")
         params.append(gender)
     if age_group and age_group != "all":
         clauses.append("age_group = ?")
         params.append(age_group)
-    if from_ts is not None:
-        clauses.append("ts >= ?")
-        params.append(from_ts)
     if to_ts is not None:
         clauses.append("ts <= ?")
         params.append(to_ts)
 
-    sql = f"SELECT cx, cy FROM positions WHERE {' AND '.join(clauses)}"
+    sql = (f"SELECT cx, cy FROM positions WHERE {' AND '.join(clauses)} "
+           f"LIMIT {_HEATMAP_ROW_LIMIT}")
     try:
         with _lock:
             conn = _ensure_conn()
@@ -112,6 +120,9 @@ def query_heatmap(
         _logger.error(f"SpatialLogger DB error: {e}", exc_info=True)
         # Don't re-raise — logging failure should not crash tracking
         return []
+
+
+_PATHS_ROW_LIMIT = 10_000   # cap raw rows fetched for path clustering
 
 
 def query_paths(
@@ -127,27 +138,29 @@ def query_paths(
     Return up to *max_paths* common track paths as lists of (cx, cy) tuples.
 
     Strategy:
-    1. Fetch all positions ordered by (track_id, ts).
+    1. Fetch positions ordered by (track_id, ts) capped at _PATHS_ROW_LIMIT.
     2. Build a polyline per track (only those with >= min_points samples).
     3. Downsample each to 10 waypoints.
     4. Cluster by bucketing start+end cell and return the top max_paths.
     """
-    clauses = ["camera_id = ?"]
-    params: list = [camera_id]
+    # Default to last 24 h to use the index and avoid a full table scan
+    if from_ts is None:
+        from_ts = int(time.time() * 1000) - _DEFAULT_WINDOW_MS
+
+    clauses = ["camera_id = ?", "ts >= ?"]
+    params: list = [camera_id, from_ts]
     if gender and gender != "all":
         clauses.append("gender = ?")
         params.append(gender)
     if age_group and age_group != "all":
         clauses.append("age_group = ?")
         params.append(age_group)
-    if from_ts is not None:
-        clauses.append("ts >= ?")
-        params.append(from_ts)
     if to_ts is not None:
         clauses.append("ts <= ?")
         params.append(to_ts)
 
-    sql = f"SELECT track_id, cx, cy FROM positions WHERE {' AND '.join(clauses)} ORDER BY track_id, ts"
+    sql = (f"SELECT track_id, cx, cy FROM positions WHERE {' AND '.join(clauses)} "
+           f"ORDER BY track_id, ts LIMIT {_PATHS_ROW_LIMIT}")
     try:
         with _lock:
             conn = _ensure_conn()
