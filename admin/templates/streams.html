@@ -2805,9 +2805,11 @@
       } catch (e) { }
     }
 
-    async function runPose(trackId) {
+    async function runPose(trackId, _retry) {
       // trackId is passed explicitly so a quick click on another person
-      // doesn't corrupt this in-flight request
+      // doesn't corrupt this in-flight request.
+      // Background worker pre-computes pose; this fetch is normally instant.
+      // On 404 (worker still running for first appearance) retry up to 4x.
       const tid = trackId || _selectedTrackId;
       if (!tid) return;
       const poseWrap   = document.getElementById('vlmPoseWrap');
@@ -2818,18 +2820,23 @@
           fetch('/api/pose/' + enc),
           fetch('/api/pose/data/' + enc)
         ]);
-        // Only paint results if this person's panel is still open
+        // Discard if user already switched to a different person
         if (tid !== _selectedTrackId) return;
-        if (imgRes.ok) {
-          const blob    = await imgRes.blob();
-          const objUrl  = URL.createObjectURL(blob);
-          const poseImg = document.getElementById('vlmPoseImg');
-          poseImg.onload = () => {
-            poseWrap.style.display = 'flex';
-            URL.revokeObjectURL(objUrl);
-          };
-          poseImg.src = objUrl;
+        if (!imgRes.ok) {
+          if (imgRes.status === 404 && (_retry || 0) < 4) {
+            // Worker hasn't finished yet — retry in 600 ms
+            setTimeout(() => runPose(tid, (_retry || 0) + 1), 600);
+          }
+          return;
         }
+        const blob    = await imgRes.blob();
+        const objUrl  = URL.createObjectURL(blob);
+        const poseImg = document.getElementById('vlmPoseImg');
+        poseImg.onload = () => {
+          poseWrap.style.display = 'flex';
+          URL.revokeObjectURL(objUrl);
+        };
+        poseImg.src = objUrl;
         if (dataRes.ok) {
           const data = await dataRes.json();
           if (data.detected && Object.keys(data.angles).length > 0) {
@@ -2840,10 +2847,8 @@
             poseAngles.innerHTML = lines.join('&nbsp;&nbsp;·&nbsp;&nbsp;');
             poseAngles.style.display = 'block';
           }
-          // If not detected or no angles: stay hidden — no error shown to user
         }
       } catch (e) {
-        // Silent fail — pose is best-effort, don't clutter the UI
         console.debug('[pose] skipped for ' + tid + ':', e.message);
       }
     }

@@ -4203,59 +4203,30 @@ def api_vlm_crop(track_id: str):
 @requires_auth
 def api_pose_jpeg(track_id: str):
     """
-    Run YOLOv8n-pose on the saved crop for this track and return an
-    annotated JPEG with skeleton overlay.
-    First call triggers a lazy model load (~6 MB download on first ever use).
+    Serve pre-computed pose skeleton JPEG from cache.
+    Computed by the background PoseWorker in vlm_analyst as crops arrive.
+    Returns 404 while the first computation is in flight (client should retry).
     """
-    try:
-        from core import vlm_analyst as _va
-        entry = None
-        with _va._track_crops_lock:
-            entry = _va._track_crops.get(str(track_id))
-        if entry is None:
-            return "No crop available", 404
-        crop = entry["crop"].copy()
-    except Exception as e:
-        _log.error("[pose] crop fetch error: %s", e)
-        return "Error", 500
-
-    try:
-        from core.pose_estimator import estimate_pose_jpeg
-        jpeg = _run_in_thread(estimate_pose_jpeg, crop)
-        if not jpeg:
-            return "Pose estimation failed or no person detected", 422
-        return Response(jpeg, mimetype="image/jpeg")
-    except Exception as e:
-        _log.error("[pose] estimation error: %s", e)
-        return "Error", 500
+    from core import vlm_analyst as _va
+    with _va._track_crops_lock:
+        entry = _va._track_crops.get(str(track_id))
+        jpeg  = entry.get("pose_jpeg") if entry else None
+    if not jpeg:
+        return "Pose not ready yet", 404
+    return Response(jpeg, mimetype="image/jpeg")
 
 
 @app.route("/api/pose/data/<track_id>")
 @requires_auth
 def api_pose_data(track_id: str):
-    """
-    Return structured pose keypoints + joint angles as JSON.
-    Useful for downstream analytics or displaying angle readouts.
-    """
-    try:
-        from core import vlm_analyst as _va
-        entry = None
-        with _va._track_crops_lock:
-            entry = _va._track_crops.get(str(track_id))
-        if entry is None:
-            return jsonify({"error": "No crop available"}), 404
-        crop = entry["crop"].copy()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    try:
-        from core.pose_estimator import estimate_pose_data
-        data = _run_in_thread(estimate_pose_data, crop)
-        return jsonify(data)
-    except Exception as e:
-        _log.error("[pose] data error: %s", e)
-        return jsonify({"error": str(e)}), 500
-
+    """Serve pre-computed pose keypoint + angle data from cache."""
+    from core import vlm_analyst as _va
+    with _va._track_crops_lock:
+        entry = _va._track_crops.get(str(track_id))
+        data  = entry.get("pose_data") if entry else None
+    if not data:
+        return jsonify({"detected": False, "keypoints": {}, "angles": {}, "posture": "unknown"})
+    return jsonify(data)
 
 @app.route("/api/vlm/tracks")
 @requires_auth

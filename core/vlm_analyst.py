@@ -140,10 +140,23 @@ _CONFIG = _load_vlm_config()
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ── Shared crop store ─────────────────────────────────────────────────────────
-# Dict[global_id_str → {"crop": np.ndarray(BGR), "ts": float, "cam": str}]
+# Dict[global_id_str → {"crop": ndarray, "ts": float, "cam": str,
+#                        "pose_jpeg": bytes|None, "pose_data": dict|None,
+#                        "pose_ts": float}]
 _track_crops: "OrderedDict[str, dict]" = OrderedDict()
 _track_crops_lock = threading.RLock()
 MAX_CROPS = _CONFIG.max_crops
+
+# ── Background pose estimation worker ─────────────────────────────────────────
+# Crops are enqueued here (deduped: only the latest per track_id is kept).
+# A single daemon thread drains the queue and writes results back into
+# _track_crops so /api/pose/* can serve them without any inference latency.
+_pose_pending: dict          = {}
+_pose_pending_lock           = threading.Lock()
+_pose_wake_event             = threading.Event()
+_pose_worker_started         = False
+_pose_worker_start_lock      = threading.Lock()
+_POSE_MIN_INTERVAL           = 30.0   # seconds between re-estimates for same track
 
 _active_target_id = None
 _active_target_lock = threading.Lock()
@@ -168,15 +181,85 @@ def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str) -> None:
         return
     key = str(global_id)
     with _track_crops_lock:
+        prev = _track_crops.get(key) or {}
         if key in _track_crops:
             _track_crops.move_to_end(key)
         _track_crops[key] = {
-            "crop": crop_bgr.copy(),
-            "ts":   time.time(),
-            "cam":  camera_id,
+            "crop":      crop_bgr.copy(),
+            "ts":        time.time(),
+            "cam":       camera_id,
+            # preserve pre-computed pose so it survives crop updates
+            "pose_jpeg": prev.get("pose_jpeg"),
+            "pose_data": prev.get("pose_data"),
+            "pose_ts":   prev.get("pose_ts", 0.0),
         }
         while len(_track_crops) > MAX_CROPS:
             _track_crops.popitem(last=False)
+    # Enqueue background pose estimation (respects _POSE_MIN_INTERVAL)
+    _enqueue_pose(key, crop_bgr)
+
+
+def _enqueue_pose(key: str, crop_bgr: np.ndarray) -> None:
+    """Put crop in the pose queue; replaces any pending crop for the same key.
+    Skips if a fresh pose was already computed recently (_POSE_MIN_INTERVAL)."""
+    global _pose_worker_started
+    # Rate-limit: skip if pose is still fresh
+    with _track_crops_lock:
+        pose_age = time.time() - (_track_crops.get(key) or {}).get("pose_ts", 0.0)
+    if pose_age < _POSE_MIN_INTERVAL:
+        return
+    # Dedup: replace any existing pending crop for this track
+    with _pose_pending_lock:
+        _pose_pending[key] = crop_bgr.copy()
+    _pose_wake_event.set()
+    # Lazy-start the background worker (double-checked lock)
+    if not _pose_worker_started:
+        with _pose_worker_start_lock:
+            if not _pose_worker_started:
+                _pose_worker_started = True
+                t = threading.Thread(
+                    target=_pose_worker_loop,
+                    name="PoseWorker",
+                    daemon=True,
+                )
+                t.start()
+                logger.info("[Pose] Background pose worker started.")
+
+
+def _pose_worker_loop() -> None:
+    """Daemon thread: drain _pose_pending, run pose estimation, store results."""
+    try:
+        from core.pose_estimator import estimate_pose_jpeg, estimate_pose_data
+    except Exception as e:
+        logger.error("[Pose] Worker import failed: %s — run: pip install ultralytics", e)
+        return
+
+    while True:
+        _pose_wake_event.wait(timeout=10.0)
+        _pose_wake_event.clear()
+
+        # Snapshot + clear so new crops can queue while we work
+        with _pose_pending_lock:
+            if not _pose_pending:
+                continue
+            items = list(_pose_pending.items())
+            _pose_pending.clear()
+
+        for tid, crop in items:
+            try:
+                jpeg = estimate_pose_jpeg(crop)
+                data = estimate_pose_data(crop)
+                now  = time.time()
+                with _track_crops_lock:
+                    entry = _track_crops.get(tid)
+                    if entry is not None:
+                        entry["pose_jpeg"] = jpeg
+                        entry["pose_data"] = data
+                        entry["pose_ts"]   = now
+                logger.debug("[Pose] Computed for track %s  detected=%s", tid,
+                             data.get("detected") if data else False)
+            except Exception as e:
+                logger.debug("[Pose] Worker error for %s: %s", tid, e)
 
 
 def is_enabled() -> bool:
