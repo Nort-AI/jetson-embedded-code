@@ -103,14 +103,8 @@ def _cuda_sync(stream: int):
 
 
 # ── tensorrt import (tries system python3-libnvinfer paths) ──────────────────
-#
-# IMPORTANT: system paths must be prepended ONCE at module load time so that
-# python3-libnvinfer takes priority over the conda/pip tensorrt stub wheel
-# BEFORE any import attempt.  The pop-and-reimport pattern is unsafe: pip stub
-# loads native .so files into process memory on first import, and reloading a
-# different .so on top causes symbol conflicts → segfault.
 
-_TRT_SYSTEM_PATHS = [
+_TRT_SYSTEM_DIRS = [
     "/usr/lib/python3/dist-packages",
     "/usr/lib/python3.10/dist-packages",
     "/usr/lib/python3.11/dist-packages",
@@ -118,37 +112,68 @@ _TRT_SYSTEM_PATHS = [
     "/usr/local/lib/python3.11/dist-packages",
 ]
 
-# Prepend once, right now, before any import tensorrt can happen
-for _p in reversed(_TRT_SYSTEM_PATHS):
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
-
-# Cache so we only import once
+# Cache so we only do the import dance once per process
 _trt_module = None
 
 
 def _import_trt():
     """
     Return the tensorrt module with real C bindings (trt.Logger, trt.Runtime).
-    System paths are already prepended above so python3-libnvinfer wins over
-    any pip stub wheel.  Result is cached — called many times per process.
+
+    Strategy:
+    1. Try whatever `import tensorrt` resolves to now.  If it has Logger+Runtime
+       (i.e. it's the real python3-libnvinfer, not a pip stub) use it.
+    2. If the pip stub was imported (no Logger/Runtime), pop it from sys.modules
+       and retry after briefly prepending the JetPack system dist-packages path.
+       We REMOVE the added paths afterwards so they don't pollute sys.path for
+       the rest of the process (e.g. ORT would otherwise pick up the system
+       onnxruntime instead of the conda one → segfault).
+
+    The pip tensorrt stub on aarch64 Jetson does NOT load any native .so files
+    (x86_64 bindings can't dlopen on arm64), so pop+reimport is safe here.
     """
     global _trt_module
     if _trt_module is not None:
         return _trt_module
 
+    def _valid(trt) -> bool:
+        return hasattr(trt, "Logger") and hasattr(trt, "Runtime")
+
+    # ── Pass 1: try the default import ──────────────────────────────────────
     try:
         import tensorrt as trt
-        if hasattr(trt, "Logger") and hasattr(trt, "Runtime"):
+        if _valid(trt):
             _trt_module = trt
             return trt
-        logger.debug(
-            "[TRT] tensorrt imported but has no Logger/Runtime — "
-            "pip stub wheel is shadowing python3-libnvinfer; "
-            "uninstall pip tensorrt or run without conda onnxenv"
-        )
+        # pip stub imported — safe to purge on aarch64 (no native .so loaded)
+        sys.modules.pop("tensorrt", None)
+        logger.debug("[TRT] pip tensorrt stub detected (no Logger/Runtime) — trying system path")
     except ImportError:
         pass
+
+    # ── Pass 2: temporarily prepend system dist-packages, import, then remove ─
+    added = []
+    for p in _TRT_SYSTEM_DIRS:
+        if os.path.isdir(p) and p not in sys.path:
+            sys.path.insert(0, p)
+            added.append(p)
+
+    try:
+        import tensorrt as trt
+        if _valid(trt):
+            _trt_module = trt
+            return trt
+    except ImportError:
+        pass
+    finally:
+        # Always remove added paths — do NOT leave them in sys.path.
+        # Leaving system dist-packages in sys.path can cause other imports
+        # (e.g. onnxruntime) to load system versions instead of conda ones.
+        for p in added:
+            try:
+                sys.path.remove(p)
+            except ValueError:
+                pass
 
     return None
 
