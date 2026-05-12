@@ -4466,35 +4466,43 @@ def api_stream_tracks():
         };
     """
     def generate():
-        last_data = None
+        # CRITICAL: must use gevent.sleep(), NOT time.sleep().
+        # This generator runs as a gevent greenlet (not a real OS thread).
+        # stdlib time.sleep() blocks the entire gevent hub OS thread, starving
+        # every other request. At 15fps that is 76% hub starvation → total freeze.
+        try:
+            from gevent import sleep as _gsleep
+        except ImportError:
+            from time import sleep as _gsleep
+
         last_sent = 0
         min_interval = 0.066  # ~15fps max (66ms)
-        
+
         while True:
             try:
                 now = _time.time()
-                
-                # Rate limiting
+
+                # Rate limiting — yield hub while waiting
                 if now - last_sent < min_interval:
-                    _time.sleep(0.01)
+                    _gsleep(0.01)
                     continue
-                
+
                 # Get current retail data from global variable
                 global _retail_data
                 tracks = _retail_data.get("tracks", {})
-                
+
                 last_sent = now
-                
+
                 # Format: SSE data frame
                 yield f"data: {_json.dumps({'tracks': tracks, 'ts': now})}\n\n"
-                
-                _time.sleep(0.05)  # 50ms sleep between checks
-                
+
+                _gsleep(0.05)  # 50ms cooperative yield — hub stays responsive
+
             except GeneratorExit:
                 break
             except Exception as e:
                 app.logger.error(f"[SSE] Error: {e}")
-                _time.sleep(0.1)
+                _gsleep(0.1)
     
     return Response(generate(), mimetype='text/event-stream',
                    headers={

@@ -1920,35 +1920,56 @@
       return p;
     }
 
+    // Debounce guard: feedEl.onload fires on every MJPEG frame (~10fps).
+    // Without this, applyFilters() would fire 10x/sec → 20 simultaneous API
+    // calls/sec overwhelming the server. One in-flight call at a time is enough.
+    let _applyFiltersBusy = false;
+    let _applyFiltersQueued = false;
+
     async function applyFilters() {
       if (!currentCamera) return;
-      const p = buildParams();
-      loader.style.display = 'block';
-
+      if (_applyFiltersBusy) {
+        // Another call is in-flight; queue ONE more so the latest params run next
+        _applyFiltersQueued = true;
+        return;
+      }
+      _applyFiltersBusy = true;
       try {
-        const pRes = await fetch('/api/paths?' + p);
-        if (pRes.ok) {
-          pathData = await pRes.json();
-          document.getElementById('statPaths').textContent = pathData.paths ? pathData.paths.length : '0';
+        const p = buildParams();
+        loader.style.display = 'block';
+
+        try {
+          const pRes = await fetch('/api/paths?' + p);
+          if (pRes.ok) {
+            pathData = await pRes.json();
+            document.getElementById('statPaths').textContent = pathData.paths ? pathData.paths.length : '0';
+          }
+        } catch (e) { }
+
+        try {
+          const hRes = await fetch('/api/streams?' + p);
+          if (hRes.ok) {
+            const pts = hRes.headers.get('X-Total-Points');
+            document.getElementById('statPts').textContent = pts || '0';
+
+            const blob = await hRes.blob();
+            const url = URL.createObjectURL(blob);
+            if (heatImgUrl) URL.revokeObjectURL(heatImgUrl);
+            heatImgUrl = url;
+            overlayImg.src = url;
+          }
+        } catch (e) { }
+
+        loader.style.display = 'none';
+        redraw();
+      } finally {
+        _applyFiltersBusy = false;
+        if (_applyFiltersQueued) {
+          _applyFiltersQueued = false;
+          // Small delay so the browser can repaint before the next fetch
+          setTimeout(applyFilters, 250);
         }
-      } catch (e) { }
-
-      try {
-        const hRes = await fetch('/api/streams?' + p);
-        if (hRes.ok) {
-          const pts = hRes.headers.get('X-Total-Points');
-          document.getElementById('statPts').textContent = pts || '0';
-
-          const blob = await hRes.blob();
-          const url = URL.createObjectURL(blob);
-          if (heatImgUrl) URL.revokeObjectURL(heatImgUrl);
-          heatImgUrl = url;
-          overlayImg.src = url;
-        }
-      } catch (e) { }
-
-      loader.style.display = 'none';
-      redraw();
+      }
     }
 
     function redraw() {
@@ -2042,7 +2063,11 @@
 
     if (currentCamera) {
       feedEl.src = showOverlay ? '/stream/' + currentCamera : '/stream_raw/' + currentCamera;
-      feedEl.onload = () => { applyFilters(); };
+      // onload fires on every MJPEG frame (~10fps). Fire once on the FIRST frame
+      // to do an initial heatmap fetch, then remove the handler so it doesn't
+      // spam the server 10 times/second. The 15-second interval below keeps data
+      // refreshed while the user has heatmap/paths toggled on.
+      feedEl.onload = () => { feedEl.onload = null; applyFilters(); };
       setInterval(() => { if (showHeat || showPaths) applyFilters(); }, 15000);
     } else {
       document.getElementById('emptyState').style.display = 'flex';
