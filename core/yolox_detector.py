@@ -118,12 +118,24 @@ class YOLOXDetector:
     @staticmethod
     def _build_providers(model_path, force_trt=False):
         """Build ORT provider list with TRT engine-cache dir next to the model."""
+        import platform
+
+        # On Jetson (aarch64), GPU inference is handled exclusively by TRTSession
+        # (.engine files).  ORT's TensorrtExecutionProvider and CUDAExecutionProvider
+        # are NOT used here because:
+        #   - The pip onnxruntime-gpu wheel is x86_64 and has no real CUDA/TRT EP on arm64
+        #   - ORT TRT EP conflicts with the system python3-libnvinfer native libs already
+        #     loaded by TRTSession, causing a segfault during provider initialisation
+        # CPU is the correct ORT fallback on Jetson; TRTSession handles all GPU work.
+        if platform.machine() == "aarch64":
+            return ["CPUExecutionProvider"]
+
         model_dir = os.path.dirname(os.path.abspath(model_path))
         trt_cache  = os.path.join(model_dir, "trt_engine_cache")
         os.makedirs(trt_cache, exist_ok=True)
 
         providers = []
-        # Enable TRT EP automatically on Linux (Jetson); opt-in on Windows.
+        # Enable TRT EP automatically on Linux x86_64; opt-in on Windows.
         if os.name != "nt" or force_trt:
             providers.append((
                 "TensorrtExecutionProvider", {
