@@ -34,41 +34,5 @@
     "source": "videos_1080p/videos_loja_real/CH09.mp4",
     "type": "mp4",
     "enabled": true
-  },
-  "camera_7": {
-    "name": "Camera 7",
-    "source": "videos_1080p/videos_loja_real/CH03.mp4",
-    "type": "mp4",
-    "enabled": true
-  },
-  "camera_8": {
-    "name": "Camera 8",
-    "source": "videos_1080p/videos_loja_real/CH02.mp4",
-    "type": "mp4",
-    "enabled": true
-  },
-  "camera_9": {
-    "name": "Camera 9",
-    "source": "videos_1080p/videos_loja_real/CH01.mp4",
-    "type": "mp4",
-    "enabled": true
-  },
-  "camera_10": {
-    "name": "Camera 10",
-    "source": "videos_1080p/videos_loja_real/CH10.mp4",
-    "type": "mp4",
-    "enabled": true
-  },
-  "camera_11": {
-    "name": "Camera 11",
-    "source": "videos_1080p/videos_loja_real/CH11.mp4",
-    "type": "mp4",
-    "enabled": true
-  },
-  "camera_12": {
-    "name": "Camera 12",
-    "source": "videos_1080p/videos_loja_real/CH12.mp4",
-    "type": "mp4",
-    "enabled": true
   }
 }
