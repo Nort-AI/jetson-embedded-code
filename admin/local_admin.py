@@ -46,8 +46,10 @@ try:
     # baseline interval.  Discard one reading now so that _poll_performance gets
     # accurate data from its very first real sample (~2 s later).
     psutil.cpu_percent()
+    print(f"[perf-init] psutil OK  ram={psutil.virtual_memory().percent:.1f}%", flush=True)
 except ImportError:
     psutil = None
+    print("[perf-init] psutil NOT installed — cpu/ram will read 0", flush=True)
 
 # ── Globals set by main.py ────────────────────────────────────────────────────
 DEVICE_ID    = "unknown"
@@ -829,10 +831,9 @@ def _poll_performance():
             _gpu_hist.append(gpu if isinstance(gpu, (int, float)) else 0)
             _time_hist.append(now_str)
             _iter += 1
-            # Log first few readings so startup issues are visible in the console
+            # Print first few readings so startup issues are always visible
             if _iter <= 3:
-                _log.info("[perf] iter=%d  cpu=%.1f%%  ram=%.1f%%  gpu=%.1f%%",
-                          _iter, cpu, ram, gpu)
+                print(f"[perf] iter={_iter}  cpu={cpu:.1f}%  ram={ram:.1f}%  gpu={gpu:.1f}%", flush=True)
         except Exception as _e:
             _log.error("[perf] poll error (thread stays alive): %s", _e, exc_info=True)
         time.sleep(2)
