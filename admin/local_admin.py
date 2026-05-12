@@ -4219,36 +4219,53 @@ def api_vlm_crop(track_id: str):
 @app.route("/api/pose/<track_id>")
 @requires_auth
 def api_pose_jpeg(track_id: str):
-    """
-    Serve pose skeleton JPEG from cache.
-    The /api/crop/ route already enqueued fresh pose computation when it was
-    called, so by the time runPose() retries here the worker will have finished.
-    200 = skeleton ready  |  204 = computed, no person detected  |  404 = not yet done
+    """Return skeleton JPEG.  Blocks in a thread until inference completes —
+    no polling, no retries needed from the client.
+    Cache hit (background worker already ran): ~1 ms.
+    Cache miss (first click): ~150–400 ms on Jetson GPU.
+    200 = skeleton  |  204 = no person detected in crop  |  404 = no crop saved yet.
     """
     from core import vlm_analyst as _va
     with _va._track_crops_lock:
-        entry   = _va._track_crops.get(str(track_id))
-        jpeg    = entry.get("pose_jpeg")  if entry else None
-        pose_ts = entry.get("pose_ts", 0) if entry else -1
+        entry = _va._track_crops.get(str(track_id))
+        jpeg  = entry.get("pose_jpeg") if entry else None
+        crop  = entry["crop"].copy()   if entry else None
 
-    if jpeg:
-        return Response(jpeg, mimetype="image/jpeg")   # 200 instant
-    if pose_ts > 0:
-        return "", 204   # worker ran, no skeleton (tiny crop / no detection)
-    return "Pose not ready yet", 404   # worker hasn't finished yet — client retries
+    if jpeg:                          # fast path — already computed
+        return Response(jpeg, mimetype="image/jpeg")
+    if crop is None:
+        return "No crop saved yet", 404
+
+    # Run inference now in a real thread (gevent yields while waiting)
+    from core.pose_estimator import estimate_pose_both
+    jpeg, data = _run_in_thread(estimate_pose_both, crop)
+
+    # Cache so the next click is instant
+    with _va._track_crops_lock:
+        e = _va._track_crops.get(str(track_id))
+        if e:
+            e["pose_jpeg"] = jpeg
+            e["pose_data"] = data
+            e["pose_ts"]   = time.time()
+
+    if not jpeg:
+        return "", 204   # inference ran but no person detected
+
+    return Response(jpeg, mimetype="image/jpeg")
 
 
 @app.route("/api/pose/data/<track_id>")
 @requires_auth
 def api_pose_data(track_id: str):
-    """Serve pre-computed pose keypoint + angle data from cache."""
+    """Return skeleton keypoints + angles from cache.
+    Call AFTER /api/pose/ has returned 200 — that route populates the cache.
+    """
     from core import vlm_analyst as _va
     with _va._track_crops_lock:
         entry = _va._track_crops.get(str(track_id))
         data  = entry.get("pose_data") if entry else None
-    if not data:
-        return jsonify({"detected": False, "keypoints": {}, "angles": {}, "posture": "unknown"})
-    return jsonify(data)
+    _empty = {"detected": False, "keypoints": {}, "angles": {}, "posture": "unknown"}
+    return jsonify(data if data else _empty)
 
 @app.route("/api/vlm/tracks")
 @requires_auth

@@ -249,28 +249,18 @@ def _pose_worker_loop() -> None:
 
         for tid, crop in items:
             try:
-                # Import inside loop: survives failed first attempts gracefully
-                from core.pose_estimator import estimate_pose_jpeg, estimate_pose_data
-                jpeg = estimate_pose_jpeg(crop)
-                data = estimate_pose_data(crop)
-                now  = time.time()
+                from core.pose_estimator import estimate_pose_both
+                jpeg, data = estimate_pose_both(crop)
+                now = time.time()
                 with _track_crops_lock:
                     entry = _track_crops.get(tid)
                     if entry is not None:
                         entry["pose_jpeg"] = jpeg
                         entry["pose_data"] = data
-                        entry["pose_ts"]   = now  # always stamp — prevents re-queue storm
-                if jpeg is not None:
-                    logger.debug("[Pose] OK track=%s posture=%s",
-                                 tid, (data or {}).get("posture", "?"))
-                else:
-                    # Log at WARNING once so operator knows what to fix.
-                    # (pose_estimator.py already logs the root cause once via
-                    # its _LOAD_FAILED sentinel — this adds context.)
-                    logger.warning(
-                        "[Pose] jpeg=None for track %s — ultralytics not "
-                        "installed or no person in crop. "
-                        "Fix: pip install ultralytics==8.3.168", tid)
+                        entry["pose_ts"]   = now
+                logger.debug("[Pose] worker OK track=%s posture=%s detected=%s",
+                             tid, (data or {}).get("posture", "?"),
+                             (data or {}).get("detected", False))
             except Exception as e:
                 logger.warning("[Pose] Worker error for %s: %s", tid, e)
 

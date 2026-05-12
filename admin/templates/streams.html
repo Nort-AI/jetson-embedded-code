@@ -2746,35 +2746,58 @@
         loadClipPreview();
       } else {
         videoPreview.style.display = 'none';
-        // Crop thumbnail — use fetch first so SSL/404 errors appear in the console
-        const cropImg = document.getElementById('vlmCrop');
-        const cropUrl = '/api/crop/' + encodeURIComponent(trackId) + '?t=' + Date.now();
-        fetch(cropUrl)
-          .then(r => {
-            if (!r.ok) {
-              console.warn('[crop] ' + r.status + ' for ' + trackId + ' — crop not yet saved or VLM disabled');
-              cropWrap.style.display = 'none';
-              return;
+        const cropImg  = document.getElementById('vlmCrop');
+        const enc      = encodeURIComponent(trackId);
+        const cropUrl  = '/api/crop/' + enc + '?t=' + Date.now();
+
+        // Reset pose area immediately
+        document.getElementById('vlmPoseWrap').style.display  = 'none';
+        document.getElementById('poseAngles').style.display   = 'none';
+        document.getElementById('vlmPoseImg').src             = '';
+        cropWrap.style.display = 'none';
+
+        // ── Fire BOTH requests in parallel the instant the panel opens ──
+        // cropFetch  : fast (~150 ms) — shows plain thumbnail
+        // poseFetch  : blocks until inference finishes (~300–500 ms)
+        //              No polling, no retries — route blocks in a real thread.
+        const cropFetch = fetch(cropUrl);
+        const poseFetch = fetch('/api/pose/' + enc);
+
+        // Plain crop
+        cropFetch.then(async r => {
+          if (!r.ok) { console.warn('[crop] ' + r.status + ' for ' + trackId); return; }
+          const blob   = await r.blob();
+          const objUrl = URL.createObjectURL(blob);
+          cropImg.onload = () => { cropWrap.style.display = 'flex'; URL.revokeObjectURL(objUrl); };
+          cropImg.src = objUrl;
+        }).catch(e => console.debug('[crop] error:', e));
+
+        // Pose overlay (arrives ~300 ms later, replaces plain crop)
+        poseFetch.then(async r => {
+          if (trackId !== _selectedTrackId) return;   // panel switched
+          if (r.status === 204 || !r.ok)  return;     // no detection / no crop
+          const blob    = await r.blob();
+          const objUrl  = URL.createObjectURL(blob);
+          const poseImg = document.getElementById('vlmPoseImg');
+          poseImg.onload = () => {
+            cropWrap.style.display = 'none';          // hide plain crop
+            document.getElementById('vlmPoseWrap').style.display = 'flex';
+            URL.revokeObjectURL(objUrl);
+          };
+          poseImg.src = objUrl;
+          // Also fetch angles (cache is populated by the time pose returns)
+          fetch('/api/pose/data/' + enc).then(dr => dr.ok ? dr.json() : null).then(data => {
+            if (!data || trackId !== _selectedTrackId) return;
+            const poseAngles = document.getElementById('poseAngles');
+            if (data.detected && Object.keys(data.angles).length > 0) {
+              const lines = ['Postura: <b>' + data.posture + '</b>'];
+              for (const [j, a] of Object.entries(data.angles))
+                lines.push(j.replace(/_/g,' ') + ': ' + a + '°');
+              poseAngles.innerHTML = lines.join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+              poseAngles.style.display = 'block';
             }
-            return r.blob();
-          })
-          .then(blob => {
-            if (!blob) return;
-            const objUrl = URL.createObjectURL(blob);
-            cropImg.onload = () => {
-              // Ensure plain crop is visible (may have been hidden by previous pose swap)
-              cropWrap.style.display = 'flex';
-              document.getElementById('vlmPoseWrap').style.display = 'none';
-              document.getElementById('poseAngles').style.display = 'none';
-              URL.revokeObjectURL(objUrl);
-              runPose(trackId);   // auto-trigger, passes captured ID
-            };
-            cropImg.src = objUrl;
-          })
-          .catch(err => {
-            console.error('[crop] fetch error for ' + trackId + ':', err);
-            cropWrap.style.display = 'none';
-          });
+          }).catch(() => {});
+        }).catch(e => console.debug('[pose] error:', e));
       }
 
       // Show/hide time range selector
@@ -2804,61 +2827,6 @@
       try {
         await fetch('/api/vlm/select', { method: 'DELETE' });
       } catch (e) { }
-    }
-
-    async function runPose(trackId, _retry) {
-      // trackId is passed explicitly so a quick click on another person
-      // doesn't corrupt this in-flight request.
-      // Background worker pre-computes pose; this fetch is normally instant.
-      // On 404 (worker still running for first appearance) retry up to 4x.
-      const tid = trackId || _selectedTrackId;
-      if (!tid) return;
-      const poseWrap   = document.getElementById('vlmPoseWrap');
-      const poseAngles = document.getElementById('poseAngles');
-      try {
-        const enc = encodeURIComponent(tid);
-        const [imgRes, dataRes] = await Promise.all([
-          fetch('/api/pose/' + enc),
-          fetch('/api/pose/data/' + enc)
-        ]);
-        // Discard if user already switched to a different person
-        if (tid !== _selectedTrackId) return;
-        // 204 is a 2xx (imgRes.ok=true) so must be checked BEFORE the !ok branch
-        if (imgRes.status === 204) {
-          // Server computed but found no person — silent, no retry
-          return;
-        }
-        if (!imgRes.ok) {
-          if (imgRes.status === 404 && (_retry || 0) < 5) {
-            // Server hasn't processed this crop yet — retry every 600 ms
-            setTimeout(() => runPose(tid, (_retry || 0) + 1), 600);
-          }
-          return;
-        }
-        const blob    = await imgRes.blob();
-        const objUrl  = URL.createObjectURL(blob);
-        const poseImg = document.getElementById('vlmPoseImg');
-        poseImg.onload = () => {
-          // Swap: hide plain crop, show pose overlay in its place
-          document.getElementById('vlmCropWrap').style.display = 'none';
-          poseWrap.style.display = 'flex';
-          URL.revokeObjectURL(objUrl);
-        };
-        poseImg.src = objUrl;
-        if (dataRes.ok) {
-          const data = await dataRes.json();
-          if (data.detected && Object.keys(data.angles).length > 0) {
-            const lines = ['Postura: <b>' + data.posture + '</b>'];
-            for (const [joint, angle] of Object.entries(data.angles)) {
-              lines.push(joint.replace(/_/g, ' ') + ': ' + angle + '°');
-            }
-            poseAngles.innerHTML = lines.join('&nbsp;&nbsp;·&nbsp;&nbsp;');
-            poseAngles.style.display = 'block';
-          }
-        }
-      } catch (e) {
-        console.debug('[pose] skipped for ' + tid + ':', e.message);
-      }
     }
 
     // Time range selection for video clip analysis

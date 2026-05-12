@@ -6,10 +6,9 @@ COCO pose on a single BGR crop.  Model is ~6 MB and downloads once on
 first use from the Ultralytics hub.
 
 Public API:
-    from core.pose_estimator import estimate_pose_jpeg, estimate_pose_data
+    from core.pose_estimator import estimate_pose_both
 
-    jpeg_bytes = estimate_pose_jpeg(crop_bgr)   # annotated image
-    data        = estimate_pose_data(crop_bgr)   # keypoint dict + angles
+    jpeg, data = estimate_pose_both(crop_bgr)  # single inference pass
 """
 
 import cv2
@@ -69,6 +68,87 @@ def _angle(a, b, c) -> float:
     bc = np.array(c) - np.array(b)
     cos = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-6)
     return float(np.degrees(np.arccos(np.clip(cos, -1, 1))))
+
+
+def estimate_pose_both(crop_bgr: np.ndarray, min_conf: float = 0.3):
+    """Run ONE model inference pass and return (jpeg_bytes, data_dict).
+    This is the preferred entry point — twice as fast as calling
+    estimate_pose_jpeg + estimate_pose_data separately.
+
+    Returns:
+        jpeg  — annotated JPEG bytes with skeleton overlay (None on failure)
+        data  — dict with detected/keypoints/angles/posture keys
+    """
+    _empty = {"detected": False, "keypoints": {}, "angles": {}, "posture": "unknown"}
+    model  = _get_model()
+    if model is None or crop_bgr is None or crop_bgr.size == 0:
+        return None, _empty
+
+    h, w   = crop_bgr.shape[:2]
+    scale  = max(1.0, 192 / min(h, w))
+    inp    = crop_bgr
+    if scale > 1.0:
+        nh, nw = int(h * scale), int(w * scale)
+        inp    = cv2.resize(crop_bgr, (nw, nh), interpolation=cv2.INTER_LINEAR)
+        h, w   = nh, nw
+
+    try:
+        results = model(inp, verbose=False, conf=min_conf)
+        if not results or results[0].keypoints is None:
+            return _no_detection_jpeg(inp), _empty
+
+        kp_tensor = results[0].keypoints.data   # (N, 17, 3)
+        if kp_tensor.shape[0] == 0:
+            return _no_detection_jpeg(inp), _empty
+
+        # ── JPEG ──────────────────────────────────────────────────────────
+        annotated = results[0].plot(
+            conf=False, labels=False, boxes=False,
+            kpt_radius=5, line_width=2,
+        )
+        ok, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 88])
+        jpeg = buf.tobytes() if ok else None
+
+        # ── Data ──────────────────────────────────────────────────────────
+        kp = kp_tensor[0].cpu().numpy()   # (17, 3)
+
+        kp_dict = {}
+        for i, name in enumerate(_KP_NAMES):
+            x, y, c = kp[i]
+            kp_dict[name] = {"x": float(x / w), "y": float(y / h), "conf": float(c)}
+
+        def xy(name):
+            pt = kp_dict.get(name, {})
+            return (pt["x"], pt["y"]) if pt.get("conf", 0) >= min_conf else None
+
+        ang = {}
+        for label, (a, b, c) in [
+            ("left_elbow",  ("left_shoulder",  "left_elbow",  "left_wrist")),
+            ("right_elbow", ("right_shoulder", "right_elbow", "right_wrist")),
+            ("left_knee",   ("left_hip",       "left_knee",   "left_ankle")),
+            ("right_knee",  ("right_hip",      "right_knee",  "right_ankle")),
+            ("left_hip",    ("left_shoulder",  "left_hip",    "left_knee")),
+            ("right_hip",   ("right_shoulder", "right_hip",   "right_knee")),
+        ]:
+            pa, pb, pc = xy(a), xy(b), xy(c)
+            if pa and pb and pc:
+                ang[label] = round(_angle(pa, pb, pc), 1)
+
+        posture = "unknown"
+        lhip, rhip = xy("left_hip"),  xy("right_hip")
+        lkn,  rkn  = xy("left_knee"), xy("right_knee")
+        if lhip and rhip and lkn and rkn:
+            hip_y  = (lhip[1] + rhip[1]) / 2
+            knee_y = (lkn[1]  + rkn[1])  / 2
+            ratio  = (knee_y - hip_y) / max(hip_y, 0.01)
+            posture = "sitting" if ratio < 0.2 else "crouching" if ratio < 0.45 else "standing"
+
+        data = {"detected": True, "keypoints": kp_dict, "angles": ang, "posture": posture}
+        return jpeg, data
+
+    except Exception as e:
+        logger.error("[Pose] estimate_pose_both error: %s", e, exc_info=True)
+        return None, _empty
 
 
 def estimate_pose_jpeg(crop_bgr: np.ndarray, min_conf: float = 0.3) -> bytes | None:
