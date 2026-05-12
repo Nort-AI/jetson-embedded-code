@@ -921,8 +921,12 @@ class CameraProcessor:
                         _vlm_ok = not _on_edge and _crop_area >= getattr(
                             config, 'VLM_MIN_CROP_AREA', 3000)
                         if _vlm_ok:
-                            crop_bgr = frame[max(0, y1):min(h, y2),
-                                             max(0, x1):min(w, x2)]
+                            # Add 25% padding around the bounding box so the crop
+                            # shows context rather than a tight slice of the person.
+                            _pad_x = max(10, int((x2 - x1) * 0.25))
+                            _pad_y = max(10, int((y2 - y1) * 0.15))
+                            crop_bgr = frame[max(0, y1 - _pad_y):min(h, y2 + _pad_y),
+                                             max(0, x1 - _pad_x):min(w, x2 + _pad_x)]
                             if crop_bgr.size > 0:
                                 # Use the SAME key formula as _make_retail_data in run.py:
                                 #   str(global_id) when a ReID global ID has been assigned,

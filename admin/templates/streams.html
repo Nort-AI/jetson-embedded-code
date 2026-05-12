@@ -627,19 +627,24 @@
       border-color: rgba(239, 68, 68, 0.2);
     }
 
-    .vlm- .vlm-crop-wrap {
-      text-align: center;
-      display: none;
-      position: relative;
+    .vlm-crop-wrap {
+      display: none;          /* toggled to flex by JS on load */
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      min-height: 120px;
+      max-height: 300px;
+      margin-bottom: 12px;
+      background: rgba(0,0,0,0.25);
+      border-radius: var(--radius);
+      overflow: hidden;
     }
 
     .vlm-crop-wrap img {
       max-width: 100%;
-      max-height: 280px;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      max-height: 300px;
       object-fit: contain;
+      border-radius: var(--radius);
     }
 
     .vlm-track-info {
@@ -2749,7 +2754,7 @@
             if (!blob) return;
             const objUrl = URL.createObjectURL(blob);
             cropImg.onload = () => {
-              cropWrap.style.display = 'block';
+              cropWrap.style.display = 'flex';
               URL.revokeObjectURL(objUrl);
             };
             cropImg.src = objUrl;
