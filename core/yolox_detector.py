@@ -187,8 +187,11 @@ class YOLOXDetector:
         class_ids = np.argmax(scores, axis=1)
         class_scores = np.max(scores, axis=1)
 
-        # Strict person-only filter (COCO class 0)
-        mask = (class_scores > self.conf_threshold) & (class_ids == 0)
+        # Strict person-only filter (COCO class 0) + NaN/Inf guard.
+        # FP16 TRT engines can emit NaN/Inf on certain inputs; these propagate
+        # into the ByteTracker cost matrix and crash linear_sum_assignment.
+        finite_mask = np.isfinite(class_scores) & np.isfinite(boxes_raw).all(axis=1)
+        mask = finite_mask & (class_scores > self.conf_threshold) & (class_ids == 0)
         boxes_raw = boxes_raw[mask]
         class_ids = class_ids[mask]
         class_scores = class_scores[mask]

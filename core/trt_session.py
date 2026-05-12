@@ -15,6 +15,7 @@ import ctypes.util
 import logging
 import os
 import sys
+import threading
 
 import numpy as np
 
@@ -273,6 +274,10 @@ class TRTSession:
 
         self.context = self.engine.create_execution_context()
         self._stream  = _cuda_stream_create()
+        # Serialize concurrent run() calls — TRT execution contexts are NOT
+        # thread-safe.  Multiple camera threads share the attribute model
+        # session; without this lock TRT raises "already loaded binary graph".
+        self._lock    = threading.Lock()
 
         # ── Enumerate tensors and pre-allocate GPU memory ─────────────────────
         self._inputs  = {}  # name → {'ptr', 'shape', 'dtype', 'nbytes'}
@@ -323,6 +328,10 @@ class TRTSession:
         return ["TensorrtExecutionProvider"]
 
     def run(self, output_names, input_feed: dict) -> list:
+        with self._lock:
+            return self._run_locked(output_names, input_feed)
+
+    def _run_locked(self, output_names, input_feed: dict) -> list:
         # ── Upload inputs to GPU ──────────────────────────────────────────────
         for name, data in input_feed.items():
             if name not in self._inputs:
