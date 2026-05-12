@@ -313,6 +313,12 @@ class TRTSession:
             for name, meta in self._inputs.items()
         ]
 
+    def get_outputs(self):
+        return [
+            _NodeArg(name, meta["shape"], meta["dtype"])
+            for name, meta in self._outputs.items()
+        ]
+
     def get_providers(self):
         return ["TensorrtExecutionProvider"]
 
