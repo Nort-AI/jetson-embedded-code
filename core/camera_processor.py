@@ -239,6 +239,11 @@ class CameraProcessor:
         )
 
         self.track_attributes = {}
+        # Deduplication: remember which global_ids were already counted as entered.
+        # Prevents the same physical person from being counted multiple times when
+        # their local track is lost and re-assigned (new track_id, same global_id).
+        # On confirmed exit the gid is removed so they can be counted on re-entry.
+        self._counted_entry_global_ids: set = set()
         self.last_homography_check = 0.0       # perf: reload once per frame, not per track
         self._attr_onnx_inp_name = None        # perf: cached ONNX I/O names (set after session loads)
         self._attr_onnx_out_name = None
@@ -633,12 +638,13 @@ class CameraProcessor:
                         current_position = (int((x1 + x2) / 2), int(y2))
                         now = time.time()
                         linked_global_id = None
-                        
+                        linked_has_entered = False  # inherited from old track on recovery
+
                         # Spatio-Temporal Recovery: If an old track just died right here, assume it's the same person
                         for old_tid, old_attrs in self.track_attributes.items():
                             if old_tid == track_id: continue
                             time_since_seen = now - old_attrs.get("last_seen", now)
-                            
+
                             # Dropped between 0.2s and 8.0s ago
                             if 0.2 < time_since_seen < 8.0:
                                 old_pos = old_attrs.get("last_position")
@@ -646,11 +652,13 @@ class CameraProcessor:
                                     dist = np.linalg.norm(np.array(current_position) - np.array(old_pos))
                                     if dist < 120:  # Within 120 pixels of exit -> immediate recovery
                                         linked_global_id = old_attrs["global_id"]
-                                        self.logger.debug(f"Spatio-Temporal Link: Recovered track {old_tid} -> {track_id} (GID: {linked_global_id})")
+                                        # Carry over entry state so the new track doesn't re-count
+                                        linked_has_entered = old_attrs.get("has_entered", False)
+                                        self.logger.debug(f"Spatio-Temporal Link: Recovered track {old_tid} -> {track_id} (GID: {linked_global_id}, has_entered={linked_has_entered})")
                                         if self.reid_manager:
                                             self.reid_manager.link_local_to_global(self.camera_id, int(track_id), linked_global_id)
                                         break
-                                        
+
                         self.track_attributes[track_id] = {
                             "last_position": None,
                             "crossing_status": "none",
@@ -658,12 +666,15 @@ class CameraProcessor:
                             "age_category": None,
                             "detection_count": 0,
                             "last_seen": now,
-                            "has_entered": False,
+                            # Inherit entry state from spatio-temporal recovery so a track
+                            # that briefly disappears and reappears doesn't count twice.
+                            "has_entered": linked_has_entered,
                             "first_zone_after_entry": None,
                             "entrance_timestamp": None,
                             "smoothed_position": None,
                             "global_id": linked_global_id,
                             "last_embedding_update": 0,
+                            "last_crossing_ts": 0.0,   # cooldown: prevents oscillation double-counts
                         }
                     
                     attrs = self.track_attributes[track_id]
@@ -870,6 +881,13 @@ class CameraProcessor:
                         attrs["global_id"] = global_id  # Save it so we don't recompute
                     else:
                         global_id = attrs.get("global_id") or int(track_id)
+
+                    # If ReID just resolved a global_id that was already counted as entered
+                    # (person was re-detected after track loss), inherit the entry state so
+                    # they aren't re-counted when they next cross the entrance line.
+                    if global_id and global_id in self._counted_entry_global_ids and not attrs.get("has_entered"):
+                        attrs["has_entered"] = True
+
                     center_x = int((x1 + x2) / 2)
                     bottom_y = int(y2)
                     current_position = (center_x, bottom_y)
@@ -880,25 +898,57 @@ class CameraProcessor:
                             prev_position=attrs["last_position"],
                             curr_position=current_position
                         )
-                        
+
                         if crossing_result:
+                            _now_ts  = time.time()
+                            _gid     = attrs.get("global_id")
+                            # Cooldown: ignore crossings within 8 s of the last one for
+                            # this track (prevents oscillation at the entrance line).
+                            _cooldown = (_now_ts - attrs.get("last_crossing_ts", 0.0)) < 8.0
+
                             if crossing_result == 'entry':
-                                attrs["crossing_status"] = "entered"
-                                attrs["has_entered"] = True
-                                attrs["entrance_timestamp"] = datetime.now()
-                                self.log_crossing_event("entry", track_id)
-                                current_occupancy = self.update_store_occupancy(1)
-                                self.logger.debug(f"Track {track_id} ENTERED store. New occupancy: {current_occupancy}")
-                                
+                                # Deduplicate: skip if this global_id was already counted
+                                _already = (_gid is not None and _gid in self._counted_entry_global_ids)
+                                if not _already and not _cooldown:
+                                    attrs["crossing_status"]  = "entered"
+                                    attrs["has_entered"]       = True
+                                    attrs["entrance_timestamp"] = datetime.now()
+                                    attrs["last_crossing_ts"]  = _now_ts
+                                    self.log_crossing_event("entry", track_id)
+                                    current_occupancy = self.update_store_occupancy(1)
+                                    if _gid is not None:
+                                        self._counted_entry_global_ids.add(_gid)
+                                    self.logger.debug(
+                                        f"Track {track_id} (GID:{_gid}) ENTERED. Occupancy: {current_occupancy}"
+                                    )
+                                else:
+                                    # Duplicate or still on cooldown — keep state consistent but don't count
+                                    attrs["crossing_status"] = "entered"
+                                    attrs["has_entered"]     = True
+                                    self.logger.debug(
+                                        f"[occupancy] Skipped duplicate entry track={track_id} GID={_gid} "
+                                        f"({'dup gid' if _already else 'cooldown'})"
+                                    )
+
                             elif crossing_result == 'exit':
-                                attrs["crossing_status"] = "exited"  
-                                self.log_crossing_event("exit", track_id)
-                                current_occupancy = self.update_store_occupancy(-1)
-                                self.logger.debug(f"Track {track_id} EXITED store. New occupancy: {current_occupancy}")
-                                
-                                # Log first zone interaction if we captured it
-                                if attrs.get("first_zone_after_entry"):
-                                    self.logger.debug(f"Track {track_id} first interaction was with zone: {attrs['first_zone_after_entry']}")
+                                if not _cooldown:
+                                    attrs["crossing_status"]   = "exited"
+                                    attrs["last_crossing_ts"]  = _now_ts
+                                    self.log_crossing_event("exit", track_id)
+                                    current_occupancy = self.update_store_occupancy(-1)
+                                    # Allow this person to be counted again on future re-entry
+                                    if _gid is not None:
+                                        self._counted_entry_global_ids.discard(_gid)
+                                    self.logger.debug(
+                                        f"Track {track_id} (GID:{_gid}) EXITED. Occupancy: {current_occupancy}"
+                                    )
+                                    # Log first zone interaction if we captured it
+                                    if attrs.get("first_zone_after_entry"):
+                                        self.logger.debug(
+                                            f"Track {track_id} first interaction was with zone: {attrs['first_zone_after_entry']}"
+                                        )
+                                else:
+                                    attrs["crossing_status"] = "exited"
                     
                     # Update position for next frame
                     attrs["last_position"] = current_position
