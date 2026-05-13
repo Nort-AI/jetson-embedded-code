@@ -209,6 +209,7 @@ iopath==0.1.10
 yacs==0.1.8
 py-cpuinfo==9.0.0
 screeninfo==0.8.1
+mediapipe>=0.10.0
 ultralytics==8.3.168
 ultralytics-thop==2.0.14
 moondream

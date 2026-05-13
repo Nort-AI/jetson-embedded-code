@@ -24,98 +24,52 @@ OCCUPANCY_LOG_FILE = "occupancy_log.csv"
 
 # ── Live pose skeleton overlay ─────────────────────────────────────────────────
 # Used when --live-pose is active.  Draws ONLY on the admin-panel selected person.
-# Keypoints come from the background pose worker (no inference in the main loop).
-# Back-projection always uses the CURRENT frame bbox so the skeleton tracks the
-# person in real-time, never floats due to stale stored bounds.
-_POSE_KP_NAMES = [
-    "nose", "left_eye", "right_eye", "left_ear", "right_ear",
-    "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-    "left_wrist", "right_wrist", "left_hip", "right_hip",
-    "left_knee", "right_knee", "left_ankle", "right_ankle",
-]
-
-# Skeleton connections — same order as ultralytics COCO pose (0-indexed)
-_POSE_SKELETON = [
-    (15, 13), (13, 11), (16, 14), (14, 12), (11, 12),  # legs + hip
-    (5, 11),  (6, 12),  (5, 6),                          # torso
-    (5, 7),   (6, 8),   (7, 9),   (8, 10),               # arms
-    (1, 2),   (0, 1),   (0, 2),   (1, 3),   (2, 4),      # face
-    (3, 5),   (4, 6),                                      # ear→shoulder
-]
-
-# BGR colours matching the ultralytics COCO pose palette
-_POSE_LIMB_COLORS = [
-    ( 50, 100, 255), ( 50, 100, 255),   # left leg
-    (255, 100,  50), (255, 100,  50),   # right leg
-    (  0, 255, 255),                    # hip cross
-    ( 50, 100, 255),                    # left torso
-    (255, 100,  50),                    # right torso
-    (  0, 255, 255),                    # shoulder cross
-    ( 50, 100, 255), (255, 100,  50),   # upper arms
-    ( 50, 100, 255), (255, 100,  50),   # lower arms
-    (  0, 230, 230), (  0, 230, 230),   # face
-    (  0, 230, 230), (  0, 230, 230), (  0, 230, 230),
-    (  0, 230, 230), (  0, 230, 230),
-]
-
-_POSE_KP_COLORS = [
-    (  0, 230, 230),  # 0  nose
-    (  0, 230, 230),  # 1  left eye
-    (  0, 230, 230),  # 2  right eye
-    (  0, 230, 230),  # 3  left ear
-    (  0, 230, 230),  # 4  right ear
-    ( 50, 100, 255),  # 5  left shoulder
-    (255, 100,  50),  # 6  right shoulder
-    ( 50, 100, 255),  # 7  left elbow
-    (255, 100,  50),  # 8  right elbow
-    ( 50, 100, 255),  # 9  left wrist
-    (255, 100,  50),  # 10 right wrist
-    ( 50, 200, 255),  # 11 left hip
-    (255, 200,  50),  # 12 right hip
-    ( 50, 100, 255),  # 13 left knee
-    (255, 100,  50),  # 14 right knee
-    ( 50, 100, 255),  # 15 left ankle
-    (255, 100,  50),  # 16 right ankle
-]
-
-_POSE_MIN_CONF = 0.3
-_POSE_MAX_AGE  = 1.5   # discard cached pose older than this (seconds)
-
+# Uses MediaPipe's own draw_landmarks() on the person's ROI in the current frame
+# so the rendering is IDENTICAL to the crop panel.  The 33 normalised landmarks
+# stored by the background worker are back-projected to the CURRENT bbox so the
+# skeleton always tracks the person without drift from stale stored bounds.
 
 def _draw_pose_overlay(frame: np.ndarray, pose_data: dict,
                        cx1: int, cy1: int, cx2: int, cy2: int) -> None:
-    """Back-project normalised keypoints onto *frame* using the CURRENT bbox.
+    """Draw MediaPipe skeleton in-place on frame[cy1:cy2, cx1:cx2].
 
-    cx1/cy1/cx2/cy2 — padded crop bounds computed from the CURRENT detection,
-                      ensuring the skeleton tracks the person without drift.
+    The ROI view means modifications go directly into *frame* without a copy.
+    Landmarks are normalised [0,1] relative to the person's crop; drawing on
+    the ROI that covers the same area maps them correctly onto the full frame.
     """
     if not pose_data or not pose_data.get("detected"):
         return
+    landmarks = pose_data.get("landmarks", [])
+    if not landmarks:
+        return   # YOLO fallback data has no 33-landmark list — skip
+
     cw, ch = cx2 - cx1, cy2 - cy1
     if cw <= 0 or ch <= 0:
         return
 
-    fh, fw = frame.shape[:2]
-    kps  = pose_data.get("keypoints", {})
-    pts: dict = {}
-    for idx, name in enumerate(_POSE_KP_NAMES):
-        kp = kps.get(name, {})
-        if kp.get("conf", 0) >= _POSE_MIN_CONF:
-            px = int(cx1 + kp["x"] * cw)
-            py = int(cy1 + kp["y"] * ch)
-            pts[idx] = (max(0, min(fw - 1, px)), max(0, min(fh - 1, py)))
+    try:
+        import mediapipe as mp
+        from mediapipe.framework.formats import landmark_pb2
 
-    # Draw limbs
-    for i, (a, b) in enumerate(_POSE_SKELETON):
-        if a in pts and b in pts:
-            col = _POSE_LIMB_COLORS[i] if i < len(_POSE_LIMB_COLORS) else (0, 255, 0)
-            cv2.line(frame, pts[a], pts[b], col, 2, cv2.LINE_AA)
+        # Rebuild NormalizedLandmarkList from the stored list-of-dicts
+        lm_list = landmark_pb2.NormalizedLandmarkList()
+        for lm_data in landmarks:
+            lm       = lm_list.landmark.add()
+            lm.x          = float(max(0.0, min(1.0, lm_data["x"])))
+            lm.y          = float(max(0.0, min(1.0, lm_data["y"])))
+            lm.z          = float(lm_data.get("z", 0.0))
+            lm.visibility = float(lm_data.get("vis", 1.0))
 
-    # Draw keypoint dots (filled + thin black outline for contrast)
-    for idx, (px, py) in pts.items():
-        col = _POSE_KP_COLORS[idx] if idx < len(_POSE_KP_COLORS) else (0, 255, 255)
-        cv2.circle(frame, (px, py), 5, col,      -1, cv2.LINE_AA)
-        cv2.circle(frame, (px, py), 5, (0, 0, 0), 1, cv2.LINE_AA)
+        # Draw on the ROI — this is an in-place numpy view, no copy needed
+        roi = frame[cy1:cy2, cx1:cx2]
+        mp.solutions.drawing_utils.draw_landmarks(
+            roi,
+            lm_list,
+            mp.solutions.pose.POSE_CONNECTIONS,
+            landmark_drawing_spec=mp.solutions.drawing_styles.get_default_pose_landmarks_style(),
+        )
+    except Exception:
+        pass   # MediaPipe not installed or import error
 
 # Global occupancy tracker shared across all cameras
 occupancy_tracker_lock = threading.Lock()
@@ -1077,6 +1031,11 @@ class CameraProcessor:
                     # Only drawn for the person currently selected in the admin
                     # panel.  Keypoints are back-projected from the CURRENT
                     # detection bbox so the skeleton never drifts from the person.
+                    # ── Live pose skeleton on video feed (--live-pose) ────────
+                    # Only drawn for the person currently selected in the admin panel.
+                    # Uses MediaPipe rendering on the ROI so it looks identical to
+                    # the crop panel.  No age check — the person leaving frame removes
+                    # their track from detections, so stale data is never reached.
                     if getattr(config, "LIVE_POSE_ENABLED", False) and self._vlm_analyst.is_enabled():
                         _active = self._vlm_analyst.get_active_target()
                         if _active:
@@ -1088,11 +1047,10 @@ class CameraProcessor:
                             if _pkey == str(_active):
                                 try:
                                     with self._vlm_analyst._track_crops_lock:
-                                        _pe  = self._vlm_analyst._track_crops.get(_pkey)
-                                        _pd  = _pe.get("pose_data") if _pe else None
-                                        _age = time.time() - (_pe.get("pose_ts", 0) if _pe else 0)
-                                    if _pd and _age < _POSE_MAX_AGE:
-                                        # Recompute padded bounds from CURRENT bbox
+                                        _pe = self._vlm_analyst._track_crops.get(_pkey)
+                                        _pd = _pe.get("pose_data") if _pe else None
+                                    if _pd:
+                                        # Padded bounds from CURRENT bbox — skeleton tracks person
                                         _ppx = max(10, int((x2 - x1) * 0.25))
                                         _ppy = max(10, int((y2 - y1) * 0.15))
                                         _draw_pose_overlay(
