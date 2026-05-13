@@ -234,11 +234,18 @@ class CameraProcessor:
         import supervision as sv
         self.tracker = sv.ByteTrack(
             track_activation_threshold=0.40,  # Lowered to 40% to allow small, distant targets to trigger tracking
-            lost_track_buffer=60, # ~2 seconds at typical 30fps
+            lost_track_buffer=150,  # ~15 s at 10 fps (Jetson). Keeps the same local track_id for longer
+                                    # so the person reappears under their old ID without triggering a new
+                                    # register_or_match call — the single biggest source of ID proliferation.
             minimum_consecutive_frames=3      # Needs to see the person 3 frames in a row at high-conf
         )
 
         self.track_attributes = {}
+        # Per-camera recent-activity map: global_id → last_seen unix timestamp.
+        # Updated every frame; pruned to 120 s.  Passed as `recent_gids` to
+        # register_or_match so the context bonus fires for everyone who was on
+        # this camera recently — not just currently-active tracks.
+        self._recently_active_gids: dict = {}
         # Deduplication: remember which global_ids were already counted as entered.
         # Prevents the same physical person from being counted multiple times when
         # their local track is lost and re-assigned (new track_id, same global_id).
@@ -645,12 +652,14 @@ class CameraProcessor:
                             if old_tid == track_id: continue
                             time_since_seen = now - old_attrs.get("last_seen", now)
 
-                            # Dropped between 0.2s and 8.0s ago
-                            if 0.2 < time_since_seen < 8.0:
+                            # Dropped between 0.2 s and 25 s ago (was 8 s — too tight for
+                            # occlusions / busy scenes where the tracker takes a few seconds to
+                            # re-acquire the person at a slightly different position).
+                            if 0.2 < time_since_seen < 25.0:
                                 old_pos = old_attrs.get("last_position")
                                 if old_pos and old_attrs.get("global_id") is not None:
                                     dist = np.linalg.norm(np.array(current_position) - np.array(old_pos))
-                                    if dist < 120:  # Within 120 pixels of exit -> immediate recovery
+                                    if dist < 250:  # 250 px (was 120) — person can move ~1 m during the gap
                                         linked_global_id = old_attrs["global_id"]
                                         # Carry over entry state so the new track doesn't re-count
                                         linked_has_entered = old_attrs.get("has_entered", False)
@@ -809,16 +818,15 @@ class CameraProcessor:
 
                         if (is_new_track or attrs["global_id"] is None):
                             if is_acceptable:
-                                # Collect context: IDs recently seen on THIS camera for context bonus
-                                recent_gids = set()
-                                now_time = time.time()
-                                for old_tid, old_attrs in self.track_attributes.items():
-                                    if old_tid == track_id:
-                                        continue
-                                    old_gid = old_attrs.get("global_id")
-                                    if old_gid is not None:
-                                        if (now_time - old_attrs.get("last_seen", now_time)) <= 15.0:
-                                            recent_gids.add(old_gid)
+                                # All global_ids seen on this camera in the last 90 s get the
+                                # context bonus inside register_or_match (+0.08 to emb_sim).
+                                # Using _recently_active_gids rather than track_attributes means
+                                # people whose track just dropped are still included.
+                                _now_ra = time.time()
+                                recent_gids = {
+                                    gid for gid, ts in self._recently_active_gids.items()
+                                    if _now_ra - ts <= 90.0
+                                }
 
                                 attrs["global_id"] = self.reid_manager.register_or_match(
                                     frame=frame,
@@ -1203,6 +1211,21 @@ class CameraProcessor:
                     if tid in self.track_attributes
                 ]
                 self._vlm_session.tick(_active_gids)
+
+            # Update per-camera activity map — records when each global_id was last
+            # seen so register_or_match can give them the context bonus even after
+            # their local track drops.
+            _ra_now = time.time()
+            for _ra_attrs in self.track_attributes.values():
+                _ra_gid = _ra_attrs.get("global_id")
+                if _ra_gid is not None:
+                    self._recently_active_gids[_ra_gid] = _ra_now
+            # Prune entries older than 120 s to bound memory
+            if self.frame_count % 300 == 0:
+                self._recently_active_gids = {
+                    g: t for g, t in self._recently_active_gids.items()
+                    if _ra_now - t < 120.0
+                }
 
             # M6-fix: clean up old tracking data more aggressively to prevent
             # unbounded dict growth on busy retail scenes (many unique people/day)

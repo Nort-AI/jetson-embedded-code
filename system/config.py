@@ -124,10 +124,10 @@ LIVE_POSE_ENABLED = False
 # Set "enable_reid": false in device.json to disable Re-ID and run as a plain multi-camera tracker.
 REID_ENABLED             = _d.get("enable_reid", True)
 
-# 0.48: lower threshold fixes "same person = multiple IDs" on CPU-inferred embeddings.
-# Front↔back view of the same person on CPU OSNet scores ~0.45–0.65; 0.52 was too strict.
-# The clothing-color veto + gender veto guard against false positives at this level.
-REID_SIMILARITY_THRESHOLD = 0.48
+# 0.42: tuned for CPU-inferred OSNet on Jetson where same-person embeddings from
+# different angles score ~0.38–0.65.  The +0.08 context bonus for recently-seen IDs
+# and the clothing-color / gender veto keep false positives under control.
+REID_SIMILARITY_THRESHOLD = 0.42
 
 # How long a gallery entry stays alive without being seen (seconds).
 # 300s = 5 minutes. A person who leaves and returns within this window keeps their ID.

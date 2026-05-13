@@ -126,10 +126,10 @@ class ReIDManager:
     MAX_ANCHORS = 48
 
     # Confirmation window: number of frames to buffer before minting a new ID.
-    # 5 frames is enough for the gallery match to fire on a clean crop while still
-    # filtering one-frame ghost detections.  20 was so long that re-entries would
-    # exhaust the window with bad crops and mint spurious new IDs.
-    CONFIRMATION_WINDOW = 5
+    # 10 frames gives the gallery match more chances to fire on a clean crop
+    # (especially at ~10 fps on Jetson = 1 second window) without being so long
+    # that bad crops exhaust it and mint a spurious new ID.
+    CONFIRMATION_WINDOW = 10
 
     def __init__(
         self,
@@ -592,14 +592,14 @@ class ReIDManager:
         return added_new_angle
 
     def _merge_loop(self):
-        """Background thread: deduplicates the gallery every 2 s."""
+        """Background thread: deduplicates the gallery every 1 s."""
         while not self._stop.is_set():  # C3-fix: honour shutdown event
-            self._stop.wait(timeout=2)
+            self._stop.wait(timeout=1)  # was 2 s — halved so spurious IDs are caught faster
             if self._stop.is_set():
                 break
             try:
                 self._prune_expired()          # M3-fix: expire entries even when quiet
-                self._merge_duplicates(merge_threshold=0.42)
+                self._merge_duplicates(merge_threshold=0.36)  # was 0.42 — more aggressive consolidation
             except Exception as e:
                 logger.error(f"ReID merge loop error (will retry): {e}", exc_info=True)
                 self._stop.wait(timeout=5)
@@ -1005,9 +1005,12 @@ class ReIDManager:
                 sims.append(float(np.dot(query_emb, a)))
             emb_sim = max(sims) if sims else 0.0
 
-            # Contextual bonus for IDs recently seen on this camera
+            # Contextual bonus for IDs recently seen on this camera.
+            # +0.08 (was +0.02): strong enough to rescue a borderline re-entry
+            # (e.g. score 0.39 + 0.08 = 0.47 > 0.42 threshold) without pushing
+            # truly different people over the bar (they score < 0.35 typically).
             if gid in recent_gids:
-                emb_sim = min(1.0, emb_sim + 0.02)
+                emb_sim = min(1.0, emb_sim + 0.08)
 
             same_cam = (entry.camera_id == camera_id)
             fused = self._compute_fused_score(emb_sim, query_raw_probs, entry.raw_attr_probs, same_cam)
