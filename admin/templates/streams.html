@@ -1297,6 +1297,182 @@
     .sidebar.collapsed .sidebar-header .beta-tag {
       display: none !important;
     }
+
+    /* ── People Gallery ─────────────────────────────────────────────────────── */
+    .gallery-section {
+      margin-top: 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+      flex-shrink: 0;
+    }
+
+    .gallery-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 14px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+
+    .gallery-header:hover { background: rgba(255,255,255,0.02); }
+
+    .gallery-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--fg-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .gallery-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9px;
+      background: var(--primary-dim);
+      color: var(--primary);
+      font-size: 0.68rem;
+      font-weight: 700;
+    }
+
+    .gallery-active-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ok);
+      flex-shrink: 0;
+      animation: pulse 2s infinite alternate;
+    }
+
+    .gallery-chevron {
+      width: 16px;
+      height: 16px;
+      color: var(--fg-muted);
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+
+    .gallery-section.collapsed .gallery-chevron { transform: rotate(-90deg); }
+    .gallery-section.collapsed .gallery-body    { display: none; }
+
+    .gallery-body {
+      padding: 10px 12px 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .gallery-strip {
+      display: flex;
+      gap: 9px;
+      overflow-x: auto;
+      padding-bottom: 3px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .gallery-strip::-webkit-scrollbar { height: 3px; }
+    .gallery-strip::-webkit-scrollbar-track { background: transparent; }
+    .gallery-strip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .gallery-card {
+      flex-shrink: 0;
+      width: 76px;
+      height: 108px;
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+      border: 2px solid rgba(255,255,255,0.06);
+      transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+      background: rgba(0,0,0,0.35);
+    }
+
+    .gallery-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+      border-color: var(--primary);
+    }
+
+    .gallery-card.active-person {
+      border-color: var(--ok);
+      box-shadow: 0 0 0 1px rgba(16,185,129,0.25);
+    }
+
+    .gallery-card.selected-person {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(59,130,246,0.3);
+    }
+
+    .gallery-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .gallery-card-overlay {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, transparent 100%);
+      padding: 18px 5px 5px;
+    }
+
+    .gallery-card-id {
+      font-size: 0.62rem;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .gallery-card-cam {
+      font-size: 0.55rem;
+      color: rgba(255,255,255,0.55);
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .gallery-card-posture {
+      position: absolute;
+      top: 3px; right: 4px;
+      font-size: 0.72rem;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9));
+      line-height: 1;
+    }
+
+    .gallery-card-age {
+      position: absolute;
+      top: 3px; left: 4px;
+      font-size: 0.54rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.8);
+      background: rgba(0,0,0,0.55);
+      padding: 1px 4px;
+      border-radius: 3px;
+      line-height: 1.5;
+    }
+
+    .gallery-empty {
+      color: var(--fg-muted);
+      font-size: 0.8rem;
+      padding: 4px 0 2px;
+      text-align: center;
+      width: 100%;
+    }
   </style>
 </head>
 
@@ -1702,6 +1878,28 @@
                   border-radius:7px;padding:12px 14px;
                   border:1px solid var(--border);
                 "></div>
+              </div>
+            </div>
+
+            <!-- ── People Gallery ──────────────────────────────────────────── -->
+            <div class="gallery-section" id="gallerySection">
+              <div class="gallery-header" onclick="toggleGallery()">
+                <div class="gallery-title">
+                  <span class="gallery-active-dot"></span>
+                  People in Store
+                  <span class="gallery-count" id="galleryCount">0</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span id="galleryActiveLabel" style="font-size:0.65rem;color:var(--ok);font-weight:600;"></span>
+                  <svg class="gallery-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+              </div>
+              <div class="gallery-body">
+                <div class="gallery-strip" id="galleryStrip">
+                  <div class="gallery-empty" id="galleryEmpty">No one tracked yet.</div>
+                </div>
               </div>
             </div>
           </div>
@@ -2719,8 +2917,15 @@
       if (bestId) openVlmPanel(bestId);
     });
 
+    function _updateGallerySelection(activeId) {
+      for (const [gid, card] of Object.entries(_galleryCardMap)) {
+        card.classList.toggle('selected-person', String(gid) === String(activeId));
+      }
+    }
+
     async function openVlmPanel(trackId) {
       _selectedTrackId = trackId;
+      _updateGallerySelection(trackId);
       document.getElementById('vlmBackdrop').classList.add('open');
       document.getElementById('vlmPanel').classList.add('open');
       // Hide the hint once user has discovered the feature
@@ -2816,6 +3021,7 @@
       document.getElementById('vlmBackdrop').classList.remove('open');
       document.getElementById('vlmPanel').classList.remove('open');
       _selectedTrackId = null;
+      _updateGallerySelection(null);
       if (_vlmPollTimer) { clearInterval(_vlmPollTimer); _vlmPollTimer = null; }
 
       // Reset both image panels
@@ -2992,7 +3198,130 @@
       localStorage.setItem('nort-sidebar-collapsed', sb.classList.contains('collapsed'));
     }
   </script>
-    <script>
+
+  <script>
+    // ── People Gallery ──────────────────────────────────────────────────────────
+    let _galleryPollTimer = null;
+    const _galleryCardMap  = {};   // global_id (string) → DOM card element
+
+    function toggleGallery() {
+      document.getElementById('gallerySection').classList.toggle('collapsed');
+    }
+
+    async function refreshGallery() {
+      try {
+        const res = await fetch('/api/gallery/people');
+        if (!res.ok) return;
+        const data = await res.json();
+        const people = data.people || [];
+
+        const strip     = document.getElementById('galleryStrip');
+        const countEl   = document.getElementById('galleryCount');
+        const activeEl  = document.getElementById('galleryActiveLabel');
+        let   emptyEl   = document.getElementById('galleryEmpty');
+
+        countEl.textContent = people.length;
+
+        const nActive = people.filter(p => p.active).length;
+        activeEl.textContent = nActive > 0 ? nActive + ' active' : '';
+
+        if (people.length === 0) {
+          Object.keys(_galleryCardMap).forEach(id => {
+            _galleryCardMap[id].remove();
+            delete _galleryCardMap[id];
+          });
+          if (!emptyEl) {
+            emptyEl = document.createElement('div');
+            emptyEl.className = 'gallery-empty';
+            emptyEl.id = 'galleryEmpty';
+            emptyEl.textContent = 'No one tracked yet.';
+            strip.appendChild(emptyEl);
+          }
+          emptyEl.style.display = '';
+          return;
+        }
+
+        // Hide empty state
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        // Remove stale cards
+        const newIdSet = new Set(people.map(p => String(p.global_id)));
+        for (const [gid, card] of Object.entries(_galleryCardMap)) {
+          if (!newIdSet.has(gid)) {
+            card.remove();
+            delete _galleryCardMap[gid];
+          }
+        }
+
+        const postureIcon = { standing: '🧍', sitting: '🪑', crouching: '🤸' };
+
+        for (const person of people) {
+          const gid       = String(person.global_id);
+          const isActive  = person.active;
+          const isSelected = _selectedTrackId != null && String(_selectedTrackId) === gid;
+          const cls = 'gallery-card' +
+                      (isActive   ? ' active-person'   : '') +
+                      (isSelected ? ' selected-person' : '');
+
+          if (_galleryCardMap[gid]) {
+            // ── Update existing card ──────────────────────────────────────────
+            const card = _galleryCardMap[gid];
+            card.className = cls;
+
+            // Refresh thumbnail if crop timestamp changed
+            if (person.image_ts !== card.dataset.imagets) {
+              const img = card.querySelector('img');
+              if (img) img.src = '/api/crop/' + encodeURIComponent(gid) + '?t=' + person.image_ts;
+              card.dataset.imagets = person.image_ts;
+            }
+
+            // Update age label
+            const ageEl = card.querySelector('.gallery-card-age');
+            if (ageEl) ageEl.textContent = person.time_ago;
+
+          } else {
+            // ── Create new card ───────────────────────────────────────────────
+            const card = document.createElement('div');
+            card.className  = cls;
+            card.dataset.gid     = gid;
+            card.dataset.imagets = person.image_ts || '0';
+            card.title = 'Person #' + gid + ' · ' + person.cam;
+            card.onclick = () => openVlmPanel(gid);
+
+            const icon = postureIcon[person.posture] || '';
+
+            card.innerHTML =
+              '<img src="/api/crop/' + encodeURIComponent(gid) +
+                '?t=' + (person.image_ts || Date.now()) +
+                '" alt="Person ' + gid + '" loading="lazy">' +
+              (icon ? '<div class="gallery-card-posture">' + icon + '</div>' : '') +
+              '<div class="gallery-card-overlay">' +
+                '<div class="gallery-card-id">#' + gid + '</div>' +
+                '<div class="gallery-card-cam">' + person.cam + '</div>' +
+              '</div>' +
+              '<div class="gallery-card-age">' + person.time_ago + '</div>';
+
+            strip.appendChild(card);
+            _galleryCardMap[gid] = card;
+          }
+        }
+
+        // Re-sort: active first, then insertion order already matches server sort
+        // (server sends active-first by default — DOM order matches)
+
+      } catch(e) {
+        console.debug('[gallery] refresh error:', e);
+      }
+    }
+
+    // Kick off polling after DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+      refreshGallery();
+      _galleryPollTimer = setInterval(refreshGallery, 3000);
+    });
+  </script>
+
+  <script>
     // Create floating VLM prompt bar at body level, aligned to .view-container center
     document.addEventListener('DOMContentLoaded', () => {
       const c = document.createElement('div');

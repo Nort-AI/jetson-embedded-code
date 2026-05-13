@@ -4542,6 +4542,75 @@ def api_vlm_active_crops():
     return _jsonify({"crops": crops_b64})
 
 
+@app.route("/api/gallery/people")
+@requires_auth
+def api_gallery_people():
+    """Lightweight metadata list for the People Gallery strip in /streams.
+
+    Returns every person seen in the last 120 s, sorted active-first then by
+    recency.  Thumbnails are NOT embedded — the browser fetches them via the
+    existing /api/crop/<id> route so this response stays tiny (<2 KB for 30 people).
+
+    Response schema:
+        {
+          "people": [
+            {
+              "global_id": "42",
+              "cam":        "cam1",
+              "ts":          1748123456.789,   # unix epoch of last crop
+              "image_ts":   "1748123456",      # string; browser uses as cache-bust key
+              "active":      true,             # seen within last 5 s
+              "time_ago":   "3s",              # human-readable age
+              "posture":    "standing"         # or null if not detected
+            },
+            ...
+          ]
+        }
+    """
+    import time as _t
+    try:
+        from core import vlm_analyst as _va
+    except ImportError:
+        return jsonify({"people": []})
+
+    now = _t.time()
+    MAX_AGE = 120.0   # drop anyone not seen for 2 minutes
+    ACTIVE_AGE = 5.0  # "active" = seen within 5 seconds
+
+    people = []
+    with _va._track_crops_lock:
+        # Iterate newest-first (OrderedDict, last=most-recent)
+        for gid, entry in reversed(list(_va._track_crops.items())):
+            ts  = entry.get("ts", 0.0)
+            age = now - ts
+            if age > MAX_AGE:
+                continue
+
+            # Human-readable age
+            if age < 60:
+                time_ago = f"{int(age)}s"
+            else:
+                time_ago = f"{int(age // 60)}m"
+
+            pose_data = entry.get("pose_data") or {}
+            posture   = pose_data.get("posture") if pose_data.get("detected") else None
+
+            people.append({
+                "global_id": str(gid),
+                "cam":       entry.get("cam", "?"),
+                "ts":        ts,
+                "image_ts":  str(int(ts)),
+                "active":    age < ACTIVE_AGE,
+                "time_ago":  time_ago,
+                "posture":   posture,
+            })
+
+    # Sort: active first, then most-recent-first within each group
+    people.sort(key=lambda p: (not p["active"], -p["ts"]))
+
+    return jsonify({"people": people})
+
+
 @app.route("/api/stream/tracks")
 @requires_auth
 def api_stream_tracks():
