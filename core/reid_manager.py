@@ -126,9 +126,10 @@ class ReIDManager:
     MAX_ANCHORS = 48
 
     # Confirmation window: number of frames to buffer before minting a new ID.
-    # 20 frames (~0.67s) gives enough time for the person to turn slightly and match
-    # the gallery before a new ID is incorrectly minted.
-    CONFIRMATION_WINDOW = 20
+    # 5 frames is enough for the gallery match to fire on a clean crop while still
+    # filtering one-frame ghost detections.  20 was so long that re-entries would
+    # exhaust the window with bad crops and mint spurious new IDs.
+    CONFIRMATION_WINDOW = 5
 
     def __init__(
         self,
@@ -462,7 +463,11 @@ class ReIDManager:
             # We reject the update to prevent gallery corruption.
             if entry.prototype_emb is not None:
                 sim = float(np.dot(embedding, entry.prototype_emb))
-                if sim < 0.65:
+                # 0.40 threshold: only reject truly alien embeddings (different person
+                # has drifted into the bounding box).  0.65 was too strict — it blocked
+                # legitimate re-appearances from a different angle, preventing the anchor
+                # bank from diversifying and causing re-entries to miss gallery matches.
+                if sim < 0.40:
                     logger.warning(
                         f"[ReID] Drift detected for Local:{local_track_id} on {camera_id}! "
                         f"Cosine sim to GID {gid} is {sim:.3f}. Rejecting update."
@@ -533,8 +538,9 @@ class ReIDManager:
                 entry.prototype_emb = embedding.copy()
                 added_new_angle = True
             else:
-                # 98% old, 2% new. Locks the original pristine identity, preventing temporal drift!
-                entry.prototype_emb = 0.98 * entry.prototype_emb + 0.02 * embedding
+                # 85% old, 15% new — adapts faster to better crops so a poor
+                # first-frame prototype doesn't permanently poison matching.
+                entry.prototype_emb = 0.85 * entry.prototype_emb + 0.15 * embedding
                 norm = np.linalg.norm(entry.prototype_emb)
                 if norm > 0:
                     entry.prototype_emb /= norm
@@ -593,7 +599,7 @@ class ReIDManager:
                 break
             try:
                 self._prune_expired()          # M3-fix: expire entries even when quiet
-                self._merge_duplicates(merge_threshold=0.55)
+                self._merge_duplicates(merge_threshold=0.42)
             except Exception as e:
                 logger.error(f"ReID merge loop error (will retry): {e}", exc_info=True)
                 self._stop.wait(timeout=5)
@@ -716,8 +722,11 @@ class ReIDManager:
         If the anchor bank contains two groups of embeddings that are highly dissimilar to each other
         (cosine < 0.45), it splits the entry automatically using distance clustering.
         """
-        # Must be strictly lower than both REID_SIMILARITY_THRESHOLD (0.52) and merge_threshold (0.55)
-        SPLIT_THRESHOLD = 0.42
+        # Must be strictly lower than REID_SIMILARITY_THRESHOLD (0.48) and merge_threshold (0.42).
+        # Front↔back view of the same person on CPU OSNet scores ~0.35–0.50 — the old
+        # value of 0.42 was actively splitting valid multi-angle entries into new IDs.
+        # 0.25 only triggers when two anchors are truly alien to each other (different people).
+        SPLIT_THRESHOLD = 0.25
         with self._lock:
             gids = list(self._gallery.keys())
             for gid in gids:
@@ -1022,12 +1031,14 @@ class ReIDManager:
         if best_score < dynamic_threshold:
             return None, 0.0
 
-        # Adaptive margin — tightened to 0.05 to block borderline coin-flip matches
-        # that are the main source of wrong matches.
+        # Adaptive margin: only reject when two gallery entries are nearly identical
+        # in score AND both above threshold — that's a genuine coin-flip.
+        # 0.03 (was 0.05) — 0.05 was too aggressive; with a busy gallery it blocked
+        # correct matches too often, sending them back to buffer another window.
         if len(candidates) > 1:
             runner_up_score = candidates[1][0]
             margin = best_score - runner_up_score
-            if runner_up_score >= self._threshold and margin < 0.05:
+            if runner_up_score >= self._threshold and margin < 0.03:
                 logger.warning(
                     f"[ReID] Ambiguous: G:{best_gid} vs G:{candidates[1][1]} "
                     f"margin={margin:.3f}. Buffering instead of minting."
