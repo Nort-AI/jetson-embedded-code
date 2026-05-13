@@ -407,18 +407,53 @@ class ReIDManager:
             if len(buf) < self.CONFIRMATION_WINDOW:
                 return None
 
-            # Window exhausted with no match → mint new global_id using best-quality buffered embedding
+            # Window exhausted with no match via normal threshold →
+            # rescue pass then mint.
             self._pending.pop(key, None)
             # M2-fix: attr_vec is not in scope here; use None as fallback
-            best_emb, best_attr, _ = max(buf, key=lambda x: x[2]) if buf else (embedding, None, crop_sharpness)
+            best_emb, best_attr, best_sharp = max(buf, key=lambda x: x[2]) if buf else (embedding, None, crop_sharpness)
 
+            # ── Rescue pass: soft-match recent IDs before minting ─────────────
+            # OSNet CPU/Jetson scores same-person at 0.20–0.34 under difficult
+            # conditions (different angle, distance, far from camera).
+            # Normal threshold (0.42) misses these even with the +0.20 context
+            # bonus when raw sim < 0.22.  Try once more with RESCUE_FLOOR=0.18
+            # restricted ONLY to recently-seen IDs; clothing veto still fires.
+            RESCUE_FLOOR = 0.18
+            rescue_gid, rescue_score = None, 0.0
+            if recent_gids and self._gallery:
+                for r_gid in list(recent_gids):
+                    r_entry = self._gallery.get(r_gid)
+                    if r_entry is None:
+                        continue
+                    if self._clothing_veto(r_entry, raw_attr_probs, attr_label_list):
+                        continue
+                    r_sims = [float(np.dot(best_emb, a)) for a in r_entry.anchor_embs] if r_entry.anchor_embs else []
+                    if r_entry.prototype_emb is not None:
+                        r_sims.append(float(np.dot(best_emb, r_entry.prototype_emb)))
+                    r_sim = max(r_sims) if r_sims else 0.0
+                    if r_sim >= RESCUE_FLOOR and r_sim > rescue_score:
+                        rescue_gid, rescue_score = r_gid, r_sim
+
+            if rescue_gid is not None:
+                r_entry = self._gallery[rescue_gid]
+                self._update_entry(r_entry, best_emb, None, best_sharp, thumb,
+                                   raw_probs=raw_attr_probs, label_list=attr_label_list)
+                self._local_to_global[key] = rescue_gid
+                logger.debug(
+                    f"[ReID] RESCUE cam={camera_id} local={local_track_id}"
+                    f" → global={rescue_gid}  raw_sim={rescue_score:.3f}  (soft-floor recent_gid)"
+                )
+                return rescue_gid
+
+            # Truly no match anywhere — mint a new global_id
             gid = self._next_global_id
             self._next_global_id += 1
             self._gallery[gid] = GalleryEntry(
                 global_id=gid,
                 prototype_emb=best_emb,
                 anchor_embs=[best_emb],
-                anchor_qualities=[crop_sharpness],
+                anchor_qualities=[best_sharp],
                 camera_id=camera_id,
                 local_track_id=local_track_id,
                 thumbnails=[thumb] if thumb is not None else [],
@@ -599,7 +634,7 @@ class ReIDManager:
                 break
             try:
                 self._prune_expired()          # M3-fix: expire entries even when quiet
-                self._merge_duplicates(merge_threshold=0.36)  # was 0.42 — more aggressive consolidation
+                self._merge_duplicates(merge_threshold=0.28)  # was 0.36 — ultra-aggressive for CPU-noisy embeddings
             except Exception as e:
                 logger.error(f"ReID merge loop error (will retry): {e}", exc_info=True)
                 self._stop.wait(timeout=5)
@@ -1006,11 +1041,12 @@ class ReIDManager:
             emb_sim = max(sims) if sims else 0.0
 
             # Contextual bonus for IDs recently seen on this camera.
-            # +0.08 (was +0.02): strong enough to rescue a borderline re-entry
-            # (e.g. score 0.39 + 0.08 = 0.47 > 0.42 threshold) without pushing
-            # truly different people over the bar (they score < 0.35 typically).
+            # +0.20: OSNet on CPU/Jetson scores same-person at 0.22-0.40 under
+            # angle / distance changes. A strong bonus lets a 0.25 raw score
+            # clear the 0.42 threshold (0.25+0.20=0.45) while a different
+            # person still needs a raw score >= 0.22 (they typically score 0.05-0.18).
             if gid in recent_gids:
-                emb_sim = min(1.0, emb_sim + 0.08)
+                emb_sim = min(1.0, emb_sim + 0.20)
 
             same_cam = (entry.camera_id == camera_id)
             fused = self._compute_fused_score(emb_sim, query_raw_probs, entry.raw_attr_probs, same_cam)
