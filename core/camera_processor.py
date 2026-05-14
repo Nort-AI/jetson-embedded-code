@@ -71,9 +71,12 @@ def _draw_pose_overlay(frame: np.ndarray, pose_data: dict,
     except Exception:
         pass   # MediaPipe not installed or import error
 
-# Global occupancy tracker shared across all cameras
-occupancy_tracker_lock = threading.Lock()
-store_occupancy = {}  # Key: (client_id, store_id), Value: current occupancy
+# Live-count occupancy: global_id → last_seen unix timestamp.
+# get_live_occupancy() counts gids seen within _OCCUPANCY_TIMEOUT seconds.
+# Self-correcting: no accumulator drift, no entrance/exit line dependency.
+_live_occupancy: dict = {}
+_live_occupancy_lock = threading.Lock()
+_OCCUPANCY_TIMEOUT = 30.0  # seconds — slightly > ByteTrack lost_track_buffer (~20s)
 
 def generate_color(track_id):
     if track_id is None: return (150, 150, 150)
@@ -398,27 +401,11 @@ class CameraProcessor:
         self._snapshot_executor = ThreadPoolExecutor(max_workers=1,
                                                      thread_name_prefix="SnapUpload")
 
-    def update_store_occupancy(self, change):
-        """Update global store occupancy counter"""
-        global store_occupancy
-        store_key = (CLIENT_ID, STORE_ID)
-        
-        with occupancy_tracker_lock:
-            if store_key not in store_occupancy:
-                store_occupancy[store_key] = 0
-            
-            store_occupancy[store_key] += change
-            store_occupancy[store_key] = max(0, store_occupancy[store_key])
-            current_occupancy = store_occupancy[store_key]
-            
-        self.logger.debug(f"Store occupancy changed by {change}. Current: {current_occupancy}")
-        return current_occupancy
-
     def get_current_occupancy(self):
-        """Get current store occupancy"""
-        store_key = (CLIENT_ID, STORE_ID)
-        with occupancy_tracker_lock:
-            return store_occupancy.get(store_key, 0)
+        """Return live count of people currently in the store."""
+        now = time.time()
+        with _live_occupancy_lock:
+            return sum(1 for ts in _live_occupancy.values() if now - ts < _OCCUPANCY_TIMEOUT)
 
     def log_crossing_event(self, event_type: str, track_id: int = None):
         """Log entrance/exit events"""
@@ -960,6 +947,11 @@ class CameraProcessor:
                     else:
                         global_id = attrs.get("global_id") or int(track_id)
 
+                    # Live-count heartbeat — keep this gid "alive" in the occupancy window.
+                    if global_id is not None:
+                        with _live_occupancy_lock:
+                            _live_occupancy[global_id] = time.time()
+
                     # If ReID just resolved a global_id that was already counted as entered
                     # (person was re-detected after track loss), inherit the entry state so
                     # they aren't re-counted when they next cross the entrance line.
@@ -995,45 +987,33 @@ class CameraProcessor:
                             _cooldown = (_now_ts - attrs.get("last_crossing_ts", 0.0)) < 8.0
 
                             if crossing_result == 'entry':
-                                # Deduplicate: skip if this global_id was already counted
-                                _already = (_gid is not None and _gid in self._counted_entry_global_ids)
-                                if not _already and not _cooldown:
-                                    attrs["crossing_status"]  = "entered"
-                                    attrs["has_entered"]       = True
-                                    attrs["entrance_timestamp"] = datetime.now()
-                                    attrs["last_crossing_ts"]  = _now_ts
-                                    self.log_crossing_event("entry", track_id)
-                                    current_occupancy = self.update_store_occupancy(1)
-                                    if _gid is not None:
-                                        self._counted_entry_global_ids.add(_gid)
-                                    self.logger.debug(
-                                        f"Track {track_id} (GID:{_gid}) ENTERED. Occupancy: {current_occupancy}"
-                                    )
-                                else:
-                                    # Duplicate or still on cooldown — keep state consistent but don't count
-                                    attrs["crossing_status"] = "entered"
-                                    attrs["has_entered"]     = True
-                                    self.logger.debug(
-                                        f"[occupancy] Skipped duplicate entry track={track_id} GID={_gid} "
-                                        f"({'dup gid' if _already else 'cooldown'})"
-                                    )
+                                attrs["crossing_status"]    = "entered"
+                                attrs["has_entered"]        = True
+                                attrs["entrance_timestamp"] = datetime.now()
+                                attrs["last_crossing_ts"]   = _now_ts
+                                self.log_crossing_event("entry", track_id)
+                                if _gid is not None:
+                                    self._counted_entry_global_ids.add(_gid)
+                                self.logger.debug(
+                                    f"Track {track_id} (GID:{_gid}) crossed ENTRY line."
+                                )
 
                             elif crossing_result == 'exit':
                                 if not _cooldown:
-                                    attrs["crossing_status"]   = "exited"
-                                    attrs["last_crossing_ts"]  = _now_ts
+                                    attrs["crossing_status"]  = "exited"
+                                    attrs["last_crossing_ts"] = _now_ts
                                     self.log_crossing_event("exit", track_id)
-                                    current_occupancy = self.update_store_occupancy(-1)
-                                    # Allow this person to be counted again on future re-entry
+                                    # Remove from live window so the person stops being counted
                                     if _gid is not None:
+                                        with _live_occupancy_lock:
+                                            _live_occupancy.pop(_gid, None)
                                         self._counted_entry_global_ids.discard(_gid)
                                     self.logger.debug(
-                                        f"Track {track_id} (GID:{_gid}) EXITED. Occupancy: {current_occupancy}"
+                                        f"Track {track_id} (GID:{_gid}) crossed EXIT line."
                                     )
-                                    # Log first zone interaction if we captured it
                                     if attrs.get("first_zone_after_entry"):
                                         self.logger.debug(
-                                            f"Track {track_id} first interaction was with zone: {attrs['first_zone_after_entry']}"
+                                            f"Track {track_id} first zone: {attrs['first_zone_after_entry']}"
                                         )
                                 else:
                                     attrs["crossing_status"] = "exited"
@@ -1374,6 +1354,15 @@ class CameraProcessor:
     def _cleanup_old_tracks(self):
         """Remove tracking data for people who haven't been seen recently"""
         current_time = time.time()
+
+        # Prune stale global_ids from the live-count window so the occupancy
+        # count naturally drops when people leave without crossing the exit line.
+        with _live_occupancy_lock:
+            stale = [gid for gid, ts in _live_occupancy.items()
+                     if current_time - ts >= _OCCUPANCY_TIMEOUT]
+            for gid in stale:
+                del _live_occupancy[gid]
+
         tracks_to_remove = []
 
         for track_id, attrs in self.track_attributes.items():
@@ -1383,21 +1372,12 @@ class CameraProcessor:
         for track_id in tracks_to_remove:
             _attrs = self.track_attributes[track_id]
 
-            # ── Occupancy cleanup (Fix-OCC-1) ─────────────────────────────────
-            # If this entrance-camera track was counted as "entered" but never
-            # triggered an exit crossing (person left via side door, track timed
-            # out while inside, occlusion for >60 s), decrement occupancy NOW.
-            # Without this the accumulator grows unboundedly whenever a person
-            # leaves without crossing the exit line.
+            # Live-count handles occupancy decay automatically via heartbeat timeout.
+            # Clean up the dedup set so this person can be re-counted on re-entry.
             if self.is_entrance_camera and _attrs.get("has_entered"):
                 _gid = _attrs.get("global_id")
-                if _gid is not None and _gid in self._counted_entry_global_ids:
-                    self.update_store_occupancy(-1)
+                if _gid is not None:
                     self._counted_entry_global_ids.discard(_gid)
-                    self.logger.debug(
-                        f"[occupancy] Track cleanup: GID:{_gid} removed "
-                        f"without exit crossing — occupancy decremented"
-                    )
 
             # Notify Re-ID manager so embedding is saved to recently-lost buffer
             if self.reid_manager:
