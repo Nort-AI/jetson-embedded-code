@@ -3224,7 +3224,7 @@
         countEl.textContent = (data.occupancy != null) ? data.occupancy : nActive;
         activeEl.textContent = '';
 
-        if (people.length === 0) {
+        if (activePeople.length === 0) {
           Object.keys(_galleryCardMap).forEach(id => {
             _galleryCardMap[id].remove();
             delete _galleryCardMap[id];
@@ -3243,8 +3243,9 @@
         // Hide empty state
         if (emptyEl) emptyEl.style.display = 'none';
 
-        // Remove stale cards
-        const newIdSet = new Set(people.map(p => String(p.global_id)));
+        // Only render cards for currently active people (matches occupancy count)
+        const activePeople = people.filter(p => p.active);
+        const newIdSet = new Set(activePeople.map(p => String(p.global_id)));
         for (const [gid, card] of Object.entries(_galleryCardMap)) {
           if (!newIdSet.has(gid)) {
             card.remove();
@@ -3254,7 +3255,7 @@
 
         const postureIcon = { standing: '🧍', sitting: '🪑', crouching: '🤸' };
 
-        for (const person of people) {
+        for (const person of activePeople) {
           const gid       = String(person.global_id);
           const isActive  = person.active;
           const isSelected = _selectedTrackId != null && String(_selectedTrackId) === gid;
