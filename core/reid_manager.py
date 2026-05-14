@@ -437,13 +437,12 @@ class ReIDManager:
             best_emb, best_attr, best_sharp = max(buf, key=lambda x: x[2]) if buf else (embedding, None, crop_sharpness)
 
             # ── Rescue pass: soft-match recent IDs before minting ─────────────
-            # With TTA, same-person scores are now 0.38–0.65 in most conditions.
-            # The rescue floor is raised to 0.28 (was 0.18) to match the new
-            # score distribution — this reduces false-positive risk while still
-            # catching genuinely difficult re-entries (small/distant/occluded).
-            # Uses top-3 mean for consistency with the main matching path.
-            # Clothing veto still fires as a hard guard.
-            RESCUE_FLOOR = 0.28
+            # With TTA, same-person scores are 0.40–0.65 in most conditions.
+            # RESCUE_FLOOR = 0.36: catches genuine edge cases (very small/distant
+            # crops, extreme motion blur) while keeping false-positive rate low.
+            # A different person needs to score 0.36+ top-3 mean AND pass the
+            # clothing veto to be incorrectly rescued — rare in practice.
+            RESCUE_FLOOR = 0.36
             rescue_gid, rescue_score = None, 0.0
             if recent_gids and self._gallery:
                 for r_gid in list(recent_gids):
@@ -667,7 +666,7 @@ class ReIDManager:
                 break
             try:
                 self._prune_expired()          # M3-fix: expire entries even when quiet
-                self._merge_duplicates(merge_threshold=0.28)  # was 0.36 — ultra-aggressive for CPU-noisy embeddings
+                self._merge_duplicates(merge_threshold=0.48)  # conservative: only merge when very confident
             except Exception as e:
                 logger.error(f"ReID merge loop error (will retry): {e}", exc_info=True)
                 self._stop.wait(timeout=5)
@@ -711,6 +710,14 @@ class ReIDManager:
                     e2 = self._gallery.get(gids[j])
 
                     if not e1 or not e2:
+                        continue
+
+                    # ── Concurrent-active exclusion ───────────────────────────
+                    # If both entries were seen within the last 3 seconds they are
+                    # physically different people — a person cannot be in two places
+                    # at once.  Never merge concurrent tracks regardless of score.
+                    now_m = time.monotonic()
+                    if (now_m - e1.last_seen) < 3.0 and (now_m - e2.last_seen) < 3.0:
                         continue
 
                     # ── Gallery-to-gallery similarity for merge decision ──────
