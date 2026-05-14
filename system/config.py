@@ -133,8 +133,15 @@ REID_ENABLED             = _d.get("enable_reid", True)
 REID_SIMILARITY_THRESHOLD = 0.42
 
 # How long a gallery entry stays alive without being seen (seconds).
-# 300s = 5 minutes. A person who leaves and returns within this window keeps their ID.
-REID_EXPIRY_SECONDS       = 300.0
+# Raised from 300s (5 min) → 7200s (2 hours).
+# 300s caused gallery entries to expire mid-visit: a shopper browsing the
+# interior for 6+ minutes would lose their ID, then be re-counted on the
+# next pass through the entrance camera (store_occupancy false +1 per
+# expiry cycle).  At 7200s, a full-day retail session is covered.  The
+# merge loop + sanitize loop keep the gallery lean — expired entries are
+# pruned; duplicate IDs from the rare failure-to-match case are merged.
+# Override per deployment via device.json: "reid_expiry_seconds": 3600
+REID_EXPIRY_SECONDS       = _d.get("reid_expiry_seconds", 7200.0)
 
 # Max appearance embeddings stored per person (max-pooled for robustness against posture changes).
 # Increased to 45 so we can store 15 seconds of history at 3 updates/second.

@@ -342,13 +342,22 @@ class ReIDManager:
         e = self._gallery.get(gid)
         if e is None:
             return False
-        # Fast path: _local_to_global has a live mapping on this camera
+        # Fast path: _local_to_global has a live mapping on THIS camera.
+        # This is the primary guard — if another local track on the SAME camera
+        # already owns this global_id, the new track cannot steal it.
         for (lk_cam, lk_tid), lk_gid in self._local_to_global.items():
             if lk_cam == camera_id and lk_tid != exclude_local_id and lk_gid == gid:
                 return True
-        # Fallback: gallery entry was recently seen (handles window between track
-        # disappearing and remove_track() being called)
-        if (now_m - e.last_seen) < 15.0:
+        # Fallback: gallery entry was recently seen on THIS camera specifically.
+        # We check camera_id on the entry, not the raw last_seen timestamp.
+        # The old code used `last_seen < 15 s` which is updated by ALL cameras —
+        # so a person actively tracked on Camera 2 would permanently block Camera 1
+        # from matching them (Camera 2 kept last_seen fresh).
+        # Fix: only block if the entry's home camera_id matches AND was seen within
+        # a narrow 3-second window (one update_embedding interval).  This covers
+        # the race between ByteTrack dropping a track and remove_track() being called
+        # without falsely blocking legitimate cross-camera or same-camera re-entries.
+        if e.camera_id == camera_id and (now_m - e.last_seen) < 3.0:
             return True
         return False
 

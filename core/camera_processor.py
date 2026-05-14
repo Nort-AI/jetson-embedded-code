@@ -966,6 +966,16 @@ class CameraProcessor:
                     if global_id and global_id in self._counted_entry_global_ids and not attrs.get("has_entered"):
                         attrs["has_entered"] = True
 
+                    # Fix-OCC-2: if this track was counted as entered (e.g. while
+                    # global_id was still None during the confirmation window) but the
+                    # actual global_id is NOT in the dedup set yet, register it now.
+                    # Without this, a second crossing after the ID resolves would pass
+                    # the `_already` check and count the person AGAIN.
+                    if (global_id and self.is_entrance_camera
+                            and attrs.get("has_entered")
+                            and global_id not in self._counted_entry_global_ids):
+                        self._counted_entry_global_ids.add(global_id)
+
                     center_x = int((x1 + x2) / 2)
                     bottom_y = int(y2)
                     current_position = (center_x, bottom_y)
@@ -1371,6 +1381,24 @@ class CameraProcessor:
                 tracks_to_remove.append(track_id)
 
         for track_id in tracks_to_remove:
+            _attrs = self.track_attributes[track_id]
+
+            # ── Occupancy cleanup (Fix-OCC-1) ─────────────────────────────────
+            # If this entrance-camera track was counted as "entered" but never
+            # triggered an exit crossing (person left via side door, track timed
+            # out while inside, occlusion for >60 s), decrement occupancy NOW.
+            # Without this the accumulator grows unboundedly whenever a person
+            # leaves without crossing the exit line.
+            if self.is_entrance_camera and _attrs.get("has_entered"):
+                _gid = _attrs.get("global_id")
+                if _gid is not None and _gid in self._counted_entry_global_ids:
+                    self.update_store_occupancy(-1)
+                    self._counted_entry_global_ids.discard(_gid)
+                    self.logger.debug(
+                        f"[occupancy] Track cleanup: GID:{_gid} removed "
+                        f"without exit crossing — occupancy decremented"
+                    )
+
             # Notify Re-ID manager so embedding is saved to recently-lost buffer
             if self.reid_manager:
                 self.reid_manager.note_track_lost(self.camera_id, int(track_id))
@@ -1378,7 +1406,7 @@ class CameraProcessor:
                 # doesn't keep treating this stale track as "currently active".
                 self.reid_manager.remove_track(self.camera_id, int(track_id))
             # Clean up VLM session cooldown + renderer scan-line animation state
-            global_id = self.track_attributes[track_id].get("global_id")
+            global_id = _attrs.get("global_id")
             if global_id is not None:
                 self._vlm_session.clear_track(str(global_id))
                 self._bbox_renderer.clear_track_state(global_id)
