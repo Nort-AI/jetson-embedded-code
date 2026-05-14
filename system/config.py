@@ -162,9 +162,12 @@ REID_UPDATE_INTERVAL_FRAMES = _d.get("reid_update_interval_frames", 45)
 # 1  = run every frame (original behaviour, highest accuracy)
 # 2  = detect every other frame (~2× throughput, undetectable for retail analytics)
 # 3  = good for 4+ cameras on Orin Nano; ByteTrack handles occlusion gaps well
-# Default changed to 2 — halves YOLOX load with no visible tracking regression.
-# Override per deployment: device.json "detect_every_n_frames": 1|2|3
-DETECT_EVERY_N_FRAMES = _d.get("detect_every_n_frames", 2)
+# Default is 1 (every frame) — detection recall matters more than raw FPS for
+# retail counting accuracy. Distant/occluded people need every detection chance.
+# If FPS is the bottleneck on a specific deployment, override via device.json:
+#   "detect_every_n_frames": 2   → ~2× throughput, minor recall loss
+#   "detect_every_n_frames": 3   → 4-camera configs on Orin Nano 8 GB
+DETECT_EVERY_N_FRAMES = _d.get("detect_every_n_frames", 1)
 
 # ── Data Handling ─────────────────────────────────────────────────────────────
 CSV_FILENAME = "tracking_log.csv"

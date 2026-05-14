@@ -233,12 +233,14 @@ class CameraProcessor:
         # Initialize an independent ByteTrack instance for this specific camera stream!
         import supervision as sv
         self.tracker = sv.ByteTrack(
-            track_activation_threshold=0.40,
-            lost_track_buffer=300,  # ~30 s at 10 fps. Keeps the same local track_id for longer
-                                    # so the person reappears under their old ID without triggering a new
-                                    # register_or_match call — the primary source of ID proliferation.
-                                    # 300 frames covers most store occlusion gaps (shelf browsing, etc.)
-            minimum_consecutive_frames=3
+            # Detection-quality fix: was 0.40 — distant/angled people score 0.15-0.35
+            # on YOLOX and could never START a new track (only reinstate lost ones).
+            # 0.25 lets low-confidence detections form new tracks while still blocking
+            # obvious false positives (chairs, mannequins typically score < 0.20).
+            track_activation_threshold=0.25,
+            lost_track_buffer=300,  # ~30 s at 10 fps — primary guard against ID proliferation
+            minimum_consecutive_frames=2  # was 3 — 2 frames is enough to confirm a real person
+                                          # and gets far-field tracks confirmed 33% faster
         )
 
         self.track_attributes = {}
