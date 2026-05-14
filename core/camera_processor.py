@@ -669,28 +669,56 @@ class CameraProcessor:
                         linked_global_id = None
                         linked_has_entered = False  # inherited from old track on recovery
 
+                        # Build the set of track_ids ByteTrack considers alive THIS frame.
+                        # Used below to reject spatio-temporal links to still-active tracks.
+                        active_track_id_set = set(track_ids.tolist())
+
+                        # Build the set of global_ids already claimed by NEW tracks assigned
+                        # earlier in THIS same frame's for-loop.  Prevents two new tracks from
+                        # racing to claim the same dead track's global_id before track_attributes
+                        # is written (the dict isn't updated until after this block).
+                        already_claimed_this_frame = {
+                            attrs.get("global_id")
+                            for tid, attrs in self.track_attributes.items()
+                            if tid in active_track_id_set and attrs.get("global_id") is not None
+                        }
+
                         # Spatio-Temporal Recovery: If an old track just died right here, assume it's the same person
                         for old_tid, old_attrs in self.track_attributes.items():
-                            if old_tid == track_id: continue
+                            if old_tid == track_id:
+                                continue
+                            # Only recover tracks that ByteTrack has ACTUALLY dropped —
+                            # if old_tid is still in this frame's active set it is alive
+                            # and its global_id must not be stolen.
+                            if old_tid in active_track_id_set:
+                                continue
                             time_since_seen = now - old_attrs.get("last_seen", now)
-
-                            # Dropped between 0.2 s and 45 s ago.
-                            # 45 s gives ByteTrack (30 s buffer) time to create a
-                            # new local_id and spatio-temporal time to catch it.
-                            # 500 px covers a person walking across a typical store
-                            # aisle during the gap (was 250 px — too tight).
-                            if 0.2 < time_since_seen < 45.0:
-                                old_pos = old_attrs.get("last_position")
-                                if old_pos and old_attrs.get("global_id") is not None:
-                                    dist = np.linalg.norm(np.array(current_position) - np.array(old_pos))
-                                    if dist < 500:
-                                        linked_global_id = old_attrs["global_id"]
-                                        # Carry over entry state so the new track doesn't re-count
-                                        linked_has_entered = old_attrs.get("has_entered", False)
-                                        self.logger.debug(f"Spatio-Temporal Link: Recovered track {old_tid} -> {track_id} (GID: {linked_global_id}, has_entered={linked_has_entered})")
-                                        if self.reid_manager:
-                                            self.reid_manager.link_local_to_global(self.camera_id, int(track_id), linked_global_id)
-                                        break
+                            # Dropped between 0.5 s and 45 s ago.
+                            if not (0.5 < time_since_seen < 45.0):
+                                continue
+                            old_gid = old_attrs.get("global_id")
+                            if old_gid is None:
+                                continue
+                            # Don't claim a global_id already taken by another new track
+                            # assigned earlier in this same frame iteration.
+                            if old_gid in already_claimed_this_frame:
+                                continue
+                            old_pos = old_attrs.get("last_position")
+                            if old_pos:
+                                dist = np.linalg.norm(np.array(current_position) - np.array(old_pos))
+                                if dist < 500:
+                                    linked_global_id = old_gid
+                                    linked_has_entered = old_attrs.get("has_entered", False)
+                                    already_claimed_this_frame.add(old_gid)
+                                    self.logger.debug(
+                                        f"Spatio-Temporal Link: {old_tid} -> {track_id}"
+                                        f" (GID:{linked_global_id} dist={dist:.0f}px)"
+                                    )
+                                    if self.reid_manager:
+                                        self.reid_manager.link_local_to_global(
+                                            self.camera_id, int(track_id), linked_global_id
+                                        )
+                                    break
 
                         self.track_attributes[track_id] = {
                             "last_position": None,

@@ -336,20 +336,27 @@ class ReIDManager:
         """Return True if *gid* is currently assigned to another active local track
         on *camera_id*.  Must be called while self._lock is held.
 
-        This is the same-camera uniqueness guard: a person cannot be in two
-        places on the same camera at the same time.  We use gallery last_seen
-        (monotonic) < 5 s as the liveness signal because remove_track() is not
-        always called promptly when a track dies.
+        Two-layer check:
+          1. _local_to_global: is this gid mapped to any other track on this camera?
+             Entries are cleaned up by remove_track() ~60 s after the track dies,
+             so this is a strong signal within the cleanup window.
+          2. last_seen recency (15 s gate): guards against stale _local_to_global
+             entries from very old visits (> 60 s cleanup not yet run).
+             Gate raised from 5 s → 15 s to remain valid when update_embedding
+             runs at low FPS (45 frames / 10 fps = 4.5 s interval).
         """
         now_m = time.monotonic()
         e = self._gallery.get(gid)
-        if e is None or (now_m - e.last_seen) >= 5.0:
-            # Gallery entry is stale or gone — not currently active
+        if e is None:
             return False
-        # Check whether any OTHER local track on this camera already claims this gid
+        # Fast path: _local_to_global has a live mapping on this camera
         for (lk_cam, lk_tid), lk_gid in self._local_to_global.items():
             if lk_cam == camera_id and lk_tid != exclude_local_id and lk_gid == gid:
                 return True
+        # Fallback: gallery entry was recently seen (handles window between track
+        # disappearing and remove_track() being called)
+        if (now_m - e.last_seen) < 15.0:
+            return True
         return False
 
     def register_or_match(
@@ -860,6 +867,10 @@ class ReIDManager:
         # ── Phase 1: snapshot under lock (fast — just copies references) ──────
         with self._lock:
             snapshot: Dict[int, Dict] = {}
+            # Also snapshot the set of gids that have an active local_to_global
+            # mapping — these are "currently assigned to a live track" regardless
+            # of how recently update_embedding was called.
+            assigned_gids: set = set(self._local_to_global.values())
             for gid, e in self._gallery.items():
                 snapshot[gid] = {
                     "prototype":   e.prototype_emb,
@@ -869,6 +880,7 @@ class ReIDManager:
                     "camera_id":   e.camera_id,
                     "hit_count":   e.hit_count,
                     "last_seen":   e.last_seen,
+                    "assigned":    gid in assigned_gids,
                 }
 
         gids = list(snapshot.keys())
@@ -881,9 +893,18 @@ class ReIDManager:
                 s1 = snapshot[gids[i]]
                 s2 = snapshot[gids[j]]
 
-                # Concurrent-active exclusion: two people present at the same
-                # time are provably different — never merge regardless of score.
-                if (now_m - s1["last_seen"]) < 3.0 and (now_m - s2["last_seen"]) < 3.0:
+                # Concurrent-active exclusion — never merge two IDs that are
+                # simultaneously present.  Two independent checks:
+                #
+                # A) _local_to_global assignment: if both IDs are assigned to
+                #    live local tracks right now they are provably different people.
+                #
+                # B) last_seen recency: gate raised to 12 s (was 3 s) so that an
+                #    active person whose update_embedding ran 4-5 s ago (normal at
+                #    REID_UPDATE_INTERVAL=45 frames / 10 fps) is still protected.
+                if s1["assigned"] and s2["assigned"]:
+                    continue
+                if (now_m - s1["last_seen"]) < 12.0 and (now_m - s2["last_seen"]) < 12.0:
                     continue
 
                 # ── Vectorised similarity ─────────────────────────────────────
