@@ -3220,10 +3220,9 @@
         const activeEl  = document.getElementById('galleryActiveLabel');
         let   emptyEl   = document.getElementById('galleryEmpty');
 
-        countEl.textContent = people.length;
-
         const nActive = people.filter(p => p.active).length;
-        activeEl.textContent = nActive > 0 ? nActive + ' active' : '';
+        countEl.textContent = nActive;
+        activeEl.textContent = '';
 
         if (people.length === 0) {
           Object.keys(_galleryCardMap).forEach(id => {
