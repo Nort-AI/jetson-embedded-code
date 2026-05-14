@@ -4643,7 +4643,10 @@ def api_gallery_people():
     # Sort: active first, then most-recent-first within each group
     people.sort(key=lambda p: (not p["active"], -p["ts"]))
 
-    return jsonify({"people": people})
+    return jsonify({
+        "people": people,
+        "occupancy": _retail_data.get("occupancy", 0),
+    })
 
 
 @app.route("/api/stream/tracks")

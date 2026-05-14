@@ -76,7 +76,7 @@ def _draw_pose_overlay(frame: np.ndarray, pose_data: dict,
 # Self-correcting: no accumulator drift, no entrance/exit line dependency.
 _live_occupancy: dict = {}
 _live_occupancy_lock = threading.Lock()
-_OCCUPANCY_TIMEOUT = 30.0  # seconds — slightly > ByteTrack lost_track_buffer (~20s)
+_OCCUPANCY_TIMEOUT = 8.0   # seconds — person drops out ~8s after last detection
 
 def generate_color(track_id):
     if track_id is None: return (150, 150, 150)

@@ -3221,7 +3221,7 @@
         let   emptyEl   = document.getElementById('galleryEmpty');
 
         const nActive = people.filter(p => p.active).length;
-        countEl.textContent = nActive;
+        countEl.textContent = (data.occupancy != null) ? data.occupancy : nActive;
         activeEl.textContent = '';
 
         if (people.length === 0) {
