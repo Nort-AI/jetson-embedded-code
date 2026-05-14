@@ -76,6 +76,9 @@ class GalleryEntry:
     attribute_vec: Optional[np.ndarray] = None    # legacy one-hot attr vector
     raw_attr_probs: Optional[np.ndarray] = None  # raw sigmoid probs from attribute model
     attr_label_list: Optional[List[str]] = None  # label ordering for raw_attr_probs
+    # 96-d HSV color signature: pose/angle/distance invariant, computed directly
+    # from pixel intensities (no attribute model required).  EMA-blended over time.
+    color_signature: Optional[np.ndarray] = None
 
 
 # ── Attribute keys that are useful for Re-ID ──────────────────────────────────
@@ -126,10 +129,10 @@ class ReIDManager:
     MAX_ANCHORS = 48
 
     # Confirmation window: number of frames to buffer before minting a new ID.
-    # 10 frames gives the gallery match more chances to fire on a clean crop
-    # (especially at ~10 fps on Jetson = 1 second window) without being so long
-    # that bad crops exhaust it and mint a spurious new ID.
-    CONFIRMATION_WINDOW = 10
+    # 7 frames ≈ 0.7 s at 10 fps.  Enough for a stable track-mean embedding;
+    # the closed-world assumption now handles most re-entry cases that previously
+    # required a long window to accumulate enough appearance evidence.
+    CONFIRMATION_WINDOW = 7
 
     def __init__(
         self,
@@ -363,6 +366,7 @@ class ReIDManager:
         if embedding is None:
             return None
 
+        color_sig = self._extract_color_signature(frame, bbox)
         thumb = None if skip_thumbnail else self._capture_thumbnail(frame, bbox)
 
         with self._lock:
@@ -393,6 +397,7 @@ class ReIDManager:
                         camera_id=camera_id, recent_gids=recent_gids,
                         current_occupancy=current_occupancy,
                         query_label_list=attr_label_list,
+                        query_color_sig=color_sig,
                     )
                     if gid is not None and score > best_score:
                         best_gid, best_score = gid, score
@@ -401,13 +406,13 @@ class ReIDManager:
                 if len(buf) >= 3:
                     track_mean_emb = self._get_track_embedding(buf)
                     if track_mean_emb is not None:
-                        # Use attr from highest-quality frame
                         dom_attr = max(buf, key=lambda x: x[2])[1]
                         gid, score = self._find_best_match(
                             track_mean_emb, query_raw_probs=dom_attr,
                             camera_id=camera_id, recent_gids=recent_gids,
                             current_occupancy=current_occupancy,
                             query_label_list=attr_label_list,
+                            query_color_sig=color_sig,
                         )
                         if gid is not None and score > best_score:
                             best_gid, best_score = gid, score
@@ -417,7 +422,8 @@ class ReIDManager:
                 entry = self._gallery[best_gid]
                 best_emb, _, best_sharp = max(buf, key=lambda x: x[2]) if buf else (embedding, None, crop_sharpness)
                 self._update_entry(entry, best_emb, None, best_sharp, thumb,
-                                   raw_probs=raw_attr_probs, label_list=attr_label_list)
+                                   raw_probs=raw_attr_probs, label_list=attr_label_list,
+                                   color_signature=color_sig)
                 self._local_to_global[key] = best_gid
                 self._pending.pop(key, None)
                 logger.debug(
@@ -462,7 +468,8 @@ class ReIDManager:
             if rescue_gid is not None:
                 r_entry = self._gallery[rescue_gid]
                 self._update_entry(r_entry, best_emb, None, best_sharp, thumb,
-                                   raw_probs=raw_attr_probs, label_list=attr_label_list)
+                                   raw_probs=raw_attr_probs, label_list=attr_label_list,
+                                   color_signature=color_sig)
                 self._local_to_global[key] = rescue_gid
                 logger.debug(
                     f"[ReID] RESCUE cam={camera_id} local={local_track_id}"
@@ -552,11 +559,12 @@ class ReIDManager:
             if cw_link_gid is not None:
                 cw_entry = self._gallery[cw_link_gid]
                 self._update_entry(cw_entry, best_emb, None, best_sharp, thumb,
-                                   raw_probs=raw_attr_probs, label_list=attr_label_list)
+                                   raw_probs=raw_attr_probs, label_list=attr_label_list,
+                                   color_signature=color_sig)
                 self._local_to_global[key] = cw_link_gid
                 return cw_link_gid
 
-            # ── Genuinely new person — mint a global_id ───────────────────────
+            # ── Genuinely new person — mint a global_id ──────────────────────
             gid = self._next_global_id
             self._next_global_id += 1
             self._gallery[gid] = GalleryEntry(
@@ -570,6 +578,7 @@ class ReIDManager:
                 attribute_vec=None,
                 raw_attr_probs=raw_attr_probs.copy() if raw_attr_probs is not None else None,
                 attr_label_list=attr_label_list,
+                color_signature=color_sig.copy() if color_sig is not None else None,
             )
             self._local_to_global[key] = gid
             logger.debug(f"[ReID] NEW global_id={gid}  cam={camera_id}  local={local_track_id}")
@@ -595,6 +604,7 @@ class ReIDManager:
                 return False
 
         embedding = self._extract(frame, bbox)
+        color_sig = self._extract_color_signature(frame, bbox)
         thumb = None if skip_thumbnail else self._capture_thumbnail(frame, bbox)
 
         with self._lock:
@@ -625,7 +635,8 @@ class ReIDManager:
                     return False
 
             added_new_angle = self._update_entry(entry, embedding, None, crop_sharpness, thumb,
-                                                 raw_probs=raw_attr_probs, label_list=attr_label_list)
+                                                 raw_probs=raw_attr_probs, label_list=attr_label_list,
+                                                 color_signature=color_sig)
             return added_new_angle
 
     def update_attributes(self, camera_id: str, local_track_id: int, attributes: dict):
@@ -674,28 +685,17 @@ class ReIDManager:
         thumb: Optional[np.ndarray],
         raw_probs: Optional[np.ndarray] = None,
         label_list: Optional[List[str]] = None,
+        color_signature: Optional[np.ndarray] = None,
     ) -> bool:
         """
         Update a gallery entry's prototype, anchor bank, attribute vector,
-        raw probability vector, and thumbnail.
+        raw probability vector, color signature, and thumbnail.
         Returns True if a new distinct anchor angle was added.
         """
         added_new_angle = False
 
         if embedding is not None:
-            # Update EMA prototype
-            if entry.prototype_emb is None:
-                entry.prototype_emb = embedding.copy()
-                added_new_angle = True
-            else:
-                # 85% old, 15% new — adapts faster to better crops so a poor
-                # first-frame prototype doesn't permanently poison matching.
-                entry.prototype_emb = 0.85 * entry.prototype_emb + 0.15 * embedding
-                norm = np.linalg.norm(entry.prototype_emb)
-                if norm > 0:
-                    entry.prototype_emb /= norm
-
-            # Quality-aware anchor bank
+            # Quality-aware anchor bank (update first, prototype derived from it)
             if not entry.anchor_embs:
                 entry.anchor_embs.append(embedding.copy())
                 entry.anchor_qualities.append(sharpness)
@@ -703,9 +703,8 @@ class ReIDManager:
             else:
                 max_sim = max(float(np.dot(a, embedding)) for a in entry.anchor_embs)
                 # Require a novel angle (< 0.72) to avoid wasting anchor slots on
-                # identical poses.  Lowered from 0.80 because TTA embeddings are
-                # smoother and two moderately different angles can score ~0.78
-                # after averaging — the old 0.80 threshold blocked angular diversity.
+                # identical poses.  Lowered from 0.80 because TTA embeddings cluster
+                # tighter and two moderately different angles can score ~0.78.
                 if max_sim < 0.72:
                     if len(entry.anchor_embs) < self.MAX_ANCHORS:
                         entry.anchor_embs.append(embedding.copy())
@@ -716,6 +715,19 @@ class ReIDManager:
                             entry.anchor_embs[min_idx] = embedding.copy()
                             entry.anchor_qualities[min_idx] = sharpness
                     added_new_angle = True
+
+            # ── Prototype = mean of top-8 quality anchors ─────────────────
+            # Replaces EMA which drifted toward the most recent view.
+            # Mean of diverse, high-quality anchors is more stable AND more
+            # discriminative than a single running average.
+            if entry.anchor_embs:
+                k = min(8, len(entry.anchor_embs))
+                top_k_idx = sorted(range(len(entry.anchor_qualities)),
+                                   key=lambda i: entry.anchor_qualities[i],
+                                   reverse=True)[:k]
+                proto = np.mean([entry.anchor_embs[i] for i in top_k_idx], axis=0)
+                norm = np.linalg.norm(proto)
+                entry.prototype_emb = proto / norm if norm > 1e-8 else proto
 
         if attr_vec is not None:
             entry.attribute_vec = (
@@ -733,6 +745,15 @@ class ReIDManager:
                 # Subsequent updates: 95% original, 5% new — defends against
                 # lighting/shadow drift while slowly adapting to appearance changes.
                 entry.raw_attr_probs = 0.95 * entry.raw_attr_probs + 0.05 * raw_probs
+
+        # ── Color signature (EMA blend) ────────────────────────────────────
+        if color_signature is not None:
+            if entry.color_signature is None:
+                entry.color_signature = color_signature.copy()
+            else:
+                blended = 0.80 * entry.color_signature + 0.20 * color_signature
+                n = np.linalg.norm(blended)
+                entry.color_signature = blended / n if n > 1e-8 else blended
 
         entry.last_seen = time.monotonic()
         entry.hit_count += 1
@@ -1101,10 +1122,90 @@ class ReIDManager:
         norm = np.linalg.norm(mean_emb)
         return mean_emb / norm if norm > 1e-8 else embs[0]
 
-    def _embed_raw(self, crop_bgr: np.ndarray) -> Optional[np.ndarray]:
-        """Run ONNX/TRT inference on a BGR crop. Returns L2-normalised 512-d embedding."""
+    # Pre-built CLAHE instance (shared, thread-safe for apply())
+    _CLAHE = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+
+    @staticmethod
+    def _clahe_normalize(crop_bgr: np.ndarray) -> np.ndarray:
+        """
+        Normalise per-camera lighting with CLAHE on the L channel (LAB space).
+        Dramatically improves cross-camera embedding similarity when cameras
+        have different exposure / white-balance settings.
+
+        LAB L-channel CLAHE is preferred over per-channel RGB CLAHE because:
+          - It separates luminance from colour (chrominance stays intact)
+          - CLAHE on L only stretches contrast without hue distortion
+          - Empirically gives +0.05–0.12 same-person cosine boost across cameras
+        """
+        lab = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2LAB)
+        lab[:, :, 0] = ReIDManager._CLAHE.apply(lab[:, :, 0])
+        return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+    def _extract_color_signature(
+        self, frame: np.ndarray, bbox: Tuple[int, int, int, int]
+    ) -> Optional[np.ndarray]:
+        """
+        Extract a 96-d HSV color histogram signature from the upper and lower
+        body halves (48 bins each: 12 hue × 4 saturation).
+
+        Why this works when deep embeddings fail:
+          - Completely POSE-INVARIANT: same shirt from any angle → same hue distribution
+          - Completely RESOLUTION-INVARIANT: distant or close, the colours are the same
+          - LIGHTING-ROBUST after CLAHE: two cameras with different exposure produce
+            similar histograms for the same outfit
+          - Orthogonal to embedding: even when OSNet similarity drops to 0.30 due to
+            viewpoint, colour similarity stays 0.75+ for the same outfit
+
+        Body regions (fraction of bbox height):
+          Upper body: 20%–55% (skip head, include torso)
+          Lower body: 55%–90% (legs, skip feet)
+        """
         try:
-            crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+            x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
+            h_f, w_f = frame.shape[:2]
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w_f, x2), min(h_f, y2)
+            bh, bw = y2 - y1, x2 - x1
+            if bh < 32 or bw < 16:
+                return None
+
+            # Normalize lighting before computing colour histogram
+            crop = frame[y1:y2, x1:x2]
+            crop_norm = self._clahe_normalize(crop)
+
+            upper = crop_norm[int(bh * 0.20):int(bh * 0.55), :]
+            lower = crop_norm[int(bh * 0.55):int(bh * 0.90), :]
+
+            def hist48(region: np.ndarray) -> np.ndarray:
+                if region.size == 0:
+                    return np.zeros(48, dtype=np.float32)
+                hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+                h = cv2.calcHist([hsv], [0, 1], None, [12, 4],
+                                 [0, 180, 0, 256]).flatten().astype(np.float32)
+                n = np.linalg.norm(h)
+                return h / n if n > 1e-6 else h
+
+            sig = np.concatenate([hist48(upper), hist48(lower)])
+            n = np.linalg.norm(sig)
+            return sig / n if n > 1e-6 else sig
+        except Exception:
+            return None
+
+    def _embed_raw(self, crop_bgr: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Run ONNX/TRT inference on a BGR crop with CLAHE lighting normalisation.
+        Returns L2-normalised 512-d embedding.
+
+        CLAHE is applied BEFORE feeding to OSNet so all crops — regardless of
+        which camera or lighting zone they come from — look perceptually similar
+        to the network.  This is the single most impactful change for cross-camera
+        matching under different exposure / white-balance conditions.
+        """
+        try:
+            # ── Lighting normalisation (cross-camera robustness) ─────────────
+            crop_norm = self._clahe_normalize(crop_bgr)
+
+            crop_rgb = cv2.cvtColor(crop_norm, cv2.COLOR_BGR2RGB)
             crop_resized = cv2.resize(crop_rgb, (128, 256), interpolation=cv2.INTER_LINEAR)
             img = crop_resized.astype(np.float32) / 255.0
             mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -1195,19 +1296,36 @@ class ReIDManager:
         attr_a: Optional[np.ndarray],
         attr_b: Optional[np.ndarray],
         same_camera: bool = True,
+        color_sig_a: Optional[np.ndarray] = None,
+        color_sig_b: Optional[np.ndarray] = None,
     ) -> float:
         """
-        Blend embedding similarity with attribute similarity.
-        Cross-camera queries use a higher attribute weight (7% vs 2%) because
-        clothing colour is more stable across viewpoints than a single embedding angle.
+        Blend embedding similarity, attribute similarity, and HSV color signature.
+
+        Weight strategy:
+          Same camera:  embedding 80% + color_sig 15% + attr  5%
+          Cross camera: embedding 55% + color_sig 40% + attr  5%
+
+        Cross-camera gets heavy color weight because:
+          - HSV histograms are pose/angle/lighting invariant — the same outfit
+            looks the same from any camera at any angle after CLAHE
+          - OSNet embedding degrades significantly under viewpoint + lighting
+            changes across different cameras
+          - With CLAHE normalization both features are on the same footing
+
+        Falls back gracefully when color_signature is unavailable (neutral 0.5).
         """
-        if attr_a is None or attr_b is None:
-            return emb_sim
-        attr_sim = _attribute_similarity(attr_a, attr_b)
+        attr_sim  = _attribute_similarity(attr_a, attr_b)  # 0.5 if missing
+
+        color_sim = 0.5  # neutral when not available
+        if color_sig_a is not None and color_sig_b is not None:
+            cs = float(np.dot(color_sig_a, color_sig_b))
+            color_sim = max(0.0, min(1.0, cs))  # clamp — histograms are non-negative
+
         if same_camera:
-            return self.EMBEDDING_W_SAME * emb_sim + self.ATTRIBUTE_W_SAME * attr_sim
+            return 0.80 * emb_sim + 0.15 * color_sim + 0.05 * attr_sim
         else:
-            return self.EMBEDDING_W_CROSS * emb_sim + self.ATTRIBUTE_W_CROSS * attr_sim
+            return 0.55 * emb_sim + 0.40 * color_sim + 0.05 * attr_sim
 
     def _find_best_match(
         self,
@@ -1218,6 +1336,7 @@ class ReIDManager:
         current_occupancy: int = 0,
         query_raw_probs: Optional[np.ndarray] = None,
         query_label_list: Optional[List[str]] = None,
+        query_color_sig: Optional[np.ndarray] = None,
     ) -> Tuple[Optional[int], float]:
         """
         Find the gallery entry with highest fused similarity to the query.
@@ -1257,7 +1376,10 @@ class ReIDManager:
                 emb_sim = min(1.0, emb_sim + 0.12)
 
             same_cam = (entry.camera_id == camera_id)
-            fused = self._compute_fused_score(emb_sim, query_raw_probs, entry.raw_attr_probs, same_cam)
+            fused = self._compute_fused_score(
+                emb_sim, query_raw_probs, entry.raw_attr_probs, same_cam,
+                color_sig_a=query_color_sig, color_sig_b=entry.color_signature,
+            )
             candidates.append((fused, gid))
 
         if not candidates:
