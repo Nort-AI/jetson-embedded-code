@@ -4,7 +4,11 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+# H5-fix: Type=notify is required for WatchdogSec to work.
+# With Type=simple, systemd never receives the READY=1 notification so the
+# watchdog timer fires immediately.  run.py calls sd_notify("READY=1") once
+# its main loop is running and sd_notify("WATCHDOG=1") every 10 s.
+Type=notify
 User=nort
 WorkingDirectory=/opt/nort
 ExecStart=/opt/nort/venv/bin/python run.py
@@ -15,7 +19,9 @@ StartLimitBurst=5
 
 # Environment
 Environment="PYTHONUNBUFFERED=1"
-EnvironmentFile=/opt/nort/data_store/device.json.env
+# H6-fix: leading '-' makes the EnvironmentFile optional — systemd starts
+# normally even when the file has not yet been provisioned on a fresh device.
+EnvironmentFile=-/opt/nort/data_store/device.json.env
 
 # Logging
 StandardOutput=journal

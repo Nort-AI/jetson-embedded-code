@@ -4,7 +4,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+# H5-fix: notify required for WatchdogSec (simple = watchdog fires immediately)
+Type=notify
 User=nort
 WorkingDirectory=/opt/nort
 ExecStartPre=/usr/bin/nvpmodel -m 0

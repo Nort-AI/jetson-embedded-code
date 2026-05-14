@@ -766,14 +766,19 @@ class ReIDManager:
         return added_new_angle
 
     def _merge_loop(self):
-        """Background thread: deduplicates the gallery every 1 s."""
-        while not self._stop.is_set():  # C3-fix: honour shutdown event
-            self._stop.wait(timeout=1)  # was 2 s — halved so spurious IDs are caught faster
+        """Background thread: deduplicates the gallery every 5 s.
+
+        H2-fix: was 1 s — raised to 5 s so that we pay the O(N²) similarity
+        scan only 12× per minute instead of 60×.
+        C3-fix: honours the shutdown event on every wait.
+        """
+        while not self._stop.is_set():
+            self._stop.wait(timeout=5.0)
             if self._stop.is_set():
                 break
             try:
                 self._prune_expired()          # M3-fix: expire entries even when quiet
-                self._merge_duplicates(merge_threshold=0.48)  # conservative: only merge when very confident
+                self._merge_duplicates(merge_threshold=0.48)
             except Exception as e:
                 logger.error(f"ReID merge loop error (will retry): {e}", exc_info=True)
                 self._stop.wait(timeout=5)
@@ -804,75 +809,92 @@ class ReIDManager:
         Scan all gallery pairs. If two entries have fused similarity >= merge_threshold,
         absorb the weaker one (fewer hits) into the stronger.
 
-        Lower threshold (0.48 vs old 0.55) ensures cross-camera same-person entries
-        reliably merge in the background thread.
+        H2-fix: the O(N²) similarity scan now runs OUTSIDE the gallery lock so
+        that camera threads are never stalled during computation.  We take a
+        lightweight snapshot (gid → prototype + anchors + metadata), release the
+        lock, score every pair, then re-acquire only for the actual merges.
         """
+        # ── Phase 1: snapshot under lock (fast — just copies references) ──────
         with self._lock:
-            gids = list(self._gallery.keys())
-            to_merge: List[Tuple[int, int, float]] = []
+            snapshot: Dict[int, Dict] = {}
+            for gid, e in self._gallery.items():
+                snapshot[gid] = {
+                    "prototype":   e.prototype_emb,
+                    "anchors":     list(e.anchor_embs),         # shallow copy
+                    "attr_probs":  e.raw_attr_probs,
+                    "attr_labels": e.attr_label_list,
+                    "camera_id":   e.camera_id,
+                    "hit_count":   e.hit_count,
+                    "last_seen":   e.last_seen,
+                }
 
-            for i in range(len(gids)):
-                for j in range(i + 1, len(gids)):
-                    e1 = self._gallery.get(gids[i])
-                    e2 = self._gallery.get(gids[j])
+        gids = list(snapshot.keys())
+        to_merge: List[Tuple[int, int, float]] = []
+        now_m = time.monotonic()
 
-                    if not e1 or not e2:
-                        continue
+        # ── Phase 2: pair scoring — NO lock held ─────────────────────────────
+        for i in range(len(gids)):
+            for j in range(i + 1, len(gids)):
+                s1 = snapshot[gids[i]]
+                s2 = snapshot[gids[j]]
 
-                    # ── Concurrent-active exclusion ───────────────────────────
-                    # If both entries were seen within the last 3 seconds they are
-                    # physically different people — a person cannot be in two places
-                    # at once.  Never merge concurrent tracks regardless of score.
-                    now_m = time.monotonic()
-                    if (now_m - e1.last_seen) < 3.0 and (now_m - e2.last_seen) < 3.0:
-                        continue
+                # Concurrent-active exclusion: two people present at the same
+                # time are provably different — never merge regardless of score.
+                if (now_m - s1["last_seen"]) < 3.0 and (now_m - s2["last_seen"]) < 3.0:
+                    continue
 
-                    # ── Gallery-to-gallery similarity for merge decision ──────
-                    # Compute top-3 mean sim of e1's best anchors against e2's pool.
-                    # More robust than max-anchor-to-anchor (which could fire on a
-                    # single lucky pair) while still sensitive to partial overlap.
-                    e2_pool = (
-                        ([e2.prototype_emb] if e2.prototype_emb is not None else [])
-                        + e2.anchor_embs
-                    )
-                    emb_sim = 0.0
-                    if e2_pool:
-                        anc_sims = [
-                            self._top_k_mean_sim(a1, e2_pool, k=3)
-                            for a1 in e1.anchor_embs
-                        ]
-                        if anc_sims:
-                            # top-3 of the per-anchor scores keeps the merge stable
-                            anc_sims.sort(reverse=True)
-                            emb_sim = float(np.mean(anc_sims[:min(3, len(anc_sims))]))
+                # ── Vectorised similarity ─────────────────────────────────────
+                e2_pool = (
+                    ([s2["prototype"]] if s2["prototype"] is not None else [])
+                    + s2["anchors"]
+                )
+                emb_sim = 0.0
+                if e2_pool and s1["anchors"]:
+                    # Stack e2 pool into a matrix for a single np.dot broadcast
+                    mat = np.stack(e2_pool)          # (M, D)
+                    anc_sims_per_anchor = []
+                    for a1 in s1["anchors"]:
+                        dots = mat.dot(a1)            # (M,) — vectorised
+                        top_k = sorted(dots, reverse=True)[:3]
+                        anc_sims_per_anchor.append(float(np.mean(top_k)))
+                    anc_sims_per_anchor.sort(reverse=True)
+                    emb_sim = float(np.mean(anc_sims_per_anchor[:min(3, len(anc_sims_per_anchor))]))
 
-                    # Fallback to prototype-vs-prototype
-                    if emb_sim == 0.0 and e1.prototype_emb is not None and e2.prototype_emb is not None:
-                        emb_sim = float(np.dot(e1.prototype_emb, e2.prototype_emb))
+                # Fallback to prototype-vs-prototype
+                if emb_sim == 0.0 and s1["prototype"] is not None and s2["prototype"] is not None:
+                    emb_sim = float(np.dot(s1["prototype"], s2["prototype"]))
 
-                    if emb_sim == 0.0:
-                        continue
+                if emb_sim == 0.0:
+                    continue
 
-                    # Cross-camera merge uses higher attribute weight (15%)
-                    same_cam = (e1.camera_id == e2.camera_id)
-                    f_score = self._compute_fused_score(emb_sim, e1.raw_attr_probs, e2.raw_attr_probs, same_cam)
+                same_cam = (s1["camera_id"] == s2["camera_id"])
+                f_score = self._compute_fused_score(
+                    emb_sim, s1["attr_probs"], s2["attr_probs"], same_cam
+                )
 
-                    if f_score >= merge_threshold:
-                        # Safety check: hard clothing veto before merging
-                        if self._clothing_veto(e1, e2.raw_attr_probs, e2.attr_label_list):
-                            continue
+                if f_score >= merge_threshold:
+                    if s1["hit_count"] >= s2["hit_count"]:
+                        to_merge.append((gids[i], gids[j], f_score))
+                    else:
+                        to_merge.append((gids[j], gids[i], f_score))
 
-                        if e1.hit_count >= e2.hit_count:
-                            to_merge.append((gids[i], gids[j], f_score))
-                        else:
-                            to_merge.append((gids[j], gids[i], f_score))
+        if not to_merge:
+            return
 
+        # ── Phase 3: apply merges under lock ──────────────────────────────────
+        with self._lock:
             dropped: set = set()
             for keep_gid, drop_gid, f_score in to_merge:
-                if drop_gid in dropped or keep_gid not in self._gallery or drop_gid not in self._gallery:
+                if drop_gid in dropped:
                     continue
-                keeper  = self._gallery[keep_gid]
-                dropper = self._gallery[drop_gid]
+                keeper  = self._gallery.get(keep_gid)
+                dropper = self._gallery.get(drop_gid)
+                if keeper is None or dropper is None:
+                    continue
+
+                # Clothing-similarity veto (re-evaluated under lock with live entry)
+                if self._clothing_veto(keeper, dropper.raw_attr_probs, dropper.attr_label_list):
+                    continue
 
                 # Merge prototype (weighted average)
                 if keeper.prototype_emb is not None and dropper.prototype_emb is not None:

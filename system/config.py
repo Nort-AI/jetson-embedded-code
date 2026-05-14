@@ -73,7 +73,10 @@ GCS_BUCKET = _d.get("gcs_bucket", "nort-data-landing")
 OTA_INSTALL_DIR = BASE_DIR
 
 # Local admin page
-ADMIN_PIN  = _d.get("admin_pin", "1234")
+# L7-fix: empty default forces operator to set a real PIN on first boot.
+# local_admin.py generates a random 6-digit PIN when ADMIN_PIN is empty,
+# logs it once to the console, and persists it to device.json.
+ADMIN_PIN  = _d.get("admin_pin", "")
 ADMIN_PORT = _d.get("admin_port", 8080)
 # ENABLE_REID is now unified as REID_ENABLED below (line ~89)
 

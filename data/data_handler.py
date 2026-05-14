@@ -3,6 +3,7 @@
 
 import csv
 import os
+import time
 from threading import Lock
 from typing import List, Dict, Any
 
@@ -10,6 +11,13 @@ from system.logger_setup import setup_logger
 from system.config import CSV_FILENAME, CSV_FIELDNAMES
 
 logger = setup_logger(__name__)
+
+# Flush to disk at most once per this many seconds OR once this many rows
+# accumulate — whichever comes first.  Avoids per-row fsync that limits
+# effective write throughput to ~2-5 FPS on Jetson eMMC.
+_FLUSH_INTERVAL_SECS = 1.0
+_FLUSH_ROWS_THRESHOLD = 30
+
 
 class DataHandler:
     """
@@ -19,6 +27,8 @@ class DataHandler:
         self.filename = CSV_FILENAME
         self.fieldnames = CSV_FIELDNAMES
         self._lock = Lock()
+        self._unflushed_rows: int = 0
+        self._last_flush: float = time.monotonic()
         self._initialize_file()
 
     def _initialize_file(self):
@@ -61,8 +71,18 @@ class DataHandler:
                 with open(self.filename, mode='a', newline='', encoding='utf-8') as f:
                     writer = csv.DictWriter(f, fieldnames=self.fieldnames)
                     writer.writerows(processed_rows)
-                    f.flush()
-                    os.fsync(f.fileno())
+
+                    # Batch fsync: only sync to disk when enough rows have
+                    # accumulated OR enough time has passed.  Per-row fsync
+                    # saturates Jetson eMMC and limits tracking to ~2-5 FPS.
+                    self._unflushed_rows += len(processed_rows)
+                    elapsed = time.monotonic() - self._last_flush
+                    if (self._unflushed_rows >= _FLUSH_ROWS_THRESHOLD
+                            or elapsed >= _FLUSH_INTERVAL_SECS):
+                        f.flush()
+                        os.fsync(f.fileno())
+                        self._unflushed_rows = 0
+                        self._last_flush = time.monotonic()
 
                 # logger.debug(f"Successfully wrote {len(data_rows)} rows to {self.filename}")
             except IOError as e:
@@ -76,3 +96,19 @@ class DataHandler:
                     logger.error(f"Problematic row: {data_rows[0]}")
             except Exception as e:
                 logger.error(f"Unexpected error writing to CSV: {e}")
+
+    def flush(self):
+        """Force an immediate fsync of any buffered rows.
+        Call this from the shutdown path before closing to guarantee all data
+        is on disk even if the batch threshold has not yet been reached."""
+        with self._lock:
+            if self._unflushed_rows == 0:
+                return
+            try:
+                with open(self.filename, mode='a', newline='', encoding='utf-8') as f:
+                    f.flush()
+                    os.fsync(f.fileno())
+                self._unflushed_rows = 0
+                self._last_flush = time.monotonic()
+            except OSError as e:
+                logger.error(f"Error flushing CSV to disk: {e}")

@@ -385,6 +385,13 @@ class CameraProcessor:
             self.logger.error("Camera is type 'entrance_camera' but 'entrance_line' is not defined in JSON!")
             self.is_entrance_camera = False
 
+        # C1-fix: GCS snapshot uploads must NOT block the camera thread.
+        # A single-worker executor keeps uploads sequential (no burst) while
+        # the camera thread returns immediately after submitting the task.
+        from concurrent.futures import ThreadPoolExecutor
+        self._snapshot_executor = ThreadPoolExecutor(max_workers=1,
+                                                     thread_name_prefix="SnapUpload")
+
     def update_store_occupancy(self, change):
         """Update global store occupancy counter"""
         global store_occupancy
@@ -726,13 +733,17 @@ class CameraProcessor:
                                 else:
                                     # PyTorch fallback
                                     import torch as _torch
-                                    from torchvision import transforms as T
                                     from PIL import Image as _Image
-                                    _transforms = T.Compose([
-                                        T.Resize((288, 144)),
-                                        T.ToTensor(),
-                                        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                                    ])
+                                    # H3-fix: use the cached transforms pipeline instead of
+                                    # rebuilding T.Compose (+ import overhead) on every frame.
+                                    if self._attr_transforms is None:
+                                        from torchvision import transforms as _T
+                                        self._attr_transforms = _T.Compose([
+                                            _T.Resize((288, 144)),
+                                            _T.ToTensor(),
+                                            _T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+                                        ])
+                                    _transforms = self._attr_transforms
                                     _crop_bgr = frame[_cy1:_cy2, _cx1:_cx2]
                                     _crop_rgb = cv2.cvtColor(_crop_bgr, cv2.COLOR_BGR2RGB)
                                     _crop_pil = _Image.fromarray(_crop_rgb)
@@ -775,14 +786,12 @@ class CameraProcessor:
                             attrs.setdefault('age_category', 'adult')
                             attrs.setdefault('attributes', {})
                         finally:
-                            # C1-fix: free any GPU tensors created during attr inference
-                            # to prevent VRAM accumulation across frames (OOM after ~8h)
-                            try:
-                                import torch as _torch
-                                if _torch.cuda.is_available():
-                                    _torch.cuda.empty_cache()
-                            except Exception:
-                                pass
+                            # M1-fix: empty_cache() on the per-frame hot path
+                            # forces a CUDA synchronisation point every frame and
+                            # limits attribute throughput to <5 FPS on Jetson.
+                            # PyTorch/TRT reclaims memory automatically when tensors
+                            # go out of scope; no explicit cache flush is needed here.
+                            pass
 
                     gender       = attrs.get("gender") or "Unknown"
                     age_category = attrs.get("age_category") or "adult"
@@ -1445,27 +1454,42 @@ class CameraProcessor:
         cv2.circle(frame, person_position, 8, color, -1)
 
     def _take_and_upload_snapshot(self, frame):
-        """Takes a JPG snapshot and uploads to GCS support bucket."""
+        """Saves a JPEG to disk immediately, then submits the GCS upload to a
+        background executor so the camera thread is never stalled by network I/O.
+        C1-fix: was blocking the camera thread with no timeout.
+        """
         try:
             timestamp = int(time.time())
             local_filename = f"snapshot_{self.camera_id}_{timestamp}.jpg"
-            cv2.imwrite(local_filename, frame)
-            
+            cv2.imwrite(local_filename, frame)  # fast — local disk only
+            self._snapshot_executor.submit(
+                self._upload_snapshot_worker, local_filename
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to save snapshot for upload: {e}")
+
+    def _upload_snapshot_worker(self, local_filename: str):
+        """Background worker: upload a saved snapshot to GCS, then delete it.
+        Runs in the SnapUpload thread pool — never on the camera thread.
+        """
+        try:
             from google.cloud import storage
             client = storage.Client()
-            # Support bucket is separate to avoid polluting landing zone
             bucket_name = os.environ.get("GCS_BUCKET", "nort-support-files")
             bucket = client.bucket(bucket_name)
-            
-            destination = f"snapshots/client_id={CLIENT_ID}/store_id={STORE_ID}/{self.camera_id}/{local_filename}"
+            destination = (
+                f"snapshots/client_id={CLIENT_ID}/store_id={STORE_ID}"
+                f"/{self.camera_id}/{os.path.basename(local_filename)}"
+            )
             blob = bucket.blob(destination)
-            
             self.logger.debug(f"Uploading snapshot: {local_filename} -> gs://{bucket_name}/{destination}")
-            blob.upload_from_filename(local_filename, timeout=15)  # M4-fix: avoid blocking camera thread
-            
-            if os.path.exists(local_filename):
-                os.remove(local_filename)
-                
+            blob.upload_from_filename(local_filename, timeout=30)
             self.logger.debug("Snapshot uploaded successfully.")
         except Exception as e:
-            self.logger.error(f"Failed to take/upload snapshot: {e}")
+            self.logger.error(f"Snapshot GCS upload failed: {e}")
+        finally:
+            try:
+                if os.path.exists(local_filename):
+                    os.remove(local_filename)
+            except OSError:
+                pass

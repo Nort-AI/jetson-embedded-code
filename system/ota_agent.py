@@ -212,10 +212,10 @@ def _handle_ota_upgrade(command_id, payload):
                     raise OTAError(f"Unsafe path in ZIP: {name}")
             logger.info(f"  ZIP contains {len(names)} files")
 
-            # Check for main.py as a sanity check that this is a valid NORT bundle
-            has_main = any(n.endswith('main.py') for n in names)
+            # H7-fix: entry point is run.py, not main.py — validate the correct file.
+            has_main = any(n.endswith('run.py') for n in names)
             if not has_main:
-                raise OTAError("Bundle does not contain main.py — not a valid NORT release")
+                raise OTAError("Bundle does not contain run.py — not a valid NORT release")
 
         # ── Step 4: Backup current installation ───────────────────────────────
         logger.info("Step 4/5: Creating backup...")

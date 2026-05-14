@@ -55,7 +55,9 @@ except ImportError:
 DEVICE_ID    = "unknown"
 CLIENT_ID    = "unknown"
 STORE_ID     = "unknown"
-ADMIN_PIN    = "1234"
+# L7-fix: module-level default is empty; run.py sets the real value from config.
+# An empty string triggers auto-generation of a random PIN (see check_pin()).
+ADMIN_PIN    = ""
 API_URL      = ""
 
 _start_time  = time.monotonic()
@@ -306,7 +308,40 @@ _rate_limiter = _RateLimiter(max_attempts=5, window_seconds=300, lockout_seconds
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
+def _ensure_admin_pin():
+    """If ADMIN_PIN is empty (factory default), generate a random 6-digit PIN,
+    print it once to the console, and persist it to device.json.
+    L7-fix: prevents '1234' from being the default on every new device."""
+    global ADMIN_PIN
+    if ADMIN_PIN:
+        return
+    import random, json as _json, os as _os
+    from werkzeug.security import generate_password_hash
+    new_pin = str(random.randint(100000, 999999))
+    hashed  = generate_password_hash(new_pin)
+    ADMIN_PIN = hashed
+    print(
+        f"\n{'='*60}\n"
+        f"  [NORT] No admin PIN configured.\n"
+        f"  Auto-generated PIN: {new_pin}\n"
+        f"  Change it via the admin panel → Settings → Security.\n"
+        f"{'='*60}\n",
+        flush=True,
+    )
+    # Persist to device.json so the PIN survives restarts
+    try:
+        _dev_json = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', 'device.json')
+        with open(_dev_json, 'r') as _f:
+            _cfg = _json.load(_f)
+        _cfg['admin_pin'] = hashed
+        with open(_dev_json, 'w') as _f:
+            _json.dump(_cfg, _f, indent=2)
+    except Exception as _e:
+        print(f"[NORT] Warning: could not persist generated PIN to device.json: {_e}")
+
+
 def check_auth(username, password):
+    _ensure_admin_pin()
     if username != 'admin':
         return False
     from werkzeug.security import check_password_hash

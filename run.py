@@ -167,18 +167,25 @@ def _make_camera_status(processors):
     }
 
 _group_history = {}  # {frozenset([tid1, tid2]): first_seen_timestamp}
+_last_group_prune = 0.0          # epoch seconds of last _group_history prune
 
 def _make_retail_data(processors):
     """Extract real-time retail intelligence (occupancy and live tracks)."""
     import time
+    global _last_group_prune
     tracks = {}
     occupancy = 0
     now = time.time()
     for p in processors:
         if p.is_entrance_camera:
             occupancy = p.get_current_occupancy()
-            
-        for tid, attrs in p.track_attributes.items():
+
+        # Snapshot track_attributes under the camera lock to avoid a race
+        # where the camera thread mutates the dict while we iterate it.
+        with p.lock:
+            attrs_snapshot = dict(p.track_attributes)
+
+        for tid, attrs in attrs_snapshot.items():
             if now - attrs.get('last_seen', 0) < 5:  # Only count people seen in last 5 secs
                 gid = attrs.get('global_id')
                 if gid is not None:
@@ -237,6 +244,14 @@ def _make_retail_data(processors):
     stale_pairs = [p for p in list(_group_history.keys()) if p not in current_pairs]
     for p in stale_pairs:
         del _group_history[p]
+
+    # Cap history to prevent unbounded growth on very busy scenes
+    if len(_group_history) > 500:
+        # Keep only the 400 oldest (most mature) entries
+        sorted_pairs = sorted(_group_history.items(), key=lambda kv: kv[1])
+        _group_history.clear()
+        _group_history.update(dict(sorted_pairs[:400]))
+    _last_group_prune = now
         
     # Pairs that have been close for more than 5 seconds are considered a group
     mature_pairs = [p for p, first_seen in _group_history.items() if (now - first_seen) > 5.0]
