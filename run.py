@@ -174,12 +174,8 @@ def _make_retail_data(processors):
     import time
     global _last_group_prune
     tracks = {}
-    occupancy = 0
     now = time.time()
     for p in processors:
-        if p.is_entrance_camera:
-            occupancy = p.get_current_occupancy()
-
         # Snapshot track_attributes under the camera lock to avoid a race
         # where the camera thread mutates the dict while we iterate it.
         with p.lock:
@@ -282,6 +278,11 @@ def _make_retail_data(processors):
                     tracks[member]['group_id'] = group_id
                 group_idx += 1
 
+    # Occupancy = unique global_ids active in the last 5 s (same window as tracks).
+    # This is self-correcting and immune to ReID fragmentation: each person's latest
+    # global_id overwrites older ones in the tracks dict (line above), so one physical
+    # person always counts as exactly 1 regardless of how many IDs ReID has minted.
+    occupancy = len(tracks)
     return {"occupancy": occupancy, "tracks": tracks, "groups": groups}
 
 def get_screen_resolution():
