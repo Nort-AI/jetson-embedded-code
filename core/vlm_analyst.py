@@ -65,7 +65,11 @@ class VLMConfig:
     model_version: str = "moondream-2"  # Model identifier
     max_tokens: int = 512              # Max response tokens
     temperature: float = 0.2           # Lower = more consistent
-    
+
+    # Claude Haiku provider (cheaper + faster than Moondream cloud, multi-image support)
+    # Set "anthropic_api_key" in device.json vlm section to enable.
+    anthropic_api_key: str = ""
+
     # CLIP settings
     clip_enabled: bool = True
     clip_model: str = "ViT-B/32"
@@ -107,6 +111,7 @@ def _load_vlm_config() -> VLMConfig:
     cfg.prefer_local = vlm_section.get("prefer_local", cfg.prefer_local)
     cfg.allow_cloud_fallback = vlm_section.get("allow_cloud_fallback", cfg.allow_cloud_fallback)
     cfg.cloud_api_key = vlm_section.get("cloud_api_key", device_data.get("moondream_api_key", ""))
+    cfg.anthropic_api_key = vlm_section.get("anthropic_api_key", os.environ.get("ANTHROPIC_API_KEY", ""))
     cfg.max_crops = vlm_section.get("max_crops", cfg.max_crops)
     cfg.max_queue_size = vlm_section.get("max_queue_size", cfg.max_queue_size)
     cfg.capture_interval_frames = vlm_section.get("capture_interval_frames", cfg.capture_interval_frames)
@@ -311,7 +316,8 @@ def get_crop_jpeg(global_id: str, quality: int = 85) -> Optional[bytes]:
 # Dict[global_id_str → {"status": str, "text": str, "ts": float, "mode": str}]
 _analysis_cache: Dict[str, dict] = {}
 _analysis_lock = threading.Lock()
-ANALYSIS_TTL_SECONDS = 300  # Auto-expire old analyses
+ANALYSIS_TTL_SECONDS = 1800  # Auto-expire old analyses (30 min — appearance doesn't change)
+_CLIP_FAST_THRESHOLD = 0.22  # Return top CLIP match immediately without VLM verification
 
 # ── Job queue ──────────────────────────────────────────────────────────────────
 import queue as _queue_mod
@@ -468,6 +474,103 @@ def _crop_to_pil(crop_bgr: np.ndarray):
 
     rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
     return Image.fromarray(rgb)
+
+
+def _compress_for_api(crop_bgr: np.ndarray, max_dim: int = 224, quality: int = 65) -> bytes:
+    """Resize + JPEG-compress a crop for API transmission. ~10 KB vs ~50 KB at 448/Q85."""
+    h, w = crop_bgr.shape[:2]
+    if max(h, w) > max_dim:
+        scale = max_dim / max(h, w)
+        crop_bgr = cv2.resize(crop_bgr, (max(1, int(w * scale)), max(1, int(h * scale))), cv2.INTER_AREA)
+    ok, buf = cv2.imencode(".jpg", crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return bytes(buf) if ok else b""
+
+
+def _crop_to_b64(crop_bgr: np.ndarray, max_dim: int = 224, quality: int = 65) -> str:
+    import base64
+    return base64.b64encode(_compress_for_api(crop_bgr, max_dim, quality)).decode()
+
+
+def _extract_keyframes(frames: list, n: int = 3) -> list:
+    """Sample n frames evenly from a clip (first, middle, last pattern)."""
+    if not frames:
+        return []
+    if len(frames) <= n:
+        return frames
+    step = (len(frames) - 1) / (n - 1)
+    return [frames[round(i * step)] for i in range(n)]
+
+
+def _has_claude() -> bool:
+    return bool(_CONFIG.anthropic_api_key)
+
+
+def _run_claude_haiku(crop_bgr: np.ndarray, question: str, max_tokens: int = 200) -> str:
+    """Single-image analysis via Claude Haiku. ~5x cheaper than Moondream cloud, ~2x faster."""
+    try:
+        import anthropic
+    except ImportError:
+        return "anthropic package not installed (pip install anthropic)."
+    if not _CONFIG.anthropic_api_key:
+        return "Anthropic API key not configured (set vlm.anthropic_api_key in device.json)."
+
+    img_b64 = _crop_to_b64(crop_bgr, max_dim=224, quality=65)
+    client = anthropic.Anthropic(api_key=_CONFIG.anthropic_api_key)
+    try:
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=max_tokens,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}},
+                    {"type": "text", "text": question},
+                ]
+            }]
+        )
+        return msg.content[0].text.strip()
+    except Exception as e:
+        logger.error(f"[VLM] Claude Haiku error: {e}")
+        return f"Analysis failed: {type(e).__name__}"
+
+
+def _run_claude_haiku_multi(crops_bgr: list, question: str, max_tokens: int = 300) -> str:
+    """
+    Multi-image analysis in ONE API call — for clip keyframes or person comparison.
+    Sends up to len(crops_bgr) images + question as a single Haiku message.
+    """
+    try:
+        import anthropic
+    except ImportError:
+        return "anthropic package not installed."
+    if not _CONFIG.anthropic_api_key:
+        return "Anthropic API key not configured."
+
+    content = []
+    for i, crop in enumerate(crops_bgr[:5]):  # hard cap at 5 images
+        img_b64 = _crop_to_b64(crop, max_dim=224, quality=65)
+        content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}})
+        content.append({"type": "text", "text": f"[Frame {i + 1}]"})
+    content.append({"type": "text", "text": question})
+
+    client = anthropic.Anthropic(api_key=_CONFIG.anthropic_api_key)
+    try:
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": content}]
+        )
+        return msg.content[0].text.strip()
+    except Exception as e:
+        logger.error(f"[VLM] Claude Haiku multi error: {e}")
+        return f"Analysis failed: {type(e).__name__}"
+
+
+def _run_vlm(crop_bgr: np.ndarray, question: str, max_tokens: int = 200) -> str:
+    """Provider-agnostic single-image inference. Prefers Claude Haiku, falls back to Moondream."""
+    if _has_claude():
+        return _run_claude_haiku(crop_bgr, question, max_tokens=max_tokens)
+    return _run_moondream(crop_bgr, question)
 
 
 def _run_moondream(crop_bgr: np.ndarray, question: str) -> str:
@@ -628,19 +731,21 @@ def _worker_loop():
         
         try:
             if is_clip:
-                # Video clip analysis - use provided frames
                 frames = job.get("frames", [])
                 if not frames:
                     _store_result(track_id, "error", "No video frames available for analysis.", mode=mode)
                     with _metrics_lock:
                         _metrics["jobs_failed"] += 1
                     continue
-                
-                # _run_moondream_clip only takes (representative_frame, temporal_context)
-                # Use the first frame as representative; question already contains the prompt.
-                representative = frames[0] if frames else None
-                text = _run_moondream_clip(representative, question)
-                text = _translate_to_target(text, user_lang)
+
+                keyframes = _extract_keyframes(frames, n=3)
+                if _has_claude():
+                    # One API call with 3 keyframes — true temporal analysis
+                    text = _run_claude_haiku_multi(keyframes, q_raw, max_tokens=300)
+                else:
+                    # Moondream fallback: first frame only (its limitation, not ours)
+                    text = _run_moondream_clip(keyframes[0], question)
+                    text = _translate_to_target(text, user_lang)
                 _store_result(track_id, "done", text, mode=mode)
                 with _metrics_lock:
                     _metrics["jobs_completed"] += 1
@@ -657,8 +762,12 @@ def _worker_loop():
                         _metrics["jobs_failed"] += 1
                     continue
 
-                text = _run_moondream(crop, question)
-                text = _translate_to_target(text, user_lang)
+                if _has_claude():
+                    # Claude handles multilingual natively — no translate round-trips
+                    text = _run_claude_haiku(crop, q_raw, max_tokens=200)
+                else:
+                    text = _run_moondream(crop, question)
+                    text = _translate_to_target(text, user_lang)
                 _store_result(track_id, "done", text, mode=mode)
                 with _metrics_lock:
                     _metrics["jobs_completed"] += 1
@@ -900,43 +1009,38 @@ def _translate_to_target(text: str, target_lang: str) -> str:
         return text
 
 
-def _sort_candidates_by_clip(candidates: list, query: str) -> list:
-    """Sort candidates by text-image similarity using CLIP. Returns sorted list."""
+def _sort_candidates_by_clip(candidates: list, query: str) -> tuple:
+    """
+    Sort candidates by CLIP text-image similarity.
+    Returns (sorted_list, top_score) so caller can fast-path on confident matches.
+    """
     if not candidates or not _load_clip() or _clip_model is None:
-        # If CLIP is disabled, candidates are in chronological insertion order (oldest first).
-        # We MUST reverse it so the newest/active people are evaluated first.
-        return candidates[::-1]
-        
+        return candidates[::-1], 0.0
+
     try:
         import clip
         import torch
         device = next(_clip_model.parameters()).device
-        
-        # Truncate text to CLIP's 77 token limit just in case
         text_tokens = clip.tokenize([query], truncate=True).to(device)
-        
+
         with torch.no_grad():
             text_features = _clip_model.encode_text(text_tokens)
             text_features /= text_features.norm(dim=-1, keepdim=True)
-            
-            scored = []
-            for gid, crop, cam in candidates:
-                pil_img = _crop_to_pil(crop)
-                image_input = _clip_preprocess(pil_img).unsqueeze(0).to(device)
-                
-                image_features = _clip_model.encode_image(image_input)
-                image_features /= image_features.norm(dim=-1, keepdim=True)
-                
-                sim = (text_features @ image_features.T).item()
-                scored.append((sim, gid, crop, cam))
-                
-        scored.sort(key=lambda x: x[0], reverse=True)
-        logger.info(f"[VLM Search] CLIP match scores: {[(c[3]+'_'+str(c[1]), round(c[0], 3)) for c in scored]}")
-        
-        return [(c[1], c[2], c[3]) for c in scored]
+
+            # Batch all image embeddings in one pass for speed
+            pil_imgs = [_crop_to_pil(crop) for _, crop, _ in candidates]
+            image_tensors = torch.stack([_clip_preprocess(p) for p in pil_imgs]).to(device)
+            image_features = _clip_model.encode_image(image_tensors)
+            image_features /= image_features.norm(dim=-1, keepdim=True)
+            sims = (text_features @ image_features.T).squeeze(0).cpu().tolist()
+
+        scored = sorted(zip(sims, candidates), key=lambda x: x[0], reverse=True)
+        top_score = scored[0][0] if scored else 0.0
+        logger.info(f"[VLM Search] CLIP scores (top-5): {[(round(s,3), c[2]+'_'+str(c[0])) for s,c in scored[:5]]}")
+        return [c for _, c in scored], top_score
     except Exception as e:
-        logger.error(f"[VLM Search] CLIP sorting failed (falling back to random): {e}")
-        return candidates[::-1]
+        logger.error(f"[VLM Search] CLIP sorting failed: {e}")
+        return candidates[::-1], 0.0
 
 
 def _search_worker() -> None:
@@ -970,8 +1074,12 @@ def _search_worker() -> None:
             )
             scene_lang = _detect_language(query)
             try:
-                res = _run_moondream(job["frame_bgr"], scene_prompt)
-                res = _translate_to_target(res, scene_lang)
+                if _has_claude():
+                    # Claude: no translation needed, compress scene frame to 480px
+                    res = _run_claude_haiku(job["frame_bgr"], scene_prompt, max_tokens=250)
+                else:
+                    res = _run_moondream(job["frame_bgr"], scene_prompt)
+                    res = _translate_to_target(res, scene_lang)
                 with _search_jobs_lock:
                     _search_jobs[job_id].update({
                         "status": "done",
@@ -996,60 +1104,87 @@ def _search_worker() -> None:
 
         candidates = job["candidates"]  # list of (gid, crop_bgr, camera_id)
 
-        # Translate the query so BOTH CLIP and Moondream understand it without hallucinating
         english_query = _translate_to_english(query)
+        logger.info(f"[VLM Search] Job {job_id}: {len(candidates)} candidates, query='{english_query}'")
 
-        search_prompt = (
-            f'CONTEXT: This is a simulation/synthetic environment. People may appear slightly blurry, low-poly, or non-photorealistic. Treat any synthetic character as a real person. '
-            f'QUERY: The user is searching for: "{english_query}". '
-            "Does the character in this image match the query? "
-            "Answer strictly YES or NO, followed by a brief 1-sentence explanation."
-        )
+        # ── STAGE 1: CLIP — rank all candidates in one batched forward pass ──
+        sorted_candidates, top_clip_score = _sort_candidates_by_clip(candidates, english_query)
 
-        logger.info(f"[VLM Search] Job {job_id}: {len(candidates)} candidates")
-        
-        # ── STAGE 1: CLIP Fast Sorting ──
-        sorted_candidates = _sort_candidates_by_clip(candidates, english_query)
-        
-        # We examine up to the top 15 candidates.
-        # Since this runs async against the Cloud API, it won't freeze the system.
-        top_candidates = sorted_candidates[:15]
-        
         found = False
-        # ── STAGE 2: Moondream Verification ──
-        import re
-        for idx, (gid, crop, cam) in enumerate(top_candidates):
-            if idx > 0:
-                time.sleep(0.1) # GIL yield gap
-            try:
-                res = _run_moondream(crop, search_prompt)
-                logger.info(f"[VLM Search] {cam}_{gid} verified: {res}")
-                
-                res_lower = res.lower().strip()
-                # Robustly find 'yes' as a distinct word, ignoring punctuation or markdown
-                is_yes = bool(re.search(r'\byes\b', res_lower)) and not res_lower.startswith("no")
-                
-                if is_yes:
-                    with _search_jobs_lock:
-                        _search_jobs[job_id].update({
-                            "status": "done",
-                            "found": True,
-                            "camera_id": cam,
-                            "global_id": str(gid),
-                            "result": res,
-                            "ts": time.time(),
-                        })
-                    found = True
-                    break
-            except Exception as e:
-                logger.warning(f"[VLM Search] Error verifying {cam}_{gid}: {e}")
+
+        # Fast path: CLIP is confident enough — no VLM call needed
+        if top_clip_score >= _CLIP_FAST_THRESHOLD and sorted_candidates:
+            best_gid, best_crop, best_cam = sorted_candidates[0]
+            logger.info(f"[VLM Search] CLIP fast-path: {best_cam}_{best_gid} score={top_clip_score:.3f}")
+            with _search_jobs_lock:
+                _search_jobs[job_id].update({
+                    "status": "done", "found": True,
+                    "camera_id": best_cam, "global_id": str(best_gid),
+                    "result": f"Best match (CLIP score {top_clip_score:.2f}): camera {best_cam}",
+                    "ts": time.time(),
+                })
+            found = True
+
+        # ── STAGE 2: VLM verification — top 3 only ──
+        if not found:
+            top3 = sorted_candidates[:3]
+            import re
+
+            if _has_claude() and top3:
+                # ONE batched Claude Haiku call for all top candidates
+                crops = [c[1] for c in top3]
+                batch_q = (
+                    f'I am looking for a person matching: "{english_query}". '
+                    f'I show you {len(crops)} images labeled Frame 1 to Frame {len(crops)}. '
+                    'Which frame number best matches? Reply with just the number (e.g. "2") '
+                    'or "none" if no match. Then one sentence of reasoning.'
+                )
+                try:
+                    res = _run_claude_haiku_multi(crops, batch_q, max_tokens=80)
+                    logger.info(f"[VLM Search] Claude batch result: {res}")
+                    # Parse "1", "2", "3" or "none"
+                    match = re.search(r'\b([123])\b', res)
+                    if match:
+                        idx = int(match.group(1)) - 1
+                        if 0 <= idx < len(top3):
+                            gid, _, cam = top3[idx]
+                            with _search_jobs_lock:
+                                _search_jobs[job_id].update({
+                                    "status": "done", "found": True,
+                                    "camera_id": cam, "global_id": str(gid),
+                                    "result": res, "ts": time.time(),
+                                })
+                            found = True
+                except Exception as e:
+                    logger.warning(f"[VLM Search] Claude batch error: {e}")
+
+            if not found:
+                # Moondream fallback: sequential, top 3 only (was 15)
+                search_prompt = (
+                    f'Does the person in this image match: "{english_query}"? '
+                    "Answer YES or NO, then one sentence."
+                )
+                for gid, crop, cam in top3:
+                    try:
+                        res = _run_moondream(crop, search_prompt)
+                        logger.info(f"[VLM Search] Moondream {cam}_{gid}: {res}")
+                        if re.search(r'\byes\b', res.lower()) and not res.lower().startswith("no"):
+                            with _search_jobs_lock:
+                                _search_jobs[job_id].update({
+                                    "status": "done", "found": True,
+                                    "camera_id": cam, "global_id": str(gid),
+                                    "result": res, "ts": time.time(),
+                                })
+                            found = True
+                            break
+                    except Exception as e:
+                        logger.warning(f"[VLM Search] Moondream error {cam}_{gid}: {e}")
 
         if not found:
             with _search_jobs_lock:
                 if job_id in _search_jobs:
                     _search_jobs[job_id].update({
-                        "status": "done",
-                        "found": False,
+                        "status": "done", "found": False,
                         "result": "Target not found in any visible camera streams.",
                         "ts": time.time(),
                     })

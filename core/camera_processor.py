@@ -1262,15 +1262,8 @@ class CameraProcessor:
                 self._take_and_upload_snapshot(draw_frame)
                 self.request_snapshot = False
 
-            # ── VLM auto-scan tick (once per frame, picks most-stale track) ─
-            if self._vlm_analyst.is_enabled() and tracked_detections is not None:
-                _active_gids = [
-                    str(self.track_attributes[tid].get("global_id", tid))
-                    for tid in (tracked_detections.tracker_id.astype(int)
-                                if tracked_detections.tracker_id is not None else [])
-                    if tid in self.track_attributes
-                ]
-                self._vlm_session.tick(_active_gids)
+            # VLM auto-scan removed — analysis is trigger-only (user click or event).
+            # Eliminates ~30 API calls/min/camera for zero operator value.
 
             # Update per-camera activity map — records when each global_id was last
             # seen so register_or_match can give them the context bonus even after
