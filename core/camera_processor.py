@@ -242,6 +242,10 @@ class CameraProcessor:
         )
 
         self.track_attributes = {}
+        # Cache for frame-skip: holds the last ByteTrack result so skip frames
+        # can reuse it without feeding empty detections to the tracker.
+        import supervision as _sv_init
+        self._last_tracked_detections = _sv_init.Detections.empty()
         # Per-camera recent-activity map: global_id → last_seen unix timestamp.
         # Updated every frame; pruned to 120 s.  Passed as `recent_gids` to
         # register_or_match so the context bonus fires for everyone who was on
@@ -591,8 +595,12 @@ class CameraProcessor:
             import supervision as sv
 
             # ── Inference throttle: run YOLOX every N frames ──────────────────
-            # On skipped frames ByteTrack continues via Kalman prediction —
-            # track positions stay valid and all downstream logic still runs.
+            # On skipped frames we reuse the previous tracked_detections rather
+            # than feeding ByteTrack empty detections.  supervision's ByteTrack
+            # returns nothing when given empty input (it moves tracks to "lost"
+            # state internally), so bounding boxes disappear on every skip frame
+            # — visually identical to "no detections at all".  Reusing the last
+            # result keeps the display stable and costs zero extra inference.
             _detect_every = getattr(config, 'DETECT_EVERY_N_FRAMES', 1)
             _run_detection = (self.frame_count % max(1, _detect_every) == 0)
 
@@ -615,13 +623,17 @@ class CameraProcessor:
                 else:
                     detections_array = []
                     detections = sv.Detections.empty()
-            else:
-                # Skipped frame: pass empty detections so ByteTrack predicts forward
-                detections_array = []
-                detections = sv.Detections.empty()
 
-            # Update independent supervision tracker
-            tracked_detections = self.tracker.update_with_detections(detections)
+                # Update tracker and cache the result
+                tracked_detections = self.tracker.update_with_detections(detections)
+                self._last_tracked_detections = tracked_detections
+            else:
+                # Skip frame: reuse last tracker output so boxes stay on screen.
+                # Do NOT call update_with_detections(empty) — that evicts all tracks
+                # from ByteTrack's active set, making them disappear every other frame.
+                detections_array = []
+                tracked_detections = getattr(self, '_last_tracked_detections',
+                                             sv.Detections.empty())
             
             # --- DEBUG INFO EXPOSURE ---
             self.frame_detection_count = len(detections_array) if len(detections_array) > 0 else 0
