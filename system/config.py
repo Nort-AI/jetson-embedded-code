@@ -153,16 +153,18 @@ REID_MIN_CROP_SIZE        = 32
 REID_DEVICE               = ""   # "" = auto
 
 # How often (in frames) to refresh an existing track's embedding in the gallery.
-# 30 frames @ 30 fps = every 1 second. Keeps the gallery fresh as appearance changes.
-REID_UPDATE_INTERVAL_FRAMES = 30
+# 45 frames @ 15 fps ≈ every 3 s. Keeps the gallery fresh without flooding the
+# GPU — was 30 which hammered the OSNet session every ~1 s per active track.
+REID_UPDATE_INTERVAL_FRAMES = _d.get("reid_update_interval_frames", 45)
 
 # ── Inference Throttle ────────────────────────────────────────────────────────
 # Run YOLOX detection every N frames; ByteTrack coasts via Kalman between them.
 # 1  = run every frame (original behaviour, highest accuracy)
 # 2  = detect every other frame (~2× throughput, undetectable for retail analytics)
 # 3  = good for 4+ cameras on Orin Nano; ByteTrack handles occlusion gaps well
-# Set in device.json as "detect_every_n_frames": 2 to tune per deployment.
-DETECT_EVERY_N_FRAMES = _d.get("detect_every_n_frames", 1)
+# Default changed to 2 — halves YOLOX load with no visible tracking regression.
+# Override per deployment: device.json "detect_every_n_frames": 1|2|3
+DETECT_EVERY_N_FRAMES = _d.get("detect_every_n_frames", 2)
 
 # ── Data Handling ─────────────────────────────────────────────────────────────
 CSV_FILENAME = "tracking_log.csv"

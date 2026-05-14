@@ -816,24 +816,30 @@ class CameraProcessor:
                         margin_y = int(h * margin_pct)
                         is_on_edge = (x1 < margin_x or y1 < margin_y or x2 > w - margin_x or y2 > h - margin_y)
 
-                        # Always compute sharpness — passed to manager as anchor quality signal
+                        # FPS-fix: defer the Laplacian sharpness computation until we
+                        # actually know we're going to submit this frame to ReID.
+                        # Previously ran for every person on every detection frame —
+                        # cv2.Laplacian is surprisingly expensive at full crop size.
                         sharpness = 0.0
-                        crop_for_sharp = frame[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
-                        if crop_for_sharp.size > 0:
-                            gray = cv2.cvtColor(crop_for_sharp, cv2.COLOR_BGR2GRAY)
-                            sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
-
                         base_sharpness = getattr(config, 'MIN_LAPLACIAN_SHARPNESS', 10.0)
-                        # A frame is usable if it's not on an edge and not completely blurred.
-                        # The manager handles its own confirmation window — no hard minting gate here.
-                        is_acceptable = not is_on_edge and not skip_thumb and sharpness >= (base_sharpness * 0.5)
+
+                        # Fast edge-only pre-check (no Laplacian yet)
+                        is_on_edge_or_skip = is_on_edge or skip_thumb
 
                         if (is_new_track or attrs["global_id"] is None):
+                            if not is_on_edge_or_skip:
+                                # Now compute sharpness — we know we'll use it
+                                crop_for_sharp = frame[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
+                                if crop_for_sharp.size > 0:
+                                    gray = cv2.cvtColor(crop_for_sharp, cv2.COLOR_BGR2GRAY)
+                                    sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+                                is_acceptable = sharpness >= (base_sharpness * 0.5)
+                            else:
+                                is_acceptable = False
+
                             if is_acceptable:
                                 # All global_ids seen on this camera in the last 90 s get the
-                                # context bonus inside register_or_match (+0.08 to emb_sim).
-                                # Using _recently_active_gids rather than track_attributes means
-                                # people whose track just dropped are still included.
+                                # context bonus inside register_or_match (+0.12 to emb_sim).
                                 _now_ra = time.time()
                                 recent_gids = {
                                     gid for gid, ts in self._recently_active_gids.items()
@@ -864,15 +870,25 @@ class CameraProcessor:
                             detection_count = attrs["detection_count"]
                             last_update = attrs.get("last_embedding_update", 0)
 
-                            # Fast early-track refresh: every 5 frames for first 10 detections.
-                            # This quickly builds a rich, multi-angle anchor bank.
-                            # After that, fall back to the normal update interval.
+                            # FPS-fix: early-track refresh every 8 frames (was 5) for first
+                            # 10 detections — still builds a rich anchor bank quickly but
+                            # cuts OSNet calls by ~37% during the confirmation window.
                             if detection_count <= 10:
-                                update_interval = 5
+                                update_interval = 8
                             else:
-                                update_interval = getattr(config, 'REID_UPDATE_INTERVAL_FRAMES', 30)
+                                update_interval = getattr(config, 'REID_UPDATE_INTERVAL_FRAMES', 45)
 
                             if (detection_count - last_update) >= update_interval:
+                                if not is_on_edge_or_skip:
+                                    # Compute sharpness only when we're about to submit
+                                    crop_for_sharp = frame[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
+                                    if crop_for_sharp.size > 0:
+                                        gray = cv2.cvtColor(crop_for_sharp, cv2.COLOR_BGR2GRAY)
+                                        sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+                                    is_acceptable = sharpness >= (base_sharpness * 0.5)
+                                else:
+                                    is_acceptable = False
+
                                 if is_acceptable:
                                     success = self.reid_manager.update_embedding(
                                         camera_id=self.camera_id,
@@ -1316,6 +1332,9 @@ class CameraProcessor:
             # Notify Re-ID manager so embedding is saved to recently-lost buffer
             if self.reid_manager:
                 self.reid_manager.note_track_lost(self.camera_id, int(track_id))
+                # Remove the local→global mapping so the gallery uniqueness guard
+                # doesn't keep treating this stale track as "currently active".
+                self.reid_manager.remove_track(self.camera_id, int(track_id))
             # Clean up VLM session cooldown + renderer scan-line animation state
             global_id = self.track_attributes[track_id].get("global_id")
             if global_id is not None:

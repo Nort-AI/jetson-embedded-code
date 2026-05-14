@@ -332,6 +332,26 @@ class ReIDManager:
             self._local_to_global.pop(key, None)
             self._pending.pop(key, None)
 
+    def _gid_active_on_camera(self, gid: int, camera_id: str, exclude_local_id: int) -> bool:
+        """Return True if *gid* is currently assigned to another active local track
+        on *camera_id*.  Must be called while self._lock is held.
+
+        This is the same-camera uniqueness guard: a person cannot be in two
+        places on the same camera at the same time.  We use gallery last_seen
+        (monotonic) < 5 s as the liveness signal because remove_track() is not
+        always called promptly when a track dies.
+        """
+        now_m = time.monotonic()
+        e = self._gallery.get(gid)
+        if e is None or (now_m - e.last_seen) >= 5.0:
+            # Gallery entry is stale or gone — not currently active
+            return False
+        # Check whether any OTHER local track on this camera already claims this gid
+        for (lk_cam, lk_tid), lk_gid in self._local_to_global.items():
+            if lk_cam == camera_id and lk_tid != exclude_local_id and lk_gid == gid:
+                return True
+        return False
+
     def register_or_match(
         self,
         frame: np.ndarray,
@@ -418,6 +438,17 @@ class ReIDManager:
                             best_gid, best_score = gid, score
 
             if best_gid is not None:
+                # Same-camera uniqueness guard: reject if this gid is already claimed
+                # by another ACTIVE track on this camera — one person can't be in two
+                # places at once.
+                if self._gid_active_on_camera(best_gid, camera_id, local_track_id):
+                    logger.debug(
+                        f"[ReID] BLOCKED match cam={camera_id} local={local_track_id}"
+                        f" → G:{best_gid} (already active on this camera)"
+                    )
+                    best_gid = None
+
+            if best_gid is not None:
                 # Match found — link and enrich gallery with best buffered embedding
                 entry = self._gallery[best_gid]
                 best_emb, _, best_sharp = max(buf, key=lambda x: x[2]) if buf else (embedding, None, crop_sharpness)
@@ -464,6 +495,15 @@ class ReIDManager:
                     r_sim = self._top_k_mean_sim(best_emb, r_pool, k=3)
                     if r_sim >= RESCUE_FLOOR and r_sim > rescue_score:
                         rescue_gid, rescue_score = r_gid, r_sim
+
+            if rescue_gid is not None:
+                # Same-camera uniqueness guard
+                if self._gid_active_on_camera(rescue_gid, camera_id, local_track_id):
+                    logger.debug(
+                        f"[ReID] RESCUE BLOCKED cam={camera_id} local={local_track_id}"
+                        f" → G:{rescue_gid} (already active on this camera)"
+                    )
+                    rescue_gid = None
 
             if rescue_gid is not None:
                 r_entry = self._gallery[rescue_gid]
@@ -514,6 +554,9 @@ class ReIDManager:
                 entry_age = now_m - cw_entry.last_seen
                 if not (CLOSED_WORLD_ACTIVE_GATE < entry_age < CLOSED_WORLD_RECENCY):
                     continue  # currently active OR too old
+                # Extra safety: skip if being actively tracked on ANY camera right now
+                if self._gid_active_on_camera(cw_gid, camera_id, local_track_id):
+                    continue
                 if self._clothing_veto(cw_entry, raw_attr_probs, attr_label_list):
                     continue  # hard clothing mismatch
                 cw_candidates.append(cw_gid)
