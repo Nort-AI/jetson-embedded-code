@@ -466,11 +466,97 @@ class ReIDManager:
                 self._local_to_global[key] = rescue_gid
                 logger.debug(
                     f"[ReID] RESCUE cam={camera_id} local={local_track_id}"
-                    f" → global={rescue_gid}  raw_sim={rescue_score:.3f}  (soft-floor recent_gid)"
+                    f" → global={rescue_gid}  raw_sim={rescue_score:.3f}"
                 )
                 return rescue_gid
 
-            # Truly no match anywhere — mint a new global_id
+            # ── Closed-world camera-local matching ────────────────────────────
+            # Appearance similarity alone is unreliable for CPU-inferred OSNet
+            # under viewpoint changes.  In a bounded-occupancy environment (retail
+            # store) we can exploit the physical constraint:
+            #
+            #   "A new track on camera X is overwhelmingly likely to be a
+            #    recently-lost person from camera X, NOT a genuinely new person."
+            #
+            # Strategy:
+            #   1. Collect gallery entries for THIS camera that were recently active
+            #      (seen 5–120 s ago) and are NOT currently visible (last_seen > 5 s).
+            #   2. If EXACTLY ONE such unaccounted-for entry passes the clothing veto
+            #      AND has TTA similarity ≥ 0.15 (not clearly a different person)
+            #      → link unconditionally.  Appearance threshold is bypassed because
+            #      the spatial constraint already provides strong prior evidence.
+            #   3. If MULTIPLE candidates → use TTA similarity to pick the best one
+            #      (floor 0.25 — lower than normal because we have the closed-world
+            #      prior, but still need some discriminability).
+            #   4. Zero candidates → person is genuinely new → mint.
+            #
+            # This handles the "person walks to back of store, comes back 30 s later
+            # from a completely different direction" case that defeats both ByteTrack
+            # (resets after 15 s) and distance-based spatio-temporal (250 px too tight).
+
+            now_m = time.monotonic()
+            CLOSED_WORLD_RECENCY     = 120.0   # look back up to 2 minutes
+            CLOSED_WORLD_ACTIVE_GATE = 5.0     # < 5 s ago = still actively tracked
+            CLOSED_WORLD_ANTI_VETO   = 0.15    # clearly different if sim < 0.15
+            CLOSED_WORLD_MULTI_FLOOR = 0.25    # multi-candidate floor
+
+            cw_candidates = []
+            for cw_gid, cw_entry in self._gallery.items():
+                if cw_entry.camera_id != camera_id:
+                    continue
+                entry_age = now_m - cw_entry.last_seen
+                if not (CLOSED_WORLD_ACTIVE_GATE < entry_age < CLOSED_WORLD_RECENCY):
+                    continue  # currently active OR too old
+                if self._clothing_veto(cw_entry, raw_attr_probs, attr_label_list):
+                    continue  # hard clothing mismatch
+                cw_candidates.append(cw_gid)
+
+            cw_link_gid = None
+
+            if len(cw_candidates) == 1:
+                cw_gid = cw_candidates[0]
+                cw_entry = self._gallery[cw_gid]
+                cw_pool = (
+                    ([cw_entry.prototype_emb] if cw_entry.prototype_emb is not None else [])
+                    + cw_entry.anchor_embs
+                )
+                cw_sim = self._top_k_mean_sim(best_emb, cw_pool, k=3)
+                if cw_sim >= CLOSED_WORLD_ANTI_VETO:
+                    cw_link_gid = cw_gid
+                    logger.info(
+                        f"[ReID] CLOSED-WORLD UNIQUE cam={camera_id} local={local_track_id}"
+                        f" → global={cw_gid}  sim={cw_sim:.3f}"
+                    )
+
+            elif len(cw_candidates) > 1:
+                cw_best_gid, cw_best_score = None, 0.0
+                for cw_gid in cw_candidates:
+                    cw_entry = self._gallery.get(cw_gid)
+                    if cw_entry is None:
+                        continue
+                    cw_pool = (
+                        ([cw_entry.prototype_emb] if cw_entry.prototype_emb is not None else [])
+                        + cw_entry.anchor_embs
+                    )
+                    cw_sim = self._top_k_mean_sim(best_emb, cw_pool, k=3)
+                    if cw_sim > cw_best_score:
+                        cw_best_gid, cw_best_score = cw_gid, cw_sim
+                if cw_best_gid is not None and cw_best_score >= CLOSED_WORLD_MULTI_FLOOR:
+                    cw_link_gid = cw_best_gid
+                    logger.info(
+                        f"[ReID] CLOSED-WORLD MULTI cam={camera_id} local={local_track_id}"
+                        f" → global={cw_best_gid}  sim={cw_best_score:.3f}"
+                        f"  ({len(cw_candidates)} candidates)"
+                    )
+
+            if cw_link_gid is not None:
+                cw_entry = self._gallery[cw_link_gid]
+                self._update_entry(cw_entry, best_emb, None, best_sharp, thumb,
+                                   raw_probs=raw_attr_probs, label_list=attr_label_list)
+                self._local_to_global[key] = cw_link_gid
+                return cw_link_gid
+
+            # ── Genuinely new person — mint a global_id ───────────────────────
             gid = self._next_global_id
             self._next_global_id += 1
             self._gallery[gid] = GalleryEntry(

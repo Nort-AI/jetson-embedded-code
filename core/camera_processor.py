@@ -233,11 +233,12 @@ class CameraProcessor:
         # Initialize an independent ByteTrack instance for this specific camera stream!
         import supervision as sv
         self.tracker = sv.ByteTrack(
-            track_activation_threshold=0.40,  # Lowered to 40% to allow small, distant targets to trigger tracking
-            lost_track_buffer=150,  # ~15 s at 10 fps (Jetson). Keeps the same local track_id for longer
+            track_activation_threshold=0.40,
+            lost_track_buffer=300,  # ~30 s at 10 fps. Keeps the same local track_id for longer
                                     # so the person reappears under their old ID without triggering a new
-                                    # register_or_match call — the single biggest source of ID proliferation.
-            minimum_consecutive_frames=3      # Needs to see the person 3 frames in a row at high-conf
+                                    # register_or_match call — the primary source of ID proliferation.
+                                    # 300 frames covers most store occlusion gaps (shelf browsing, etc.)
+            minimum_consecutive_frames=3
         )
 
         self.track_attributes = {}
@@ -652,14 +653,16 @@ class CameraProcessor:
                             if old_tid == track_id: continue
                             time_since_seen = now - old_attrs.get("last_seen", now)
 
-                            # Dropped between 0.2 s and 25 s ago (was 8 s — too tight for
-                            # occlusions / busy scenes where the tracker takes a few seconds to
-                            # re-acquire the person at a slightly different position).
-                            if 0.2 < time_since_seen < 25.0:
+                            # Dropped between 0.2 s and 45 s ago.
+                            # 45 s gives ByteTrack (30 s buffer) time to create a
+                            # new local_id and spatio-temporal time to catch it.
+                            # 500 px covers a person walking across a typical store
+                            # aisle during the gap (was 250 px — too tight).
+                            if 0.2 < time_since_seen < 45.0:
                                 old_pos = old_attrs.get("last_position")
                                 if old_pos and old_attrs.get("global_id") is not None:
                                     dist = np.linalg.norm(np.array(current_position) - np.array(old_pos))
-                                    if dist < 250:  # 250 px (was 120) — person can move ~1 m during the gap
+                                    if dist < 500:
                                         linked_global_id = old_attrs["global_id"]
                                         # Carry over entry state so the new track doesn't re-count
                                         linked_has_entered = old_attrs.get("has_entered", False)
@@ -1297,7 +1300,7 @@ class CameraProcessor:
         tracks_to_remove = []
 
         for track_id, attrs in self.track_attributes.items():
-            if current_time - attrs.get('last_seen', current_time) > 30:
+            if current_time - attrs.get('last_seen', current_time) > 60:  # was 30 — keep stale entries longer so spatio-temporal can find them
                 tracks_to_remove.append(track_id)
 
         for track_id in tracks_to_remove:
