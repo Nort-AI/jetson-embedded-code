@@ -1225,6 +1225,60 @@
       animation: pulse 1.2s ease-in-out infinite;
     }
 
+    /* ── VLM Inline Response Card (appears above the prompt bar) ── */
+    #vlm-response-card {
+      position: fixed;
+      bottom: 90px;
+      left: 50%;
+      transform: translateX(-50%) translateY(8px);
+      z-index: 9998;
+      width: 540px;
+      max-width: 60vw;
+      background: rgba(10, 12, 18, 0.72);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 18px;
+      padding: 16px 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(6,182,212,0.12);
+      display: none;
+      opacity: 0;
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
+    #vlm-response-card.visible {
+      display: block;
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    #vlm-response-card .vrc-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    #vlm-response-card .vrc-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--primary); flex-shrink: 0;
+      animation: pulse 1.5s infinite alternate;
+    }
+    #vlm-response-card .vrc-cam {
+      font-size: .68rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--primary);
+    }
+    #vlm-response-card .vrc-elapsed {
+      font-size: .65rem; color: rgba(255,255,255,.35); margin-left: auto;
+    }
+    #vlm-response-card .vrc-close {
+      background: none; border: none; color: rgba(255,255,255,.4);
+      cursor: pointer; font-size: 1rem; padding: 0; line-height: 1;
+      transition: color .15s;
+    }
+    #vlm-response-card .vrc-close:hover { color: #fff; }
+    #vlm-response-card .vrc-text {
+      font-size: .9rem; color: rgba(255,255,255,.88);
+      line-height: 1.7; white-space: pre-wrap;
+    }
+
     /* ── Floating VLM Prompt Bar  ── */
     #vlm-prompt-container {
       position: fixed;
@@ -3360,56 +3414,45 @@
       document.body.appendChild(c);
     });
 
-    // ── AI Response Modal ──────────────────────────────────────────────────────
-    // Creates or reuses a full-screen overlay to show VLM responses.
-    // Called whenever a scene query or search result arrives.
+    // ── AI Response Card ───────────────────────────────────────────────────────
+    // Shows the VLM response in a frosted-glass card just above the prompt bar.
+    let _vrcDismissTimer = null;
     function showAIResponse(text, camLabel, elapsedSec) {
-      let modal = document.getElementById('aiResponseModal');
-      if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'aiResponseModal';
-        modal.style.cssText = [
-          'position:fixed', 'inset:0', 'z-index:9999',
-          'display:flex', 'align-items:center', 'justify-content:center',
-          'background:rgba(0,0,0,0.72)', 'backdrop-filter:blur(6px)',
-          'padding:24px', 'cursor:pointer',
-        ].join(';');
-        modal.addEventListener('click', e => {
-          if (e.target === modal) modal.style.display = 'none';
-        });
-        document.body.appendChild(modal);
+      let card = document.getElementById('vlm-response-card');
+      if (!card) {
+        card = document.createElement('div');
+        card.id = 'vlm-response-card';
+        card.innerHTML = `
+          <div class="vrc-header">
+            <span class="vrc-dot"></span>
+            <span class="vrc-cam" id="vrc-cam"></span>
+            <span class="vrc-elapsed" id="vrc-elapsed"></span>
+            <button class="vrc-close" onclick="document.getElementById('vlm-response-card').classList.remove('visible')">✕</button>
+          </div>
+          <div class="vrc-text" id="vrc-text"></div>`;
+        document.body.appendChild(card);
       }
-      modal.innerHTML = `
-        <div style="
-          background:var(--bg-card,#1a1f2e);border:1px solid var(--primary,#06b6d4);
-          border-radius:14px;padding:28px 32px;max-width:680px;width:100%;
-          box-shadow:0 0 40px rgba(6,182,212,.25);cursor:default;position:relative;
-          max-height:80vh;overflow-y:auto;" onclick="event.stopPropagation()">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">
-            <span style="width:8px;height:8px;border-radius:50%;background:var(--primary,#06b6d4);
-              display:inline-block;animation:pulse 1.5s infinite alternate;flex-shrink:0;"></span>
-            <span style="font-size:.7rem;font-weight:700;text-transform:uppercase;
-              letter-spacing:.08em;color:var(--primary,#06b6d4);">AI · ${camLabel || 'response'}</span>
-            ${elapsedSec ? `<span style="font-size:.65rem;color:var(--fg-muted,#888);margin-left:auto;">${elapsedSec}s</span>` : ''}
-            <button onclick="document.getElementById('aiResponseModal').style.display='none'"
-              style="background:none;border:none;color:var(--fg-muted,#888);font-size:1.2rem;
-              cursor:pointer;padding:0 0 0 8px;line-height:1;margin-left:auto;">✕</button>
-          </div>
-          <div id="aiResponseText" style="
-            font-size:.95rem;color:var(--fg,#e2e8f0);line-height:1.75;
-            white-space:pre-wrap;"></div>
-          <div style="margin-top:18px;font-size:.68rem;color:var(--fg-muted,#666);text-align:right;">
-            click outside or ✕ to close
-          </div>
-        </div>`;
-      modal.style.display = 'flex';
 
-      // Typewriter into the modal text div
-      const out = document.getElementById('aiResponseText');
+      document.getElementById('vrc-cam').textContent = camLabel || 'AI';
+      document.getElementById('vrc-elapsed').textContent = elapsedSec ? elapsedSec + 's' : '';
+      const out = document.getElementById('vrc-text');
       out.textContent = '';
+
+      // Force reflow so transition fires even on re-show
+      card.classList.remove('visible');
+      void card.offsetWidth;
+      card.classList.add('visible');
+
+      // Typewriter
       let ci = 0;
+      if (_vrcDismissTimer) clearTimeout(_vrcDismissTimer);
       const ti = setInterval(() => {
-        if (ci >= text.length) { clearInterval(ti); return; }
+        if (ci >= text.length) {
+          clearInterval(ti);
+          // Auto-dismiss after 20s of inactivity
+          _vrcDismissTimer = setTimeout(() => card.classList.remove('visible'), 20000);
+          return;
+        }
         out.textContent += text[ci++];
       }, 10);
     }
