@@ -4518,7 +4518,7 @@ def api_vlm_global_query():
     search_candidates = []
     with vlm_analyst._track_crops_lock:
         for gid, entry in vlm_analyst._track_crops.items():
-            if time.time() - entry.get("ts", 0) < 30.0:
+            if time.time() - entry.get("ts", 0) < 120.0:
                 crop = entry.get("crop")
                 if crop is not None and crop.size > 0:
                     search_candidates.append((gid, crop.copy(), entry.get("cam")))

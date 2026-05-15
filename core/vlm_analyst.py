@@ -1113,7 +1113,8 @@ def _search_worker() -> None:
         found = False
 
         # Fast path: CLIP is confident enough — no VLM call needed
-        if top_clip_score >= _CLIP_FAST_THRESHOLD and sorted_candidates:
+        # Guard: don't short-circuit when pool is tiny (scores are unreliable on small sets)
+        if top_clip_score >= _CLIP_FAST_THRESHOLD and len(sorted_candidates) >= 5 and sorted_candidates:
             best_gid, best_crop, best_cam = sorted_candidates[0]
             logger.info(f"[VLM Search] CLIP fast-path: {best_cam}_{best_gid} score={top_clip_score:.3f}")
             with _search_jobs_lock:

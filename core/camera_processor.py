@@ -1096,7 +1096,7 @@ class CameraProcessor:
                                     x2 > w - _mx or y2 > h - _my)
                         _crop_area = max(0, x2 - x1) * max(0, y2 - y1)
                         _vlm_ok = not _on_edge and _crop_area >= getattr(
-                            config, 'VLM_MIN_CROP_AREA', 3000)
+                            config, 'VLM_MIN_CROP_AREA', 1500)
                         if _vlm_ok:
                             # Add 25% padding around the bounding box so the crop
                             # shows context rather than a tight slice of the person.
