@@ -2327,11 +2327,14 @@
       textEl.textContent = '';
       camLbl.textContent = isGlobal ? '{{ t("vlm.all_cameras", "ALL CAMERAS") }}' : currentCamera;
 
-      // Simple blinking cursor while waiting
+      // Loading indicator: elapsed seconds so the user knows something is happening
+      const _startTs = Date.now();
       let dotCount = 0;
       const dotInterval = setInterval(() => {
-        textEl.textContent = '●'.repeat((dotCount++ % 3) + 1);
+        const elapsed = ((Date.now() - _startTs) / 1000).toFixed(1);
+        textEl.textContent = '●'.repeat((dotCount++ % 3) + 1) + `  ${elapsed}s`;
       }, 350);
+      resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
       _scanningActive = isGlobal;   // scanning animation only for person search
       _activeCropImages = [];
@@ -2368,9 +2371,11 @@
               if (data.error || data.found === false) {
                 textEl.textContent = '\u26a0\ufe0f ' + (data.error || data.result || '{{ t("vlm.not_found", "Not found.") }}');
                 if (!data.found && !data.error) camLbl.textContent = '{{ t("vlm.none", "NONE") }}';
+                textEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
               } else {
                 const answer = data.result || '{{ t("vlm.no_answer", "(no answer)") }}';
                 textEl.textContent = '';
+                textEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 let ci = 0;
                 const typeInterval = setInterval(() => {
                   if (ci >= answer.length) { clearInterval(typeInterval); return; }
