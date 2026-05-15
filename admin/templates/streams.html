@@ -2333,9 +2333,9 @@
         textEl.textContent = '●'.repeat((dotCount++ % 3) + 1);
       }, 350);
 
-      _scanningActive = true;
+      _scanningActive = isGlobal;   // scanning animation only for person search
       _activeCropImages = [];
-      if (isGlobal || currentCamera) {
+      if (isGlobal) {
         fetch('/api/vlm/active_crops').then(r => r.json()).then(data => {
           if (data.crops && data.crops.length > 0) {
             const images = [];
@@ -3345,8 +3345,14 @@
       const input = document.getElementById('vlm-prompt-input');
       const query = input.value.trim();
       if (!query) return;
+
+      // Auto-detect: person search vs scene analysis.
+      // If the query looks like finding/describing a person → global search.
+      // Anything else (what's happening, how many, describe...) → scene query on current camera.
+      const personIntent = /\b(find|procurar|buscar|cadê|quem|who|person|pessoa|man|woman|homem|mulher|wearing|vestindo|carrying|segurando|look for|procure|ache|achar)\b/i.test(query);
+
       const globalCb = document.getElementById('sqGlobal');
-      if (globalCb) globalCb.checked = true;
+      if (globalCb) globalCb.checked = personIntent;
       const mainInput = document.getElementById('sqInput');
       if (mainInput) mainInput.value = query;
       sqSend();
