@@ -1121,6 +1121,7 @@ class CameraProcessor:
                                 self._vlm_analyst.save_crop(
                                     _crop_key, crop_bgr, self.camera_id,
                                     crop_bounds=(_cx1, _cy1, _cx2, _cy2),
+                                    zone=zone,
                                 )
                         # Fire analysis job only if explicitly enabled (saves GPU/API resources)
                         if self.auto_vlm_enabled:

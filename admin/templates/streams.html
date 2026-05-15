@@ -1283,6 +1283,68 @@
       max-height: 260px; overflow-y: auto;
     }
 
+    /* ── Chat Panel ── */
+    #chatLog {
+      max-height: 310px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 7px;
+      padding: 4px 0 2px; margin-bottom: 6px;
+      scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.1) transparent;
+    }
+    #chatLog:empty { display: none; }
+    .chat-msg { display: flex; flex-direction: column; gap: 2px; max-width: 100%; }
+    .chat-msg.user  { align-items: flex-end; }
+    .chat-msg.asst,
+    .chat-msg.alert-msg { align-items: flex-start; }
+    .chat-bubble {
+      padding: 8px 13px; border-radius: 12px;
+      font-size: .855rem; line-height: 1.55; white-space: pre-wrap;
+      max-width: 92%; word-break: break-word;
+    }
+    .chat-msg.user .chat-bubble {
+      background: var(--primary); color: #fff;
+      border-radius: 12px 12px 3px 12px;
+    }
+    .chat-msg.asst .chat-bubble {
+      background: rgba(255,255,255,.07); border: 1px solid var(--border);
+      color: var(--fg); border-radius: 12px 12px 12px 3px;
+    }
+    .chat-msg.alert-msg.warning .chat-bubble {
+      background: rgba(251,191,36,.11); border: 1px solid rgba(251,191,36,.3);
+      color: var(--fg); border-radius: 12px;
+    }
+    .chat-msg.alert-msg.critical .chat-bubble {
+      background: rgba(239,68,68,.11); border: 1px solid rgba(239,68,68,.3);
+      color: var(--fg); border-radius: 12px;
+    }
+    .chat-msg.alert-msg.info .chat-bubble {
+      background: rgba(99,102,241,.1); border: 1px solid rgba(99,102,241,.28);
+      color: var(--fg); border-radius: 12px;
+    }
+    .chat-meta {
+      font-size: .63rem; color: var(--fg-muted);
+      display: flex; gap: 5px; align-items: center; flex-wrap: wrap; padding: 0 3px;
+    }
+    .chat-badge {
+      font-size: .58rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; padding: 1px 5px; border-radius: 4px;
+    }
+    .chat-badge.instant { background: rgba(16,185,129,.2); color: #10b981; }
+    .chat-badge.vlm     { background: rgba(99,102,241,.2); color: #818cf8; }
+    .chat-badge.alert   { background: rgba(251,191,36,.2); color: #fbbf24; }
+    .chat-flag-btn {
+      font-size: .6rem; background: none;
+      border: 1px solid rgba(255,255,255,.15); color: var(--fg-muted);
+      border-radius: 4px; padding: 1px 5px; cursor: pointer; transition: all .15s;
+      margin-left: auto;
+    }
+    .chat-flag-btn:hover { color: #fbbf24; border-color: #fbbf24; }
+    /* Animated thinking dots */
+    @keyframes _chat_dots { 0%{content:'●'} 33%{content:'●●'} 66%{content:'●●●'} 100%{content:''} }
+    .chat-thinking::after {
+      content: '●';
+      animation: _chat_dots 1.1s infinite steps(4);
+    }
+
     /* ── Floating VLM Prompt Bar  ── */
     #vlm-prompt-container {
       position: fixed;
@@ -1919,24 +1981,10 @@
                 " onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter=''">{{
                   t('vlm.ask_ai', 'Ask AI ✦') }}</button>
               </div>
-              <!-- Result area -->
-              <div id="sqResult" style="display:none;">
-                <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
-                  <span
-                    style="width:7px;height:7px;border-radius:50%;background:var(--primary);display:inline-block;animation:pulse 1.5s infinite alternate;"></span>
-                  <span
-                    style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-muted);">AI
-                    Response</span>
-                  <span id="sqCam" style="font-size:.68rem;color:var(--primary);margin-left:auto;"></span>
-                </div>
-
-                <div id="sqText" style="
-                  font-size:.875rem;color:var(--fg);line-height:1.65;
-                  white-space:pre-wrap;background:rgba(0,0,0,.15);
-                  border-radius:7px;padding:12px 14px;
-                  border:1px solid var(--border);
-                "></div>
-              </div>
+              <!-- Chat log: persistent scrollable Q&A history -->
+              <div id="chatLog"></div>
+              <!-- Ghost elements for legacy JS compat (never visible) -->
+              <div id="sqResult" style="display:none;"><span id="sqCam"></span><div id="sqText"></div></div>
             </div>
 
             <!-- ── People Gallery ──────────────────────────────────────────── -->
@@ -2352,6 +2400,195 @@
     }
     window.addEventListener('resize', redraw);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CHAT PANEL HELPERS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    const _CHAT_STORAGE_KEY = 'nort_chat_log';
+    const _CHAT_MAX_STORED  = 5;  // non-alert messages to persist in sessionStorage
+
+    function _esc(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function _escA(s) {
+      return String(s).replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+    }
+    function _chatTs() {
+      const d = new Date();
+      return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+    }
+    function _chatScroll() {
+      const log = document.getElementById('chatLog');
+      if (log) log.scrollTop = log.scrollHeight;
+    }
+
+    /** Append a user message bubble. */
+    function _chatUser(text) {
+      const log = document.getElementById('chatLog');
+      if (!log) return;
+      const el = document.createElement('div');
+      el.className = 'chat-msg user';
+      el.innerHTML = `<div class="chat-bubble">${_esc(text)}</div>`
+                   + `<div class="chat-meta">${_chatTs()}</div>`;
+      log.appendChild(el);
+      _chatScroll();
+      _chatPersist();
+    }
+
+    /**
+     * Append a "thinking" placeholder bubble; returns the element so callers
+     * can replace it with the real response via _chatFinalize().
+     */
+    function _chatThink() {
+      const log = document.getElementById('chatLog');
+      if (!log) return null;
+      const el = document.createElement('div');
+      el.className = 'chat-msg asst';
+      el.id = '_chatPending';
+      el.innerHTML = `<div class="chat-bubble"><span class="chat-thinking"></span></div>`;
+      log.appendChild(el);
+      _chatScroll();
+      return el;
+    }
+
+    /**
+     * Update the thinking bubble's text live (called for each streaming chunk).
+     */
+    function _chatStream(text) {
+      const el = document.getElementById('_chatPending');
+      if (el) {
+        const b = el.querySelector('.chat-bubble');
+        if (b) b.textContent = text;
+        _chatScroll();
+      }
+    }
+
+    /**
+     * Finalize the thinking bubble with the complete response.
+     * @param {HTMLElement} thinkEl  — element returned by _chatThink()
+     * @param {string}      text     — response text
+     * @param {object}      meta     — {elapsed, camLabel, isFree, isVlm, globalId, camId}
+     */
+    function _chatFinalize(thinkEl, text, meta) {
+      if (!thinkEl) return;
+      thinkEl.id = '';
+      const { elapsed, camLabel, isFree, isVlm, globalId, camId } = meta || {};
+      const badge = isFree
+        ? `<span class="chat-badge instant">⚡ instant</span>`
+        : (isVlm ? `<span class="chat-badge vlm">AI</span>` : '');
+      const cam  = camLabel ? `<span style="color:var(--primary);font-weight:600;">${_esc(camLabel)}</span>` : '';
+      const el_t = elapsed  ? `<span>${elapsed}s</span>` : '';
+      const flag = (isVlm && globalId)
+        ? `<button class="chat-flag-btn" onclick="_chatFlag('${_escA(camId||'')}','${_escA(globalId||'')}',this)">Flag</button>`
+        : '';
+      thinkEl.innerHTML =
+          `<div class="chat-bubble">${_esc(text)}</div>`
+        + `<div class="chat-meta">${badge}${cam}${el_t}${flag}<span>${_chatTs()}</span></div>`;
+      _chatScroll();
+      _chatPersist();
+    }
+
+    /** Append a proactive alert bubble from the AlertEngine SSE. */
+    function _chatAlert(alert) {
+      const log = document.getElementById('chatLog');
+      if (!log) return;
+      const icon = alert.severity === 'critical' ? '🔴'
+                 : alert.severity === 'warning'  ? '⚠️'
+                 :                                 'ℹ️';
+      const el = document.createElement('div');
+      el.className = `chat-msg alert-msg ${alert.severity || 'info'}`;
+      el.dataset.alertId = alert.id || '';
+      el.innerHTML =
+          `<div class="chat-bubble">`
+        +   `${icon} ${_esc(alert.message)}`
+        +   `<button class="chat-flag-btn" style="margin-left:8px;display:inline-block;"
+               onclick="_chatDismissAlert('${_escA(alert.id||'')}',this)">×</button>`
+        + `</div>`
+        + `<div class="chat-meta"><span class="chat-badge alert">Alert</span><span>${_chatTs()}</span></div>`;
+      log.appendChild(el);
+      _chatScroll();
+    }
+
+    /** Flag a person event from the chat UI. */
+    async function _chatFlag(camId, globalId, btn) {
+      btn.disabled = true; btn.textContent = '…';
+      try {
+        const r = await fetch('/api/events/flag', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({camera_id: camId, global_id: globalId, event_type: 'manual'})
+        });
+        const d = await r.json();
+        btn.textContent = d.ok ? '✓ Flagged' : '✗';
+      } catch(e) { btn.textContent = '✗ Error'; }
+    }
+
+    /** Dismiss an alert bubble from the chat. */
+    async function _chatDismissAlert(alertId, btn) {
+      const row = btn.closest('.chat-msg');
+      if (row) row.style.opacity = '0.35';
+      try { await fetch(`/api/alerts/${alertId}/dismiss`, {method:'POST'}); } catch(e) {}
+      if (row) setTimeout(() => row.remove(), 400);
+    }
+
+    // ── sessionStorage persistence (text-only, last N non-alert messages) ──────
+    function _chatPersist() {
+      try {
+        const log = document.getElementById('chatLog');
+        if (!log) return;
+        const msgs = [...log.querySelectorAll('.chat-msg:not(.alert-msg)')];
+        const stored = msgs.slice(-_CHAT_MAX_STORED).map(el => ({
+          role: el.classList.contains('user') ? 'user' : 'asst',
+          text: el.querySelector('.chat-bubble')?.textContent?.trim() || '',
+          meta: el.querySelector('.chat-meta')?.textContent?.trim() || '',
+        }));
+        sessionStorage.setItem(_CHAT_STORAGE_KEY, JSON.stringify(stored));
+      } catch(e) {}
+    }
+
+    function _chatRestore() {
+      try {
+        const raw = sessionStorage.getItem(_CHAT_STORAGE_KEY);
+        if (!raw) return;
+        const msgs = JSON.parse(raw);
+        const log = document.getElementById('chatLog');
+        if (!log) return;
+        msgs.forEach(m => {
+          const el = document.createElement('div');
+          el.className = 'chat-msg ' + (m.role === 'user' ? 'user' : 'asst');
+          el.innerHTML = `<div class="chat-bubble">${_esc(m.text)}</div>`
+                       + `<div class="chat-meta" style="color:var(--fg-muted);">${_esc(m.meta)}</div>`;
+          log.appendChild(el);
+        });
+        _chatScroll();
+      } catch(e) {}
+    }
+
+    // ── Alert SSE subscription ────────────────────────────────────────────────
+    let _alertSource = null;
+
+    function _startAlertStream() {
+      if (_alertSource) return;
+      try {
+        _alertSource = new EventSource('/api/stream/alerts');
+        _alertSource.onmessage = (e) => {
+          try {
+            const alert = JSON.parse(e.data);
+            if (!alert.dismissed) _chatAlert(alert);
+          } catch(e2) {}
+        };
+        _alertSource.onerror = () => {
+          _alertSource.close(); _alertSource = null;
+          setTimeout(_startAlertStream, 10000);
+        };
+      } catch(e) {}
+    }
+
+    // Restore chat history and subscribe to alert stream on page ready
+    document.addEventListener('DOMContentLoaded', () => {
+      _chatRestore();
+      _startAlertStream();
+    });
+
     // ── AI Scene Query Bar ─────────────────────────────────────────────────────
     function sqPreset(text) {
       document.getElementById('sqInput').value = text;
@@ -2374,7 +2611,6 @@
       if (!query) return;
 
       // For scene queries: try to extract a camera reference from the text
-      // e.g. "camera 1", "câmera 2", "cam3", "camera_5" → "camera_1"
       let targetCamera = currentCamera;
       if (!isGlobal) {
         const camMatch = query.match(/\b(?:c[aâ]mera?|cam)[_\s-]?(\d+)\b/i);
@@ -2382,37 +2618,38 @@
           targetCamera = 'camera_' + camMatch[1];
         }
         if (!targetCamera) {
-          // No camera selected and none mentioned — show a helpful error
-          const resultEl = document.getElementById('sqResult');
-          const textEl = document.getElementById('sqText');
-          resultEl.style.display = 'block';
-          textEl.textContent = '⚠️ Select a camera first, or mention one (e.g. "camera 1, o que está acontecendo?")';
-          resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          _chatUser(query);
+          const _errEl = _chatThink();
+          _chatFinalize(_errEl,
+            '⚠️ Select a camera first, or mention one (e.g. "camera 1, o que está acontecendo?")',
+            {});
           return;
         }
       }
 
+      // Add user message + thinking placeholder to chat panel
+      _chatUser(query);
+      document.getElementById('sqInput').value = '';
+      const _thinkEl = _chatThink();
+
       const btn = document.getElementById('sqBtn');
-      const resultEl = document.getElementById('sqResult');
+      // Ghost elements — kept for legacy JS compatibility, not visible
       const textEl = document.getElementById('sqText');
       const camLbl = document.getElementById('sqCam');
 
       btn.textContent = '{{ t("vlm.thinking", "Thinking…") }}';
       btn.classList.add('loading');
-      resultEl.style.display = 'block';
       textEl.textContent = '';
       camLbl.textContent = isGlobal ? '{{ t("vlm.all_cameras", "ALL CAMERAS") }}' : targetCamera;
 
-      // Loading indicator: elapsed seconds so the user knows something is happening
       const _startTs = Date.now();
       let dotCount = 0;
       const dotInterval = setInterval(() => {
         const elapsed = ((Date.now() - _startTs) / 1000).toFixed(1);
-        textEl.textContent = '●'.repeat((dotCount++ % 3) + 1) + `  ${elapsed}s`;
+        textEl.textContent = '●'.repeat((dotCount++ % 3) + 1) + '  ' + elapsed + 's';
       }, 350);
-      resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-      _scanningActive = isGlobal;   // scanning animation only for person search
+      _scanningActive = isGlobal;
       _activeCropImages = [];
       if (isGlobal) {
         fetch('/api/vlm/active_crops').then(r => r.json()).then(data => {
@@ -2431,31 +2668,28 @@
       }
 
       async function _pollSearchResult(jobId, textEl, camLbl, btn, dotInterval) {
-        const MAX_POLLS = 600; // 600 × 200ms = 2 min max
+        const MAX_POLLS = 600;
         let _streamingStarted = false;
         for (let i = 0; i < MAX_POLLS; i++) {
-          await new Promise(r => setTimeout(r, 200)); // 200ms polls for snappy streaming
+          await new Promise(r => setTimeout(r, 200));
           try {
-            const res = await fetch(`/api/vlm/search_status/${jobId}`);
+            const res = await fetch('/api/vlm/search_status/' + jobId);
             const data = await res.json();
 
-            // --- Streaming in progress: live-update the card text ---
             if (data.status === 'streaming' && data.result) {
+              _chatStream(data.result);
               if (!_streamingStarted) {
                 clearInterval(dotInterval);
                 _streamingStarted = true;
-                // Open the card immediately with partial text, no typewriter
                 showAIResponse(data.result, data.camera_id || currentCamera, null, true);
               } else {
-                // Patch text in-place without re-running showAIResponse
                 const out = document.getElementById('vrc-text');
                 if (out) out.textContent = data.result;
               }
-              continue; // keep polling
+              continue;
             }
 
             if (data.status !== 'pending') {
-              // Done — stop scanning animation
               clearInterval(dotInterval);
               _scanningActive = false;
               btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
@@ -2465,24 +2699,28 @@
 
               if (data.error || data.found === false) {
                 const msg = data.error || data.result || '{{ t("vlm.not_found", "Not found.") }}';
-                textEl.textContent = '⚠️ ' + msg;
+                const dispMsg = '⚠️ ' + msg;
+                textEl.textContent = dispMsg;
                 if (!data.found && !data.error) camLbl.textContent = '{{ t("vlm.none", "NONE") }}';
+                _chatFinalize(_thinkEl, dispMsg, {elapsed, isVlm: true});
                 if (_streamingStarted) {
                   const out = document.getElementById('vrc-text');
-                  if (out) out.textContent = '⚠️ ' + msg;
+                  if (out) out.textContent = dispMsg;
                   const elEl = document.getElementById('vrc-elapsed');
                   if (elEl) elEl.textContent = elapsed + 's';
                 } else {
-                  showAIResponse('⚠️ ' + msg, camLbl.textContent, elapsed);
+                  showAIResponse(dispMsg, camLbl.textContent, elapsed);
                 }
               } else {
                 const answer = data.result || '{{ t("vlm.no_answer", "(no answer)") }}';
                 const camLabel = data.camera_id || currentCamera;
                 camLbl.textContent = camLabel;
                 textEl.textContent = answer;
-
+                _chatFinalize(_thinkEl, answer, {
+                  elapsed, camLabel, isVlm: true, isFree: false,
+                  globalId: data.global_id || '', camId: data.camera_id || ''
+                });
                 if (_streamingStarted) {
-                  // Card already open — finalize text and stamp elapsed
                   const out = document.getElementById('vrc-text');
                   if (out) out.textContent = answer;
                   const elEl = document.getElementById('vrc-elapsed');
@@ -2492,8 +2730,6 @@
                 } else {
                   showAIResponse(answer, camLabel, elapsed);
                 }
-
-                // Person-search only: switch camera to where the person was found
                 if (data.global_id) {
                   if (data.camera_id && data.camera_id !== currentCamera) {
                     const tabBox = document.getElementById('btn_' + data.camera_id);
@@ -2513,12 +2749,17 @@
         _scanningActive = false;
         btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
         btn.classList.remove('loading');
-        textEl.textContent = '⚠️ {{ t("vlm.search_timeout", "Search timed out.") }}';
+        const timeoutMsg = '⚠️ {{ t("vlm.search_timeout", "Search timed out.") }}';
+        textEl.textContent = timeoutMsg;
+        _chatFinalize(_thinkEl, timeoutMsg, {isVlm: true});
       }
 
       try {
         const endpoint = isGlobal ? '/api/vlm/global_query' : '/api/vlm/scene_query';
-        const payload = isGlobal ? { query } : { camera_id: targetCamera, query };
+        const lang = document.documentElement.lang || navigator.language.slice(0,2) || 'en';
+        const payload = isGlobal
+          ? { query, lang, session_id: _sessionId }
+          : { camera_id: targetCamera, query, lang, session_id: _sessionId };
 
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -2533,31 +2774,50 @@
           _scanningActive = false;
           btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
           btn.classList.remove('loading');
-          textEl.textContent = '\u26a0\ufe0f ' + data.error;
+          const errMsg = '⚠️ ' + data.error;
+          textEl.textContent = errMsg;
+          _chatFinalize(_thinkEl, errMsg, {isVlm: false});
           return;
         }
 
         if (data.job_id) {
-          // Non-blocking: poll for result in background — stream stays live
           _pollSearchResult(data.job_id, textEl, camLbl, btn, dotInterval);
-          // NOTE: we intentionally do NOT await here — the try/finally below
-          // must NOT stop the scanning animation prematurely.
           return;
         }
 
-        // Fallback if no job_id for some reason
+        // Free answer — returned instantly, zero VLM charge
+        if (data.status === 'done' && data.result != null) {
+          clearInterval(dotInterval);
+          _scanningActive = false;
+          btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
+          btn.classList.remove('loading');
+          const elapsed = ((Date.now() - _startTs) / 1000).toFixed(1);
+          const camLabel = data.camera_id || (isGlobal
+            ? '{{ t("vlm.all_cameras", "ALL CAMERAS") }}'
+            : targetCamera);
+          camLbl.textContent = camLabel;
+          textEl.textContent = data.result;
+          _chatFinalize(_thinkEl, data.result, {elapsed, camLabel, isFree: true, isVlm: false});
+          showAIResponse(data.result, camLabel, elapsed);
+          return;
+        }
+
+        // Unexpected response
         clearInterval(dotInterval);
         _scanningActive = false;
         btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
         btn.classList.remove('loading');
-        textEl.textContent = '\u26a0\ufe0f {{ t("vlm.unexpected_response", "Unexpected response from VLM.") }}';
+        const unexpMsg = '⚠️ {{ t("vlm.unexpected_response", "Unexpected response from VLM.") }}';
+        textEl.textContent = unexpMsg;
+        _chatFinalize(_thinkEl, unexpMsg, {});
       } catch (e) {
         clearInterval(dotInterval);
         _scanningActive = false;
-        textEl.textContent = '\u26a0\ufe0f {{ t("vlm.network_error_prefix", "Network error: ") }}' + e.message;
+        const netMsg = '⚠️ {{ t("vlm.network_error_prefix", "Network error: ") }}' + e.message;
+        textEl.textContent = netMsg;
+        _chatFinalize(_thinkEl, netMsg, {});
       } finally {
-        // Button is reset inside _pollSearchResult when the job finishes.
-        // Don't reset it here — the async poller is still running.
+        // Button is reset inside _pollSearchResult when async polling completes.
       }
     }
 
@@ -2570,6 +2830,15 @@
     //   • Poll /api/status at 500ms to keep _vlmTracks fresh for click hit-testing
     //   • bboxOverlay canvas draws ONLY the selection highlight for the clicked track
     //   • Click anywhere on the feed → find which track bbox contains that point
+
+    // ── Session ID for conversation memory (persists across queries in same tab) ─
+    let _sessionId = localStorage.getItem('nort_session_id');
+    if (!_sessionId) {
+      _sessionId = (crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : 'sess-' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+      localStorage.setItem('nort_session_id', _sessionId);
+    }
 
     let _vlmTracks = {};        // { global_id → {x1,y1,x2,y2,frame_w,frame_h,...} }
     let _selectedTrackId = null;

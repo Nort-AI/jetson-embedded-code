@@ -534,5 +534,24 @@
         "preset_busy": "Busy areas",
         "preset_anomalies": "Anomalies",
         "global_search": "Find a person across all cameras (Global Search)"
+    },
+    "chat": {
+        "input_placeholder": "Ask anything about the store...",
+        "instant_badge": "instant",
+        "vlm_badge": "AI",
+        "flag_event": "Flag",
+        "flag_saved": "Event flagged",
+        "flag_note_placeholder": "Add a note (optional)...",
+        "trail_label": "Journey",
+        "history_label": "Today's summary"
+    },
+    "alerts": {
+        "queue_alert": "Queue forming at {{camera}} — {{count}} people waiting",
+        "dwell_alert": "Person {{id}} has been in {{zone}} for {{duration}} min",
+        "capacity_alert": "Store at max capacity — {{count}} people tracked",
+        "loitering": "Person {{id}} has not moved in {{duration}} min ({{zone}})",
+        "visitor_surge": "{{count}} people entered in the last {{window}} minutes",
+        "camera_offline": "{{camera}} appears offline — no frames received",
+        "dismiss": "Dismiss"
     }
 }

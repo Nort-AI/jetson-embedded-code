@@ -184,16 +184,20 @@ def get_active_target():
 
 
 def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str,
-              crop_bounds: "tuple | None" = None) -> None:
+              crop_bounds: "tuple | None" = None,
+              zone: str = "") -> None:
     """Called by camera_processor on each accepted frame for a track.
 
     crop_bounds — optional (cx1, cy1, cx2, cy2) pixel coords of the padded
                   crop in the full frame.  Stored so camera_processor can
                   back-project normalised keypoints onto the video feed.
+    zone        — current zone name for this person (e.g. "caixa_rapido").
+                  Used to track dwell time and build the person trail.
     """
     if crop_bgr is None or crop_bgr.size == 0:
         return
     key = str(global_id)
+    now = time.time()
     # Pre-compute sharpness here so search never recomputes it
     try:
         _gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
@@ -215,13 +219,34 @@ def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str,
         new_pool = new_pool[:_POOL_SIZE]
         best = new_pool[0]  # sharpest crop ever seen for this person
 
+        # ── Zone dwell tracking + trail ──────────────────────────────────────
+        # trail entries: (camera_id, zone_name, entry_ts, exit_ts|None)
+        prev_zone = prev.get("zone", "")
+        prev_zone_entry = prev.get("zone_entry_ts", now)
+        prev_trail = list(prev.get("trail", []))
+
+        if zone and zone != prev_zone:
+            # Person moved to a new zone — close the old one and append to trail
+            if prev_zone:
+                prev_trail.append((prev.get("cam", camera_id), prev_zone,
+                                   prev_zone_entry, now))
+                prev_trail = prev_trail[-10:]  # cap at 10 entries
+            new_zone_entry_ts = now
+        else:
+            # Same zone (or unknown zone) — preserve existing entry timestamp
+            new_zone_entry_ts = prev_zone_entry if prev_zone == zone else now
+
         _track_crops[key] = {
-            "crop":        best["crop"],      # sharpest ever — backward compat for all callers
-            "sharpness":   best["sharpness"], # sharpest ever
-            "all_crops":   new_pool,          # full pool for multi-view VLM search
-            "ts":          time.time(),       # timestamp of most recent observation
-            "cam":         camera_id,
-            "crop_bounds": crop_bounds,
+            "crop":          best["crop"],      # sharpest ever — backward compat
+            "sharpness":     best["sharpness"], # sharpest ever
+            "all_crops":     new_pool,          # full pool for multi-view VLM search
+            "ts":            now,               # timestamp of most recent observation
+            "cam":           camera_id,
+            "crop_bounds":   crop_bounds,
+            # Zone / dwell / journey
+            "zone":          zone,
+            "zone_entry_ts": new_zone_entry_ts,
+            "trail":         prev_trail,
             # preserve pre-computed pose so it survives crop updates
             "pose_jpeg": prev.get("pose_jpeg"),
             "pose_data": prev.get("pose_data"),
@@ -1389,6 +1414,23 @@ def _search_worker() -> None:
                 "If no people are visible, say so clearly."
             )
 
+            # ── Build grounded system prompt ─────────────────────────────────
+            # If a context block was supplied (camera name, area, zones, occupancy),
+            # append it to the scene system prompt so Claude answers with full
+            # spatial awareness of what it is looking at.
+            context_block = job.get("context_block", "")
+            if context_block:
+                scene_system = (
+                    _CLAUDE_SCENE_SYSTEM_PROMPT
+                    + "\n\n"
+                    "--- STORE CONTEXT (use this to ground your answer) ---\n"
+                    + context_block
+                    + "\n---"
+                )
+                logger.debug(f"[VLM Scene Query] Injecting context block:\n{context_block}")
+            else:
+                scene_system = _CLAUDE_SCENE_SYSTEM_PROMPT
+
             try:
                 if _has_claude():
                     # Stream the response — partial text written to job so the UI
@@ -1401,12 +1443,16 @@ def _search_worker() -> None:
                                                       "media_type": "image/jpeg", "data": img_b64}},
                         {"type": "text", "text": scene_prompt},
                     ]
+                    # Inject prior conversation turns so follow-up questions resolve naturally.
+                    # History is text-only; the current turn carries the image.
+                    history_msgs = job.get("history") or []
+                    messages = history_msgs + [{"role": "user", "content": content}]
                     accumulated = ""
                     with client.messages.stream(
                         model="claude-haiku-4-5-20251001",
                         max_tokens=350,
-                        system=_CLAUDE_SCENE_SYSTEM_PROMPT,
-                        messages=[{"role": "user", "content": content}]
+                        system=scene_system,
+                        messages=messages
                     ) as stream:
                         for chunk in stream.text_stream:
                             accumulated += chunk
@@ -1418,7 +1464,7 @@ def _search_worker() -> None:
                         logger.warning("[VLM Scene] Refusal detected — retrying sanitised")
                         res = _run_claude_haiku(
                             job["frame_bgr"], _sanitise_query(scene_prompt),
-                            max_tokens=350, system=_CLAUDE_SCENE_SYSTEM_PROMPT,
+                            max_tokens=350, system=scene_system,
                             max_dim=640, quality=80,
                         )
                 else:
@@ -1429,6 +1475,7 @@ def _search_worker() -> None:
                         "status": "done", "found": True,
                         "result": res, "ts": time.time()
                     })
+                _save_to_session(job, res)
             except Exception as e:
                 logger.error(f"[VLM Scene Query] Error: {e}", exc_info=True)
                 with _search_jobs_lock:
@@ -1476,6 +1523,7 @@ def _search_worker() -> None:
                     "camera_id": best_cam, "global_id": str(best_gid),
                     "result": clip_msg, "ts": time.time(),
                 })
+            _save_to_session(job, clip_msg)
             found = True
 
         # ── STAGE 2: Multi-view VLM verification ────────────────────────────────
@@ -1618,6 +1666,7 @@ def _search_worker() -> None:
                                             "camera_id": cam, "global_id": str(gid),
                                             "result": result_text, "ts": time.time(),
                                         })
+                                    _save_to_session(job, result_text)
                                     found = True
                                 else:
                                     logger.info(f"[VLM Search] Best person score {score} < 5")
@@ -1648,13 +1697,15 @@ def _search_worker() -> None:
                         logger.warning(f"[VLM Search] Moondream error {cam}_{gid}: {e}")
 
         if not found:
+            not_found_msg = "Target not found in any visible camera streams."
             with _search_jobs_lock:
                 if job_id in _search_jobs:
                     _search_jobs[job_id].update({
                         "status": "done", "found": False,
-                        "result": "Target not found in any visible camera streams.",
+                        "result": not_found_msg,
                         "ts": time.time(),
                     })
+            _save_to_session(job, not_found_msg)
 
         # Housekeeping
         with _search_jobs_lock:
@@ -1669,8 +1720,42 @@ _search_worker_thread = threading.Thread(target=_search_worker, daemon=True, nam
 _search_worker_thread.start()
 
 
-def submit_scene_query(camera_id: str, frame_bgr: "np.ndarray", query: str) -> str:
-    """Submit a single-frame scene query to the background search worker."""
+def _save_to_session(job: dict, result_text: str) -> None:
+    """Append a completed Q/A exchange to the session if session_id is present.
+
+    Called from _search_worker (background thread) — must not raise.
+    """
+    session_id = job.get("session_id", "")
+    query = job.get("query", "")
+    if not session_id or not query or not result_text:
+        return
+    try:
+        from core import conversation as _conv
+        _conv.get_or_create_session(session_id).append(query, result_text)
+    except Exception:
+        pass
+
+
+def submit_scene_query(camera_id: str, frame_bgr: "np.ndarray", query: str,
+                       context_block: str = "",
+                       history: list = None,
+                       session_id: str = "") -> str:
+    """Submit a single-frame scene query to the background search worker.
+
+    Args:
+        camera_id:      Which camera this frame belongs to.
+        frame_bgr:      Raw (or VLM-annotated) BGR frame to analyse.
+        query:          Operator's natural-language question.
+        context_block:  Optional grounded context from store_context — camera name,
+                        area description, active zone names, current people count.
+                        Injected into the system prompt so Claude answers precisely.
+        history:        Optional list of prior {role, content} dicts from
+                        ConversationSession.build_messages_prefix(). When provided,
+                        injected before the current user message so follow-up
+                        questions resolve naturally.
+        session_id:     Client session UUID. If given, the completed exchange is
+                        saved back to the session for future context.
+    """
     job_id = _uuid.uuid4().hex[:8]
     with _search_jobs_lock:
         _expire_old_jobs()
@@ -1685,22 +1770,29 @@ def submit_scene_query(camera_id: str, frame_bgr: "np.ndarray", query: str) -> s
         }
 
     _search_queue.put({
-        "job_id": job_id,
-        "query": query,
-        "is_scene": True,
-        "camera_id": camera_id,
-        "frame_bgr": frame_bgr
+        "job_id":       job_id,
+        "query":        query,
+        "is_scene":     True,
+        "camera_id":    camera_id,
+        "frame_bgr":    frame_bgr,
+        "context_block": context_block,
+        "history":      history or [],
+        "session_id":   session_id,
     })
     return job_id
 
 
-def submit_search(query: str, candidates: list) -> str:
+def submit_search(query: str, candidates: list,
+                  history: list = None,
+                  session_id: str = "") -> str:
     """
     Enqueue a background search job.
 
     Args:
-        query: Natural language description to search for.
-        candidates: list of (global_id, crop_bgr_numpy, camera_id)
+        query:      Natural language description to search for.
+        candidates: list of (global_id, crop_bgr_numpy, camera_id[, sharpness])
+        history:    Optional prior conversation turns (text-only) for session context.
+        session_id: Client session UUID for saving the completed exchange.
 
     Returns:
         job_id string — poll get_search_result(job_id) for the result.
@@ -1709,7 +1801,13 @@ def submit_search(query: str, candidates: list) -> str:
     with _search_jobs_lock:
         _search_jobs[job_id] = {"status": "pending", "found": False, "result": "", "ts": time.time()}
         _expire_old_jobs()
-    _search_queue.put({"job_id": job_id, "query": query, "candidates": candidates})
+    _search_queue.put({
+        "job_id":     job_id,
+        "query":      query,
+        "candidates": candidates,
+        "history":    history or [],
+        "session_id": session_id,
+    })
     logger.info(f"[VLM Search] Queued job {job_id} ({len(candidates)} candidates)")
     return job_id
 

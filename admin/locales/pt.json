@@ -534,5 +534,24 @@
         "preset_busy": "Locais movimentados",
         "preset_anomalies": "Anomalias",
         "global_search": "Procurar por uma pessoa em todas as câmeras usando IA"
+    },
+    "chat": {
+        "input_placeholder": "Pergunte qualquer coisa sobre a loja...",
+        "instant_badge": "instante",
+        "vlm_badge": "IA",
+        "flag_event": "Sinalizar",
+        "flag_saved": "Evento sinalizado",
+        "flag_note_placeholder": "Adicionar nota (opcional)...",
+        "trail_label": "Percurso",
+        "history_label": "Resumo de hoje"
+    },
+    "alerts": {
+        "queue_alert": "Fila se formando em {{camera}} — {{count}} pessoas aguardando",
+        "dwell_alert": "Pessoa {{id}} está em {{zone}} há {{duration}} min",
+        "capacity_alert": "Loja na capacidade máxima — {{count}} pessoas rastreadas",
+        "loitering": "Pessoa {{id}} não se moveu há {{duration}} min ({{zone}})",
+        "visitor_surge": "{{count}} pessoas entraram nos últimos {{window}} minutos",
+        "camera_offline": "{{camera}} parece offline — sem frames recebidos",
+        "dismiss": "Dispensar"
     }
 }

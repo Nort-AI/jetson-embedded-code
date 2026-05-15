@@ -456,6 +456,12 @@ def set_latest_raw_frame(camera_id: str, bgr_frame) -> None:
     """
     import cv2 as _cv2
     now = time.monotonic()
+    # Notify alert engine that this camera is alive (camera_offline detection)
+    try:
+        from core import alert_engine as _ae
+        _ae.ping_camera(camera_id)
+    except Exception:
+        pass
     if now - _last_raw_encode_ts.get(camera_id, 0) < _RAW_FRAME_ENCODE_INTERVAL:
         return
     try:
@@ -4382,17 +4388,62 @@ def api_vlm_select():
 def api_vlm_scene_query():
     """
     Run a free-form VLM query against the latest frame of a camera.
-    Body: {"camera_id": "camera_1", "query": "Describe the scene"}
-    Returns: {"result": "...", "camera_id": "..."}
+
+    Body: {"camera_id": "camera_1", "query": "Describe the scene", "lang": "pt"}
+
+    Flow:
+      1. Classify the query — is it answerable from tracker state alone?
+      2. If data-only (occupancy counts, person locations), answer for FREE
+         with no VLM call and return immediately.
+      3. Otherwise decode the raw frame, optionally render VLM-friendly
+         zone/person annotations, build a grounded context block (camera name,
+         area description, zones, current occupancy), then submit to the
+         streaming scene worker.
     """
     from flask import request as _req, jsonify as _jsonify
     data = _req.get_json(silent=True) or {}
-    camera_id = data.get("camera_id", "")
-    query = (data.get("query") or "").strip()
+    camera_id  = data.get("camera_id", "")
+    query      = (data.get("query") or "").strip()
+    lang       = data.get("lang", "en")
+    session_id = (data.get("session_id") or "").strip()
     if not query:
         return _jsonify({"error": "query is required"}), 400
 
-    # Get the latest annotated frame (JPEG bytes) for the requested camera
+    # ── 0. Load conversation session (history for follow-ups) ─────────────────
+    history_msgs: list = []
+    try:
+        from core import conversation as _conv
+        _sess = _conv.get_or_create_session(session_id) if session_id else None
+        if _sess:
+            history_msgs = _sess.build_messages_prefix()
+    except Exception:
+        _sess = None
+
+    # ── 1. Classify & attempt free data answer ────────────────────────────────
+    _cls = {}
+    try:
+        from core import store_context as _sc
+        _cls = _sc.classify_query(query)
+        # If the query doesn't mention a specific camera, attach the one in the request
+        if not _cls.get("camera_id") and camera_id:
+            _cls["camera_id"] = camera_id
+        free_answer = _sc.answer_data_query(query, _cls, lang=lang)
+        if free_answer is not None:
+            # Answered purely from tracker state — no VLM charge; save to session
+            if _sess:
+                _sess.append(query, free_answer)
+            return _jsonify({
+                "job_id":      None,
+                "status":      "done",
+                "found":       True,
+                "result":      free_answer,
+                "camera_id":   camera_id,
+                "free_answer": True,
+            })
+    except Exception as _sc_err:
+        pass  # store_context failure is non-fatal; continue to VLM
+
+    # ── 2. Decode raw camera frame ────────────────────────────────────────────
     frame_bytes = _latest_raw_frames.get(camera_id) or _latest_frames.get(camera_id)
     if not frame_bytes:
         return _jsonify({"error": f"No frame available for camera '{camera_id}' — is tracking running?"}), 404
@@ -4406,13 +4457,37 @@ def api_vlm_scene_query():
     except Exception as e:
         return _jsonify({"error": f"Frame decode error: {e}"}), 500
 
+    # ── 3. Optionally render VLM-optimised frame (zone outlines + ID circles) ─
+    # Applied only for scene/count/zone queries so Claude sees spatial layout.
+    # Person-search crops always use the raw frame to avoid annotation noise.
+    _qtype = _cls.get("type", "scene")
+    if _qtype in ("scene", "store"):
+        try:
+            from core import store_context as _sc2
+            frame_bgr = _sc2.render_vlm_frame(frame_bgr, camera_id)
+        except Exception:
+            pass  # best-effort; fall back to raw frame
+
+    # ── 4. Build grounded context block ──────────────────────────────────────
+    context_block = ""
+    try:
+        from core import store_context as _sc3
+        context_block = _sc3.build_camera_context_block(camera_id)
+    except Exception:
+        pass
+
+    # ── 5. Submit to VLM worker (with history for follow-up context) ──────────
     try:
         from core import vlm_analyst
         if not vlm_analyst.is_enabled():
             return _jsonify({"error": 'VLM is disabled — set "vlm": {"enabled": true} in device.json'}), 503
-        
-        # Submit non-blocking job
-        job_id = vlm_analyst.submit_scene_query(camera_id, frame_bgr, query)
+
+        job_id = vlm_analyst.submit_scene_query(
+            camera_id, frame_bgr, query,
+            context_block=context_block,
+            history=history_msgs,
+            session_id=session_id,
+        )
     except Exception as e:
         return _jsonify({"error": str(e)}), 500
 
@@ -4492,15 +4567,49 @@ def api_settings_pin():
 def api_vlm_global_query():
     """
     Search across ALL active cameras — non-blocking.
-    Body: {"query": "find the man in red"}
+
+    Body: {"query": "find the man in red", "lang": "pt"}
     Returns: {"job_id": "...", "status": "queued", "candidate_count": N}
     Poll /api/vlm/search_status/<job_id> for the result.
+
+    For data-only queries (person location, occupancy counts) this endpoint
+    returns immediately from tracker state with no VLM call.
     """
     from flask import request as _req, jsonify as _jsonify
     data = _req.get_json(silent=True) or {}
-    query = (data.get("query") or "").strip()
+    query      = (data.get("query") or "").strip()
+    lang       = data.get("lang", "en")
+    session_id = (data.get("session_id") or "").strip()
     if not query:
         return _jsonify({"error": "query is required"}), 400
+
+    # ── Load conversation session ─────────────────────────────────────────────
+    history_msgs: list = []
+    try:
+        from core import conversation as _conv
+        _sess = _conv.get_or_create_session(session_id) if session_id else None
+        if _sess:
+            history_msgs = _sess.build_messages_prefix()
+    except Exception:
+        _sess = None
+
+    # ── Free data answer (no VLM) ─────────────────────────────────────────────
+    try:
+        from core import store_context as _sc
+        _cls = _sc.classify_query(query)
+        free_answer = _sc.answer_data_query(query, _cls, lang=lang)
+        if free_answer is not None:
+            if _sess:
+                _sess.append(query, free_answer)
+            return _jsonify({
+                "job_id":      None,
+                "status":      "done",
+                "found":       True,
+                "result":      free_answer,
+                "free_answer": True,
+            })
+    except Exception:
+        pass  # fall through to VLM search
 
     if not _latest_raw_frames:
         return _jsonify({"error": "No cameras available to search."}), 404
@@ -4527,7 +4636,11 @@ def api_vlm_global_query():
         return _jsonify({"found": False, "status": "done", "result": "No one has been seen recently to search."})
 
     # Submit job to background worker — returns instantly
-    job_id = vlm_analyst.submit_search(query, search_candidates)
+    job_id = vlm_analyst.submit_search(
+        query, search_candidates,
+        history=history_msgs,
+        session_id=session_id,
+    )
     return _jsonify({"job_id": job_id, "status": "queued", "candidate_count": len(search_candidates)})
 
 
@@ -4707,6 +4820,180 @@ def api_stream_tracks():
                        'Cache-Control': 'no-cache',
                        'X-Accel-Buffering': 'no'  # Disable nginx buffering if present
                    })
+
+
+# ── Proactive Alert endpoints ─────────────────────────────────────────────────
+
+@app.route("/api/stream/alerts")
+@requires_auth
+def api_stream_alerts():
+    """
+    Server-Sent Events endpoint for proactive alert notifications.
+
+    Sends the last 10 alerts immediately on connect (backlog), then streams
+    new alerts as they fire from the AlertEngine daemon thread.
+
+    Client usage:
+        const es = new EventSource('/api/stream/alerts');
+        es.onmessage = (e) => {
+            const alert = JSON.parse(e.data);
+            // alert: {id, type, severity, camera_id, message, ts, data, dismissed}
+        };
+    """
+    from dataclasses import asdict as _asdict
+
+    def generate():
+        try:
+            from gevent import sleep as _gsleep
+        except ImportError:
+            from time import sleep as _gsleep
+
+        try:
+            from core import alert_engine as _ae
+        except Exception:
+            yield ": alert_engine unavailable\n\n"
+            return
+
+        # Send backlog of recent alerts immediately on connect
+        for a in _ae.get_recent_alerts(10):
+            try:
+                yield f"data: {_json.dumps(_asdict(a))}\n\n"
+            except Exception:
+                pass
+
+        q = _ae.get_alert_queue()
+        while True:
+            try:
+                # Non-blocking get with a timeout so we can send keepalives
+                try:
+                    event = q.get(timeout=25)
+                    yield f"data: {_json.dumps(_asdict(event))}\n\n"
+                except Exception:
+                    # timeout — send keepalive comment so proxy doesn't close connection
+                    yield ": keepalive\n\n"
+                _gsleep(0)  # cooperative yield
+            except GeneratorExit:
+                break
+            except Exception as e:
+                app.logger.debug(f"[AlertSSE] {e}")
+                _gsleep(0.1)
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/api/alerts")
+@requires_auth
+def api_get_alerts():
+    """Return the last 50 alerts as JSON (for page load / polling fallback)."""
+    from dataclasses import asdict as _asdict
+    try:
+        from core import alert_engine as _ae
+        alerts = [_asdict(a) for a in _ae.get_recent_alerts(50)]
+    except Exception:
+        alerts = []
+    return jsonify(alerts)
+
+
+@app.route("/api/alerts/<alert_id>/dismiss", methods=["POST"])
+@requires_auth
+def api_dismiss_alert(alert_id: str):
+    """Mark an alert as dismissed (sets dismissed=True in the in-memory ring buffer)."""
+    try:
+        from core import alert_engine as _ae
+        _ae.dismiss_alert(alert_id)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Event Escalation (flagged events) ─────────────────────────────────────────
+
+@app.route("/api/events/flag", methods=["POST"])
+@requires_auth
+def api_flag_event():
+    """
+    Flag an event for operator review.
+
+    Body (all optional):
+      camera_id   — camera where the event occurred
+      global_id   — person global ID (used to auto-fetch JPEG snapshot)
+      event_type  — "manual" | alert type key  (default: "manual")
+      severity    — "info" | "warning" | "critical"  (default: "info")
+      note        — free-text operator note
+      snapshot_b64 — pre-encoded base64 JPEG (omit to auto-fetch from tracker)
+
+    Returns: {"id": "...", "ok": True}
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        from data import events_db as _edb
+        event_id = _edb.flag_event(
+            camera_id    = data.get("camera_id", ""),
+            global_id    = data.get("global_id", ""),
+            event_type   = data.get("event_type", "manual"),
+            note         = data.get("note", ""),
+            severity     = data.get("severity", "info"),
+            snapshot_b64 = data.get("snapshot_b64"),  # None → auto-fetch
+        )
+        if not event_id:
+            return jsonify({"ok": False, "error": "DB write failed"}), 500
+        return jsonify({"id": event_id, "ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/events", methods=["GET"])
+@requires_auth
+def api_list_events():
+    """
+    Return flagged events, newest first.
+
+    Query params:
+      camera   — filter by camera_id
+      reviewed — "true" | "false" (omit for all)
+      limit    — max results (default 100, max 500)
+    """
+    camera_id = request.args.get("camera") or None
+    reviewed_raw = request.args.get("reviewed")
+    reviewed = None
+    if reviewed_raw is not None:
+        reviewed = reviewed_raw.lower() == "true"
+    limit = min(int(request.args.get("limit", 100)), 500)
+
+    try:
+        from data import events_db as _edb
+        events = _edb.list_events(camera_id=camera_id, reviewed=reviewed, limit=limit)
+        return jsonify(events)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/events/<event_id>/review", methods=["POST"])
+@requires_auth
+def api_review_event(event_id: str):
+    """Mark a flagged event as reviewed."""
+    try:
+        from data import events_db as _edb
+        ok = _edb.mark_reviewed(event_id)
+        return jsonify({"ok": ok})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/events/<event_id>", methods=["DELETE"])
+@requires_auth
+def api_delete_event(event_id: str):
+    """Permanently delete a flagged event."""
+    try:
+        from data import events_db as _edb
+        ok = _edb.delete_event(event_id)
+        return jsonify({"ok": ok})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/clip/<track_id>")

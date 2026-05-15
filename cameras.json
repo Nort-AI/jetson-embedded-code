@@ -1,38 +1,50 @@
 {
   "camera_1": {
-    "name": "Camera 1",
+    "name": "Entrada",
     "source": "videos_1080p/videos_loja_real/CH04.mp4",
     "type": "mp4",
-    "enabled": true
+    "enabled": true,
+    "area_description": "Main store entrance — front door and customer entry flow",
+    "aliases": ["entrada", "front door", "entry", "entrance"]
   },
   "camera_2": {
-    "name": "Camera 2",
+    "name": "Corredor Central",
     "source": "videos_1080p/videos_loja_real/CH05.mp4",
     "type": "mp4",
-    "enabled": true
+    "enabled": true,
+    "area_description": "Central aisle — main shopping corridor connecting entrance to checkout",
+    "aliases": ["corredor", "aisle", "center", "central"]
   },
   "camera_3": {
-    "name": "Camera 3",
+    "name": "Caixas",
     "source": "videos_1080p/videos_loja_real/CH06.mp4",
     "type": "mp4",
-    "enabled": true
+    "enabled": true,
+    "area_description": "Checkout area — POS registers and payment queue",
+    "aliases": ["caixa", "checkout", "pagamento", "payment", "register"]
   },
   "camera_4": {
-    "name": "Camera 4",
+    "name": "Fundo da Loja",
     "source": "videos_1080p/videos_loja_real/CH07.mp4",
     "type": "mp4",
-    "enabled": false
+    "enabled": false,
+    "area_description": "Back of store — stockroom access and cold section",
+    "aliases": ["fundo", "back", "cold section", "laticínios", "freezer"]
   },
   "camera_5": {
-    "name": "Camera 5",
+    "name": "Seção de Bebidas",
     "source": "videos_1080p/videos_loja_real/CH08.mp4",
     "type": "mp4",
-    "enabled": true
+    "enabled": true,
+    "area_description": "Beverages section — drinks aisle and refrigerated display",
+    "aliases": ["bebidas", "drinks", "beverages", "refrigerado"]
   },
   "camera_6": {
-    "name": "Camera 6",
+    "name": "Saída",
     "source": "videos_1080p/videos_loja_real/CH09.mp4",
     "type": "mp4",
-    "enabled": true
+    "enabled": true,
+    "area_description": "Store exit — rear exit door and bag check area",
+    "aliases": ["saída", "exit", "saida", "rear door"]
   }
 }

@@ -920,6 +920,12 @@ def main():
         daemon=True,
         name="LocalAdmin",
     ).start()
+
+    # ── Start proactive alert engine ─────────────────────────────────────────
+    from core import alert_engine as _alert_engine_mod
+    _alert_engine_mod.start_alert_engine()
+    logger.info("[Run] Alert engine started.")
+
     def _get_local_ip():
         import socket
         try:
