@@ -4240,7 +4240,12 @@ def api_vlm_crop(track_id: str):
         with _va._track_crops_lock:
             entry = _va._track_crops.get(str(track_id))
             # Use latest_crop (most recent frame) for pose — same as get_crop_jpeg
-            crop_for_pose = (entry.get("latest_crop") or entry["crop"]).copy() if entry else None
+            # NOTE: "or" is illegal on numpy arrays — must use explicit None check.
+            if entry:
+                _lc = entry.get("latest_crop")
+                crop_for_pose = (_lc if _lc is not None else entry["crop"]).copy()
+            else:
+                crop_for_pose = None
             if entry:
                 entry["pose_jpeg"] = None   # discard stale skeleton
                 entry["pose_ts"]   = 0.0    # mark as not yet computed

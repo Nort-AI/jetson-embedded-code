@@ -37,7 +37,6 @@ _LOAD_FAILED = object()   # distinct from None (= not tried yet)
 
 _mp_model      = None   # lazily initialised; set to _LOAD_FAILED on import error
 _mp_lock       = threading.Lock()
-_MP_COMPLEXITY = 2      # model_complexity used to build _mp_model — change forces reload
 
 _yolo_model    = None
 _yolo_lock     = threading.Lock()
@@ -82,7 +81,9 @@ def _get_mp():
             import mediapipe as mp
             _mp_model = mp.solutions.pose.Pose(
                 static_image_mode=True,
-                model_complexity=2,        # full accuracy (was 1); ~30% slower but far better keypoints
+                # complexity=2 (heavy model) segfaults on Jetson ARM with this mediapipe build.
+                # complexity=1 (lite+full) is stable and still significantly better than 0.
+                model_complexity=1,
                 smooth_landmarks=False,
                 min_detection_confidence=0.4,
                 min_tracking_confidence=0.4,

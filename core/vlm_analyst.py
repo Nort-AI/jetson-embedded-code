@@ -364,7 +364,9 @@ def get_crop_jpeg(global_id: str, quality: int = 85) -> Optional[bytes]:
             return None
         # Prefer latest_crop (added in current session); fall back to crop for
         # entries saved before this field existed (e.g. pre-restart state).
-        crop = (entry.get("latest_crop") or entry["crop"]).copy()
+        # NOTE: "or" is illegal on numpy arrays — must use explicit None check.
+        _lc = entry.get("latest_crop")
+        crop = (_lc if _lc is not None else entry["crop"]).copy()
     try:
         ok, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, quality])
         return buf.tobytes() if ok else None
