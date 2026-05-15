@@ -1284,16 +1284,36 @@
     }
 
     /* ── Chat Panel ── */
+    #chatPanel {
+      border-top: 1px solid var(--border);
+      margin-top: 4px;
+      padding-top: 10px;
+    }
+    #chatPanelHeader {
+      display: flex; align-items: center; gap: 6px;
+      font-size: .72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--primary); margin-bottom: 8px;
+    }
+    #chatPanelHeader .chat-pulse {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 0 0 rgba(99,102,241,.6);
+      animation: chatPulse 2s infinite;
+    }
+    @keyframes chatPulse {
+      0%   { box-shadow: 0 0 0 0   rgba(99,102,241,.6); }
+      70%  { box-shadow: 0 0 0 6px rgba(99,102,241,0);  }
+      100% { box-shadow: 0 0 0 0   rgba(99,102,241,0);  }
+    }
     #chatLog {
-      max-height: 310px; overflow-y: auto;
+      min-height: 48px; max-height: 300px; overflow-y: auto;
       display: flex; flex-direction: column; gap: 7px;
-      padding: 4px 0 2px; margin-bottom: 6px;
+      padding: 2px 0 2px;
       scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.1) transparent;
     }
-    #chatLog:empty::before {
-      content: "Ask anything about the store — people, zones, trends, alerts…";
-      font-size: .78rem; color: var(--fg-muted); font-style: italic;
-      padding: 6px 2px; opacity: .6;
+    #chatPlaceholder {
+      font-size: .8rem; color: var(--fg-muted); font-style: italic; opacity: .65;
+      padding: 6px 2px;
     }
     .chat-msg { display: flex; flex-direction: column; gap: 2px; max-width: 100%; }
     .chat-msg.user  { align-items: flex-end; }
@@ -1986,7 +2006,15 @@
                   t('vlm.ask_ai', 'Ask AI ✦') }}</button>
               </div>
               <!-- Chat log: persistent scrollable Q&A history -->
-              <div id="chatLog"></div>
+              <div id="chatPanel">
+                <div id="chatPanelHeader">
+                  <span class="chat-pulse"></span>
+                  Store Intelligence Chat
+                </div>
+                <div id="chatLog">
+                  <div id="chatPlaceholder">Ask anything — people, zones, trends, alerts…</div>
+                </div>
+              </div>
               <!-- Ghost elements for legacy JS compat (never visible) -->
               <div id="sqResult" style="display:none;"><span id="sqCam"></span><div id="sqText"></div></div>
             </div>
@@ -2426,10 +2454,17 @@
       if (log) log.scrollTop = log.scrollHeight;
     }
 
+    /** Hide the static placeholder on first message. */
+    function _chatHidePlaceholder() {
+      const p = document.getElementById('chatPlaceholder');
+      if (p) p.style.display = 'none';
+    }
+
     /** Append a user message bubble. */
     function _chatUser(text) {
       const log = document.getElementById('chatLog');
       if (!log) return;
+      _chatHidePlaceholder();
       const el = document.createElement('div');
       el.className = 'chat-msg user';
       el.innerHTML = `<div class="chat-bubble">${_esc(text)}</div>`
@@ -2496,6 +2531,7 @@
     function _chatAlert(alert) {
       const log = document.getElementById('chatLog');
       if (!log) return;
+      _chatHidePlaceholder();
       const icon = alert.severity === 'critical' ? '🔴'
                  : alert.severity === 'warning'  ? '⚠️'
                  :                                 'ℹ️';
@@ -2554,8 +2590,10 @@
         const raw = sessionStorage.getItem(_CHAT_STORAGE_KEY);
         if (!raw) return;
         const msgs = JSON.parse(raw);
+        if (!msgs || !msgs.length) return;
         const log = document.getElementById('chatLog');
         if (!log) return;
+        _chatHidePlaceholder();
         msgs.forEach(m => {
           const el = document.createElement('div');
           el.className = 'chat-msg ' + (m.role === 'user' ? 'user' : 'asst');
