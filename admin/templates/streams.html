@@ -1290,7 +1290,11 @@
       padding: 4px 0 2px; margin-bottom: 6px;
       scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.1) transparent;
     }
-    #chatLog:empty { display: none; }
+    #chatLog:empty::before {
+      content: "Ask anything about the store — people, zones, trends, alerts…";
+      font-size: .78rem; color: var(--fg-muted); font-style: italic;
+      padding: 6px 2px; opacity: .6;
+    }
     .chat-msg { display: flex; flex-direction: column; gap: 2px; max-width: 100%; }
     .chat-msg.user  { align-items: flex-end; }
     .chat-msg.asst,
