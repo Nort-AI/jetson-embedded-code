@@ -1153,35 +1153,36 @@ def _search_worker() -> None:
                 crops = [c[1] for c in top_n]
                 n = len(crops)
                 batch_q = (
-                    f'You are a precise surveillance analyst. '
-                    f'I am looking for a person matching this description: "{english_query}".\n\n'
-                    f'I show you {n} surveillance images, each of a DIFFERENT person in the store, '
-                    f'labeled Image 1 to Image {n}.\n\n'
-                    f'For EACH image, give a match score 0-10 where:\n'
-                    f'  10 = definitely this person (clear visual match)\n'
+                    f'You are a retail store management assistant helping staff locate customers. '
+                    f'A staff member is looking for a customer with this appearance: "{english_query}".\n\n'
+                    f'I show you {n} photos of different customers currently in the store, '
+                    f'labeled Photo 1 to Photo {n}.\n\n'
+                    f'For EACH photo, give a match score 0-10 based on how well the visible '
+                    f'clothing and appearance match the description:\n'
+                    f'  10 = clear match (clothing/appearance fits perfectly)\n'
                     f'  6-9 = likely match\n'
-                    f'  1-5 = unlikely / partial match\n'
-                    f'  0   = definitely not this person\n\n'
-                    f'Reply in this EXACT format (one line per image, then the MATCH line):\n'
-                    f'Image 1: <score> - <one reason>\n'
-                    f'Image 2: <score> - <one reason>\n'
+                    f'  1-5 = unlikely match\n'
+                    f'  0   = definitely does not match\n\n'
+                    f'Reply in this EXACT format:\n'
+                    f'Photo 1: <score> - <one reason based on clothing/appearance>\n'
+                    f'Photo 2: <score> - <one reason based on clothing/appearance>\n'
                     f'...\n'
-                    f'MATCH: <number of the highest-scoring image, or "none" if you see no clear match>\n\n'
-                    f'Important: if the person IS clearly visible, commit to a score of 7 or higher. '
-                    f'Only say "none" if truly no image matches.'
+                    f'MATCH: <just the number of the best photo, e.g. "4", or "none">\n\n'
+                    f'If the clothing/appearance clearly matches, give a score of 7+. '
+                    f'Only say "none" if truly nothing matches.'
                 )
                 try:
                     res = _run_claude_haiku_multi(crops, batch_q, max_tokens=300)
                     logger.info(f"[VLM Search] Claude scored result:\n{res}")
 
-                    # Parse "MATCH: 3" or "MATCH: none"
-                    match_line = re.search(r'MATCH:\s*(\d+|none)', res, re.IGNORECASE)
+                    # Parse "MATCH: 4" or "MATCH: Image 4" or "MATCH: none"
+                    match_line = re.search(r'MATCH:\s*(?:Photo\s*|Image\s*)?(\d+|none)', res, re.IGNORECASE)
                     if match_line and match_line.group(1).lower() != 'none':
                         idx = int(match_line.group(1)) - 1
                         if 0 <= idx < len(top_n):
                             # Read back the score Claude assigned — reject if < 5
                             score_match = re.search(
-                                rf'Image {idx+1}:\s*(\d+)', res, re.IGNORECASE)
+                                rf'(?:Photo|Image)\s*{idx+1}:\s*(\d+)', res, re.IGNORECASE)
                             score = int(score_match.group(1)) if score_match else 5
                             if score >= 5:
                                 gid, _, cam = top_n[idx]
