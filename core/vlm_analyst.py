@@ -204,12 +204,24 @@ def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str,
         prev = _track_crops.get(key) or {}
         if key in _track_crops:
             _track_crops.move_to_end(key)
+
+        # ── Multi-crop pool: keep the N sharpest crops ever seen for this person ──
+        # Storing the latest crop only causes search to use blurry/far/back-view images
+        # when a sharp close-up was captured moments earlier. This fixes that.
+        _POOL_SIZE = 3
+        prev_pool = prev.get("all_crops", [])
+        new_pool = prev_pool + [{"crop": crop_bgr.copy(), "sharpness": _sharpness}]
+        new_pool.sort(key=lambda x: x["sharpness"], reverse=True)
+        new_pool = new_pool[:_POOL_SIZE]
+        best = new_pool[0]  # sharpest crop ever seen for this person
+
         _track_crops[key] = {
-            "crop":        crop_bgr.copy(),
-            "ts":          time.time(),
+            "crop":        best["crop"],      # sharpest ever — backward compat for all callers
+            "sharpness":   best["sharpness"], # sharpest ever
+            "all_crops":   new_pool,          # full pool for multi-view VLM search
+            "ts":          time.time(),       # timestamp of most recent observation
             "cam":         camera_id,
             "crop_bounds": crop_bounds,
-            "sharpness":   _sharpness,           # pre-computed, used by search sort
             # preserve pre-computed pose so it survives crop updates
             "pose_jpeg": prev.get("pose_jpeg"),
             "pose_data": prev.get("pose_data"),
@@ -217,7 +229,7 @@ def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str,
         }
         while len(_track_crops) > MAX_CROPS:
             _track_crops.popitem(last=False)
-    # Enqueue background pose estimation (respects _POSE_MIN_INTERVAL)
+    # Enqueue background pose on latest frame (for live overlay accuracy)
     _enqueue_pose(key, crop_bgr)
 
 
@@ -1445,115 +1457,181 @@ def _search_worker() -> None:
 
         found = False
 
-        # Fast path: CLIP very confident AND pool large enough to be reliable
-        if top_clip_score >= _CLIP_FAST_THRESHOLD and len(sorted_candidates) >= 5 and sorted_candidates:
+        # ── STAGE 1: CLIP fast-path ──────────────────────────────────────────────
+        # Only short-circuit when CLIP is VERY confident (0.30 threshold, not 0.22).
+        # A lower threshold causes false positives that bypass VLM verification.
+        _CLIP_CONFIDENT = 0.30
+        if top_clip_score >= _CLIP_CONFIDENT and len(sorted_candidates) >= 6 and sorted_candidates:
             best = sorted_candidates[0]
             best_gid, best_cam = best[0], best[2]
             logger.info(f"[VLM Search] CLIP fast-path: {best_cam}_{best_gid} score={top_clip_score:.3f}")
             clip_msg = (
-                f"Encontrado com alta confiança (score CLIP {top_clip_score:.2f}) — câmera {best_cam}"
+                f"Encontrado com alta confiança (CLIP {top_clip_score:.2f}) — câmera {best_cam}"
                 if user_lang == "pt" else
-                f"High-confidence match (CLIP score {top_clip_score:.2f}) — camera {best_cam}"
+                f"High-confidence match (CLIP {top_clip_score:.2f}) — camera {best_cam}"
             )
             with _search_jobs_lock:
                 _search_jobs[job_id].update({
                     "status": "done", "found": True,
                     "camera_id": best_cam, "global_id": str(best_gid),
-                    "result": clip_msg,
-                    "ts": time.time(),
+                    "result": clip_msg, "ts": time.time(),
                 })
             found = True
 
-        # ── STAGE 2: VLM verification — multi-image batch scoring ──
+        # ── STAGE 2: Multi-view VLM verification ────────────────────────────────
+        # Key insight: candidates only carry ONE crop (latest), but _track_crops stores
+        # the top-3 sharpest crops per person (since the save_crop multi-pool fix).
+        # Here we re-fetch those best crops so Claude sees the clearest image of each
+        # person, regardless of what order they happened to be tracked.
         if not found:
-            # Sort by pre-computed sharpness so Claude sees the clearest images first
-            candidates_scored = sorted(
-                sorted_candidates,
-                key=lambda c: c[3] if len(c) > 3 else 0.0,
-                reverse=True,
-            )
-            top_n = candidates_scored[:8]  # wider net; sharpness sort may bury the right person
+            # Build a de-duplicated list of top-5 persons by CLIP rank.
+            # For each person, fetch their best crops directly from the store.
+            top_persons: list = []  # [(gid, cam, [crop1, ...]), ...]
+            seen_gids: set = set()
+            for cand in sorted_candidates:
+                gid_str = str(cand[0])
+                if gid_str in seen_gids:
+                    continue
+                seen_gids.add(gid_str)
+                cam = cand[2]
 
-            if _has_claude() and top_n:
-                crops = [c[1] for c in top_n]
-                n = len(crops)
+                # Re-fetch the multi-crop pool for this person
+                with _track_crops_lock:
+                    store_entry = _track_crops.get(gid_str) or {}
+                    stored_pool = store_entry.get("all_crops", [])
 
-                # Structured scoring prompt — every instruction is explicit and unambiguous.
-                # Threshold is NOT mentioned in the prompt (keeps Claude's scoring honest);
-                # we apply the cut-off in code so we can tune it without reprompting.
-                batch_q = (
-                    f'A staff member needs to locate a customer in the store. '
-                    f'The customer was described as: "{english_query}"\n\n'
-                    f'You are shown {n} CCTV crops labeled Photo 1 to Photo {n}. '
-                    f'These are real retail camera images and may be low-resolution, blurry, '
-                    f'or shot from overhead — this is normal.\n\n'
-                    f'For EACH photo, score how well the visible clothing and appearance match '
-                    f'the description above. Use this exact format:\n'
-                    f'Photo 1: <score 0-10> - <one specific observation about clothing/appearance>\n'
-                    f'Photo 2: <score 0-10> - <one specific observation about clothing/appearance>\n'
-                    f'...\n'
-                    f'MATCH: <number of the best matching photo, e.g. "3", or "none">\n\n'
-                    f'Scoring reminder:\n'
-                    f'  8-10 = clothing color AND type clearly match\n'
-                    f'  6-7  = primary color visible and consistent, minor uncertainty\n'
-                    f'  3-5  = partial or unclear — right color but wrong style, or blurry\n'
-                    f'  0    = clearly wrong person, or image too poor to judge clothing\n\n'
-                    f'Write "none" on the MATCH line only if no photo reaches a score of 6. '
-                    f'Focus on clothing first — it is the most reliable identifier in CCTV footage.'
-                )
-                try:
-                    res = _run_claude_haiku_multi(
-                        crops, batch_q, max_tokens=400,
-                        system=_CLAUDE_SEARCH_SYSTEM_PROMPT,
-                        max_dim=320, quality=75,
+                if stored_pool:
+                    # Use the top 2 sharpest crops (pool is already sorted by sharpness)
+                    person_crops = [c["crop"].copy() for c in stored_pool[:2]]
+                elif cand[1] is not None:
+                    person_crops = [cand[1]]   # fall back to whatever candidate carried
+                else:
+                    continue
+
+                top_persons.append((cand[0], cam, person_crops))
+                if len(top_persons) >= 5:
+                    break
+
+            if _has_claude() and top_persons:
+                client = _get_anthropic_client()
+                if client is not None:
+                    # ── Build multi-view Claude content ──────────────────────────
+                    # Layout: [image][label][image][label]... interleaved, then the question.
+                    # Each person has one or two photos, labeled by person number.
+                    content: list = []
+                    photo_num = 0
+                    person_ranges: list = []  # (first_photo, last_photo) per person
+
+                    for pidx, (gid, cam, crops) in enumerate(top_persons):
+                        start_photo = photo_num + 1
+                        for crop in crops:
+                            photo_num += 1
+                            img_b64 = _crop_to_b64(crop, max_dim=320, quality=75)
+                            content.append({
+                                "type": "image",
+                                "source": {"type": "base64",
+                                           "media_type": "image/jpeg", "data": img_b64}
+                            })
+                            content.append({
+                                "type": "text",
+                                "text": f"[Photo {photo_num} — Person {pidx + 1}]"
+                            })
+                        person_ranges.append((start_photo, photo_num))
+
+                    # ── Build the person-grouped prompt ──────────────────────────
+                    group_lines = []
+                    for pidx, (start, end) in enumerate(person_ranges):
+                        if start == end:
+                            group_lines.append(f"  Person {pidx+1}: Photo {start}")
+                        else:
+                            group_lines.append(f"  Person {pidx+1}: Photos {start}–{end}")
+
+                    score_lines = "\n".join(
+                        f"Person {i+1}: <score 0-10> - <clothing observation>"
+                        for i in range(len(top_persons))
                     )
-                    logger.info(f"[VLM Search] Claude scored result:\n{res}")
+                    batch_q = (
+                        f'A staff member needs to find a customer described as: "{english_query}"\n\n'
+                        f'The {photo_num} photos above show {len(top_persons)} different people. '
+                        f'Some people have multiple photos (different moments/angles):\n'
+                        + "\n".join(group_lines) + "\n\n"
+                        f'For each PERSON, look at ALL their photos and score how well their '
+                        f'clothing and appearance match the description. '
+                        f'Use the clearest photo of each person for your judgment.\n\n'
+                        f'Reply in this EXACT format:\n'
+                        + score_lines + "\n"
+                        f'MATCH: <person number, e.g. "2"> or "none"\n\n'
+                        f'Scoring: 8–10=clear match, 6–7=likely match, 3–5=partial, 0=unclear image.\n'
+                        f'Write "none" only if no person reaches 6. '
+                        f'Clothing COLOR is the most reliable feature — prioritize it.'
+                    )
+                    content.append({"type": "text", "text": batch_q})
 
-                    # Parse "MATCH: 4" / "MATCH: Photo 4" / "MATCH: Image 4" / "MATCH: none"
-                    match_line = re.search(
-                        r'MATCH:\s*(?:Photo\s*|Image\s*)?(\d+|none)', res, re.IGNORECASE)
-                    if match_line and match_line.group(1).lower() != 'none':
-                        idx = int(match_line.group(1)) - 1
-                        if 0 <= idx < len(top_n):
-                            score_m = re.search(
-                                rf'(?:Photo|Image)\s*{idx+1}:\s*(\d+)', res, re.IGNORECASE)
-                            score = int(score_m.group(1)) if score_m else 6
-                            if score >= 6:
-                                gid, _crop, cam = top_n[idx][0], top_n[idx][1], top_n[idx][2]
-                                reason = _extract_match_reason(res, idx)
-                                if reason and user_lang != "en":
-                                    reason = _translate_to_target(reason, user_lang)
-                                if user_lang == "pt":
-                                    result_text = (
-                                        f"Encontrado na câmera {cam} — score {score}/10"
-                                        + (f": {reason}" if reason else "")
-                                    )
+                    def _do_call(c):
+                        msg = client.messages.create(
+                            model="claude-haiku-4-5-20251001",
+                            max_tokens=400,
+                            system=_CLAUDE_SEARCH_SYSTEM_PROMPT,
+                            messages=[{"role": "user", "content": c}]
+                        )
+                        return msg.content[0].text.strip()
+
+                    try:
+                        res = _do_call(content)
+                        if _is_refusal(res):
+                            logger.warning("[VLM Search] Refusal — retrying sanitised query")
+                            content[-1]["text"] = batch_q.replace(
+                                english_query, _sanitise_query(english_query))
+                            res = _do_call(content)
+                        logger.info(f"[VLM Search] Multi-view result:\n{res}")
+
+                        # Parse "MATCH: 2" / "MATCH: Person 2" / "MATCH: none"
+                        match_m = re.search(
+                            r'MATCH:\s*(?:Person\s*)?(\d+|none)', res, re.IGNORECASE)
+                        if match_m and match_m.group(1).lower() != 'none':
+                            pidx = int(match_m.group(1)) - 1
+                            if 0 <= pidx < len(top_persons):
+                                score_m = re.search(
+                                    rf'Person\s*{pidx+1}:\s*(\d+)', res, re.IGNORECASE)
+                                score = int(score_m.group(1)) if score_m else 6
+                                if score >= 5:
+                                    gid, cam = top_persons[pidx][0], top_persons[pidx][1]
+                                    reason_m = re.search(
+                                        rf'Person\s*{pidx+1}:\s*\d+\s*[-–—]\s*(.+?)(?:\n|$)',
+                                        res, re.IGNORECASE)
+                                    reason = reason_m.group(1).strip().rstrip('.') if reason_m else ""
+                                    if reason and user_lang != "en":
+                                        reason = _translate_to_target(reason, user_lang)
+                                    if user_lang == "pt":
+                                        result_text = (
+                                            f"Encontrado na câmera {cam} — score {score}/10"
+                                            + (f": {reason}" if reason else "")
+                                        )
+                                    else:
+                                        result_text = (
+                                            f"Found on camera {cam} — score {score}/10"
+                                            + (f": {reason}" if reason else "")
+                                        )
+                                    with _search_jobs_lock:
+                                        _search_jobs[job_id].update({
+                                            "status": "done", "found": True,
+                                            "camera_id": cam, "global_id": str(gid),
+                                            "result": result_text, "ts": time.time(),
+                                        })
+                                    found = True
                                 else:
-                                    result_text = (
-                                        f"Found on camera {cam} — score {score}/10"
-                                        + (f": {reason}" if reason else "")
-                                    )
-                                with _search_jobs_lock:
-                                    _search_jobs[job_id].update({
-                                        "status": "done", "found": True,
-                                        "camera_id": cam, "global_id": str(gid),
-                                        "result": result_text,
-                                        "ts": time.time(),
-                                    })
-                                found = True
-                            else:
-                                logger.info(f"[VLM Search] Top match score {score} < 6 — not found")
-                except Exception as e:
-                    logger.warning(f"[VLM Search] Claude batch error: {e}")
+                                    logger.info(f"[VLM Search] Best person score {score} < 5")
+                    except Exception as e:
+                        logger.warning(f"[VLM Search] Multi-view Claude error: {e}")
 
             if not found:
-                # Moondream fallback: sequential, top 5
+                # Moondream fallback: one image per person, sequential
                 search_prompt = (
                     f'Does the person in this image match: "{english_query}"? '
-                    "Answer YES or NO, then one sentence describing the clothing you see."
+                    "Answer YES or NO, then one sentence about the clothing you can see."
                 )
-                for cand in top_n[:5]:
-                    gid, crop, cam = cand[0], cand[1], cand[2]
+                for gid, cam, crops in top_persons[:5]:
+                    crop = crops[0]  # use best/sharpest crop
                     try:
                         res = _run_moondream(crop, search_prompt)
                         logger.info(f"[VLM Search] Moondream {cam}_{gid}: {res}")
