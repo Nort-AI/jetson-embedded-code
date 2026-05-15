@@ -1230,53 +1230,57 @@
       position: fixed;
       bottom: 90px;
       left: 50%;
-      transform: translateX(-50%) translateY(8px);
+      /* always in layout — transition works on opacity/transform, not display */
+      transform: translateX(-50%) translateY(10px);
       z-index: 9998;
       width: 540px;
       max-width: 60vw;
-      background: rgba(10, 12, 18, 0.72);
+      background: rgba(10, 12, 18, 0.82);
       backdrop-filter: blur(20px) saturate(180%);
       -webkit-backdrop-filter: blur(20px) saturate(180%);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 18px;
-      padding: 16px 20px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(6,182,212,0.12);
-      display: none;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 14px 18px 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
       opacity: 0;
-      transition: opacity 0.22s ease, transform 0.22s ease;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
     }
     #vlm-response-card.visible {
-      display: block;
       opacity: 1;
+      pointer-events: auto;
       transform: translateX(-50%) translateY(0);
     }
     #vlm-response-card .vrc-header {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 10px;
+      gap: 7px;
+      margin-bottom: 9px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      padding-bottom: 9px;
     }
     #vlm-response-card .vrc-dot {
       width: 6px; height: 6px; border-radius: 50%;
       background: var(--primary); flex-shrink: 0;
-      animation: pulse 1.5s infinite alternate;
     }
     #vlm-response-card .vrc-cam {
       font-size: .68rem; font-weight: 700; text-transform: uppercase;
       letter-spacing: .07em; color: var(--primary);
     }
     #vlm-response-card .vrc-elapsed {
-      font-size: .65rem; color: rgba(255,255,255,.35); margin-left: auto;
+      font-size: .65rem; color: rgba(255,255,255,.3);
     }
     #vlm-response-card .vrc-close {
-      background: none; border: none; color: rgba(255,255,255,.4);
-      cursor: pointer; font-size: 1rem; padding: 0; line-height: 1;
+      background: none; border: none; color: rgba(255,255,255,.3);
+      cursor: pointer; font-size: .95rem; padding: 0; line-height: 1;
+      margin-left: auto;
       transition: color .15s;
     }
-    #vlm-response-card .vrc-close:hover { color: #fff; }
+    #vlm-response-card .vrc-close:hover { color: rgba(255,255,255,.8); }
     #vlm-response-card .vrc-text {
-      font-size: .9rem; color: rgba(255,255,255,.88);
-      line-height: 1.7; white-space: pre-wrap;
+      font-size: .88rem; color: rgba(255,255,255,.85);
+      line-height: 1.65; white-space: pre-wrap;
+      max-height: 260px; overflow-y: auto;
     }
 
     /* ── Floating VLM Prompt Bar  ── */
@@ -3433,23 +3437,24 @@
         document.body.appendChild(card);
       }
 
+      // Cancel any running typewriter and dismiss timer
+      if (_vrcDismissTimer) { clearTimeout(_vrcDismissTimer); _vrcDismissTimer = null; }
+      if (window._vrcTypewriter) { clearInterval(window._vrcTypewriter); window._vrcTypewriter = null; }
+
       document.getElementById('vrc-cam').textContent = camLabel || 'AI';
       document.getElementById('vrc-elapsed').textContent = elapsedSec ? elapsedSec + 's' : '';
       const out = document.getElementById('vrc-text');
       out.textContent = '';
 
-      // Force reflow so transition fires even on re-show
-      card.classList.remove('visible');
-      void card.offsetWidth;
+      // Show card (CSS handles the fade+slide — no display toggle needed)
       card.classList.add('visible');
 
       // Typewriter
       let ci = 0;
-      if (_vrcDismissTimer) clearTimeout(_vrcDismissTimer);
-      const ti = setInterval(() => {
+      window._vrcTypewriter = setInterval(() => {
         if (ci >= text.length) {
-          clearInterval(ti);
-          // Auto-dismiss after 20s of inactivity
+          clearInterval(window._vrcTypewriter);
+          window._vrcTypewriter = null;
           _vrcDismissTimer = setTimeout(() => card.classList.remove('visible'), 20000);
           return;
         }
