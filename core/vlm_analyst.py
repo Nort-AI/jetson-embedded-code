@@ -1126,29 +1126,47 @@ def _search_worker() -> None:
                 })
             found = True
 
-        # ── STAGE 2: VLM verification — top 3 only ──
+        # ── STAGE 2: VLM verification ──
         if not found:
-            top3 = sorted_candidates[:3]
             import re
 
-            if _has_claude() and top3:
-                # ONE batched Claude Haiku call for all top candidates
-                crops = [c[1] for c in top3]
+            # Sort candidates by crop sharpness (Laplacian variance) so Claude
+            # sees the clearest image of each person, not a random/blurry one.
+            def _sharpness(crop_bgr):
+                try:
+                    gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
+                    return cv2.Laplacian(gray, cv2.CV_64F).var()
+                except Exception:
+                    return 0.0
+
+            candidates_scored = sorted(
+                sorted_candidates,
+                key=lambda c: _sharpness(c[1]),
+                reverse=True,
+            )
+            top_n = candidates_scored[:5]
+
+            if _has_claude() and top_n:
+                # ONE batched Claude Haiku call — all top candidates in one request
+                crops = [c[1] for c in top_n]
+                n = len(crops)
                 batch_q = (
-                    f'I am looking for a person matching: "{english_query}". '
-                    f'I show you {len(crops)} images labeled Frame 1 to Frame {len(crops)}. '
-                    'Which frame number best matches? Reply with just the number (e.g. "2") '
-                    'or "none" if no match. Then one sentence of reasoning.'
+                    f'I need to find a specific person in a retail store. '
+                    f'I am looking for: "{english_query}". '
+                    f'I am showing you {n} surveillance camera images labeled Image 1 to Image {n}, '
+                    f'each showing a different person detected in the store. '
+                    f'Which image number shows a person that best matches the description? '
+                    f'Reply with just the image number (e.g. "3") or "none" if nobody matches. '
+                    f'Then one short sentence explaining why.'
                 )
                 try:
-                    res = _run_claude_haiku_multi(crops, batch_q, max_tokens=80)
+                    res = _run_claude_haiku_multi(crops, batch_q, max_tokens=100)
                     logger.info(f"[VLM Search] Claude batch result: {res}")
-                    # Parse "1", "2", "3" or "none"
-                    match = re.search(r'\b([123])\b', res)
+                    match = re.search(r'\b([1-5])\b', res)
                     if match:
                         idx = int(match.group(1)) - 1
-                        if 0 <= idx < len(top3):
-                            gid, _, cam = top3[idx]
+                        if 0 <= idx < len(top_n):
+                            gid, _, cam = top_n[idx]
                             with _search_jobs_lock:
                                 _search_jobs[job_id].update({
                                     "status": "done", "found": True,
@@ -1160,12 +1178,12 @@ def _search_worker() -> None:
                     logger.warning(f"[VLM Search] Claude batch error: {e}")
 
             if not found:
-                # Moondream fallback: sequential, top 3 only (was 15)
+                # Moondream fallback: sequential, top 5
                 search_prompt = (
                     f'Does the person in this image match: "{english_query}"? '
                     "Answer YES or NO, then one sentence."
                 )
-                for gid, crop, cam in top3:
+                for gid, crop, cam in top_n:
                     try:
                         res = _run_moondream(crop, search_prompt)
                         logger.info(f"[VLM Search] Moondream {cam}_{gid}: {res}")
