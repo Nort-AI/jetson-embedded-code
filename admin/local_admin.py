@@ -4521,7 +4521,7 @@ def api_vlm_global_query():
             if time.time() - entry.get("ts", 0) < 120.0:
                 crop = entry.get("crop")
                 if crop is not None and crop.size > 0:
-                    search_candidates.append((gid, crop.copy(), entry.get("cam")))
+                    search_candidates.append((gid, crop.copy(), entry.get("cam"), entry.get("sharpness", 0.0)))
 
     if not search_candidates:
         return _jsonify({"found": False, "status": "done", "result": "No one has been seen recently to search."})

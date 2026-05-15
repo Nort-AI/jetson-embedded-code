@@ -2431,12 +2431,29 @@
       }
 
       async function _pollSearchResult(jobId, textEl, camLbl, btn, dotInterval) {
-        const MAX_POLLS = 300; // 300 × 0.4s = 2 min max
+        const MAX_POLLS = 600; // 600 × 200ms = 2 min max
+        let _streamingStarted = false;
         for (let i = 0; i < MAX_POLLS; i++) {
-          await new Promise(r => setTimeout(r, 400));
+          await new Promise(r => setTimeout(r, 200)); // 200ms polls for snappy streaming
           try {
             const res = await fetch(`/api/vlm/search_status/${jobId}`);
             const data = await res.json();
+
+            // --- Streaming in progress: live-update the card text ---
+            if (data.status === 'streaming' && data.result) {
+              if (!_streamingStarted) {
+                clearInterval(dotInterval);
+                _streamingStarted = true;
+                // Open the card immediately with partial text, no typewriter
+                showAIResponse(data.result, data.camera_id || currentCamera, null, true);
+              } else {
+                // Patch text in-place without re-running showAIResponse
+                const out = document.getElementById('vrc-text');
+                if (out) out.textContent = data.result;
+              }
+              continue; // keep polling
+            }
+
             if (data.status !== 'pending') {
               // Done — stop scanning animation
               clearInterval(dotInterval);
@@ -2448,17 +2465,33 @@
 
               if (data.error || data.found === false) {
                 const msg = data.error || data.result || '{{ t("vlm.not_found", "Not found.") }}';
-                textEl.textContent = '\u26a0\ufe0f ' + msg;
+                textEl.textContent = '⚠️ ' + msg;
                 if (!data.found && !data.error) camLbl.textContent = '{{ t("vlm.none", "NONE") }}';
-                showAIResponse('\u26a0\ufe0f ' + msg, camLbl.textContent, elapsed);
+                if (_streamingStarted) {
+                  const out = document.getElementById('vrc-text');
+                  if (out) out.textContent = '⚠️ ' + msg;
+                  const elEl = document.getElementById('vrc-elapsed');
+                  if (elEl) elEl.textContent = elapsed + 's';
+                } else {
+                  showAIResponse('⚠️ ' + msg, camLbl.textContent, elapsed);
+                }
               } else {
                 const answer = data.result || '{{ t("vlm.no_answer", "(no answer)") }}';
                 const camLabel = data.camera_id || currentCamera;
                 camLbl.textContent = camLabel;
-                textEl.textContent = answer;   // also keep in sidebar (no typewriter there)
+                textEl.textContent = answer;
 
-                // Show in prominent modal overlay \u2014 main display path
-                showAIResponse(answer, camLabel, elapsed);
+                if (_streamingStarted) {
+                  // Card already open — finalize text and stamp elapsed
+                  const out = document.getElementById('vrc-text');
+                  if (out) out.textContent = answer;
+                  const elEl = document.getElementById('vrc-elapsed');
+                  if (elEl) elEl.textContent = elapsed + 's';
+                  const lbl = document.getElementById('vrc-cam');
+                  if (lbl) lbl.textContent = camLabel;
+                } else {
+                  showAIResponse(answer, camLabel, elapsed);
+                }
 
                 // Person-search only: switch camera to where the person was found
                 if (data.global_id) {
@@ -2480,7 +2513,7 @@
         _scanningActive = false;
         btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
         btn.classList.remove('loading');
-        textEl.textContent = '\u26a0\ufe0f {{ t("vlm.search_timeout", "Search timed out.") }}';
+        textEl.textContent = '⚠️ {{ t("vlm.search_timeout", "Search timed out.") }}';
       }
 
       try {
@@ -3421,7 +3454,8 @@
     // ── AI Response Card ───────────────────────────────────────────────────────
     // Shows the VLM response in a frosted-glass card just above the prompt bar.
     let _vrcDismissTimer = null;
-    function showAIResponse(text, camLabel, elapsedSec) {
+    // noTypewriter=true: set text instantly (used for live streaming updates)
+    function showAIResponse(text, camLabel, elapsedSec, noTypewriter) {
       let card = document.getElementById('vlm-response-card');
       if (!card) {
         card = document.createElement('div');
@@ -3444,12 +3478,19 @@
       document.getElementById('vrc-cam').textContent = camLabel || 'AI';
       document.getElementById('vrc-elapsed').textContent = elapsedSec ? elapsedSec + 's' : '';
       const out = document.getElementById('vrc-text');
-      out.textContent = '';
 
       // Show card (CSS handles the fade+slide — no display toggle needed)
       card.classList.add('visible');
 
-      // Typewriter
+      if (noTypewriter) {
+        // Instant set — used during live streaming so each chunk appears immediately
+        out.textContent = text;
+        // No auto-dismiss yet; streaming poller will call again when done
+        return;
+      }
+
+      // Typewriter animation for final/non-streaming responses
+      out.textContent = '';
       let ci = 0;
       window._vrcTypewriter = setInterval(() => {
         if (ci >= text.length) {

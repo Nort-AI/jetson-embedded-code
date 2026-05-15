@@ -193,6 +193,12 @@ def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str,
     if crop_bgr is None or crop_bgr.size == 0:
         return
     key = str(global_id)
+    # Pre-compute sharpness here so search never recomputes it
+    try:
+        _gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
+        _sharpness = float(cv2.Laplacian(_gray, cv2.CV_64F).var())
+    except Exception:
+        _sharpness = 0.0
     with _track_crops_lock:
         prev = _track_crops.get(key) or {}
         if key in _track_crops:
@@ -201,7 +207,8 @@ def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str,
             "crop":        crop_bgr.copy(),
             "ts":          time.time(),
             "cam":         camera_id,
-            "crop_bounds": crop_bounds,          # (cx1,cy1,cx2,cy2) in full frame
+            "crop_bounds": crop_bounds,
+            "sharpness":   _sharpness,           # pre-computed, used by search sort
             # preserve pre-computed pose so it survives crop updates
             "pose_jpeg": prev.get("pose_jpeg"),
             "pose_data": prev.get("pose_data"),
@@ -505,6 +512,48 @@ def _has_claude() -> bool:
     return bool(_CONFIG.anthropic_api_key)
 
 
+# ── Anthropic client singleton ────────────────────────────────────────────────
+# Created once and reused — avoids TCP handshake overhead on every call.
+_anthropic_client = None
+_anthropic_client_lock = threading.Lock()
+
+def _get_anthropic_client():
+    global _anthropic_client
+    if _anthropic_client is None:
+        with _anthropic_client_lock:
+            if _anthropic_client is None:
+                try:
+                    import anthropic as _anthropic_mod
+                    _anthropic_client = _anthropic_mod.Anthropic(api_key=_CONFIG.anthropic_api_key)
+                    logger.info("[VLM] Anthropic client initialised (singleton).")
+                except Exception as e:
+                    logger.error(f"[VLM] Failed to create Anthropic client: {e}")
+    return _anthropic_client
+
+
+# ── Translation cache ─────────────────────────────────────────────────────────
+# Keyed by (text_hash, target_lang). TTL = 30 minutes (translations don't change).
+_translation_cache: dict = {}
+_translation_cache_lock = threading.Lock()
+_TRANSLATION_CACHE_TTL = 1800  # seconds
+
+def _translation_cache_get(key: str):
+    with _translation_cache_lock:
+        entry = _translation_cache.get(key)
+        if entry and time.time() - entry["ts"] < _TRANSLATION_CACHE_TTL:
+            return entry["text"]
+    return None
+
+def _translation_cache_set(key: str, text: str):
+    with _translation_cache_lock:
+        _translation_cache[key] = {"text": text, "ts": time.time()}
+        # Prune old entries
+        if len(_translation_cache) > 500:
+            cutoff = time.time() - _TRANSLATION_CACHE_TTL
+            for k in [k for k, v in _translation_cache.items() if v["ts"] < cutoff]:
+                del _translation_cache[k]
+
+
 # ── Refusal detection & query sanitisation ────────────────────────────────────
 
 _REFUSAL_PHRASES = (
@@ -571,7 +620,9 @@ def _run_claude_haiku(crop_bgr: np.ndarray, question: str, max_tokens: int = 200
         return "Anthropic API key not configured (set vlm.anthropic_api_key in device.json)."
 
     img_b64 = _crop_to_b64(crop_bgr, max_dim=224, quality=65)
-    client = anthropic.Anthropic(api_key=_CONFIG.anthropic_api_key)
+    client = _get_anthropic_client()
+    if client is None:
+        return "Anthropic client unavailable."
 
     def _call(q: str) -> str:
         msg = client.messages.create(
@@ -618,7 +669,9 @@ def _run_claude_haiku_multi(crops_bgr: list, question: str, max_tokens: int = 30
         content.append({"type": "text", "text": f"[Photo {i + 1}]"})
     content.append({"type": "text", "text": question})
 
-    client = anthropic.Anthropic(api_key=_CONFIG.anthropic_api_key)
+    client = _get_anthropic_client()
+    if client is None:
+        return "Anthropic client unavailable."
 
     def _call(final_content: list) -> str:
         msg = client.messages.create(
@@ -1030,12 +1083,17 @@ def _expire_old_jobs() -> None:
 
 def _translate_to_english(text: str) -> str:
     """Fast, free translation using Google Translate API (gtx client) for CLIP compatibility."""
-    import urllib.parse
-    import requests
+    cache_key = f"en:{hash(text)}"
+    cached = _translation_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    import urllib.parse, requests
     try:
         url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q={urllib.parse.quote(text)}"
         r = requests.get(url, timeout=2.0)
-        return r.json()[0][0][0]
+        result = r.json()[0][0][0]
+        _translation_cache_set(cache_key, result)
+        return result
     except Exception as e:
         logger.warning(f"[VLM] Auto-translation failed: {e}. Passing raw query to CLIP.")
         return text
@@ -1046,8 +1104,11 @@ def _detect_language(text: str) -> str:
     Detect the language of `text` using the Google Translate gtx API.
     Returns an ISO 639-1 code (e.g. 'pt', 'es', 'en') or 'en' on failure.
     """
-    import urllib.parse
-    import requests
+    cache_key = f"lang:{hash(text[:200])}"
+    cached = _translation_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    import urllib.parse, requests
     try:
         url = (
             f"https://translate.googleapis.com/translate_a/single"
@@ -1055,8 +1116,8 @@ def _detect_language(text: str) -> str:
         )
         r = requests.get(url, timeout=2.0)
         data = r.json()
-        # The detected source language is at index [2] of the response
         detected = data[2] if len(data) > 2 and isinstance(data[2], str) else "en"
+        _translation_cache_set(cache_key, detected)
         return detected
     except Exception as e:
         logger.warning(f"[VLM] Language detection failed: {e}. Assuming 'en'.")
@@ -1070,8 +1131,11 @@ def _translate_to_target(text: str, target_lang: str) -> str:
     """
     if not text or target_lang == "en":
         return text
-    import urllib.parse
-    import requests
+    cache_key = f"{target_lang}:{hash(text)}"
+    cached = _translation_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    import urllib.parse, requests
     try:
         url = (
             f"https://translate.googleapis.com/translate_a/single"
@@ -1080,6 +1144,7 @@ def _translate_to_target(text: str, target_lang: str) -> str:
         r = requests.get(url, timeout=4.0)
         parts = r.json()[0]
         translated = "".join(seg[0] for seg in parts if seg[0])
+        _translation_cache_set(cache_key, translated)
         logger.debug(f"[VLM] Translated answer to '{target_lang}': {translated[:80]}")
         return translated
     except Exception as e:
@@ -1153,24 +1218,43 @@ def _search_worker() -> None:
             scene_lang = _detect_language(query)
             try:
                 if _has_claude():
-                    # Claude: no translation needed, compress scene frame to 480px
-                    res = _run_claude_haiku(job["frame_bgr"], scene_prompt, max_tokens=250)
+                    # Stream the response — partial text written to job so UI
+                    # can show words as they arrive instead of waiting for full reply.
+                    client = _get_anthropic_client()
+                    img_b64 = _crop_to_b64(job["frame_bgr"], max_dim=480, quality=70)
+                    content = [
+                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}},
+                        {"type": "text", "text": scene_prompt},
+                    ]
+                    accumulated = ""
+                    with client.messages.stream(
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=250,
+                        system=_CLAUDE_SYSTEM_PROMPT,
+                        messages=[{"role": "user", "content": content}]
+                    ) as stream:
+                        for chunk in stream.text_stream:
+                            accumulated += chunk
+                            with _search_jobs_lock:
+                                _search_jobs[job_id]["result"] = accumulated
+                                _search_jobs[job_id]["status"] = "streaming"
+                    res = accumulated.strip()
+                    if _is_refusal(res):
+                        logger.warning("[VLM Scene] Refusal detected — retrying sanitised")
+                        res = _run_claude_haiku(job["frame_bgr"], _sanitise_query(scene_prompt), max_tokens=250)
                 else:
                     res = _run_moondream(job["frame_bgr"], scene_prompt)
                     res = _translate_to_target(res, scene_lang)
                 with _search_jobs_lock:
                     _search_jobs[job_id].update({
-                        "status": "done",
-                        "found": True,
-                        "result": res,
-                        "ts": time.time()
+                        "status": "done", "found": True,
+                        "result": res, "ts": time.time()
                     })
             except Exception as e:
                 logger.error(f"[VLM Scene Query] Error: {e}", exc_info=True)
                 with _search_jobs_lock:
                     _search_jobs[job_id].update({
-                        "status": "error",
-                        "found": False,
+                        "status": "error", "found": False,
                         "result": "Análise falhou." if scene_lang == "pt" else "Analysis failed.",
                         "ts": time.time()
                     })
@@ -1208,18 +1292,11 @@ def _search_worker() -> None:
         if not found:
             import re
 
-            # Sort candidates by crop sharpness (Laplacian variance) so Claude
-            # sees the clearest image of each person, not a random/blurry one.
-            def _sharpness(crop_bgr):
-                try:
-                    gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
-                    return cv2.Laplacian(gray, cv2.CV_64F).var()
-                except Exception:
-                    return 0.0
-
+            # Sort by pre-computed sharpness stored at crop-save time (no recomputation).
+            # candidates entries: (gid, crop_bgr, camera_id, sharpness)
             candidates_scored = sorted(
                 sorted_candidates,
-                key=lambda c: _sharpness(c[1]),
+                key=lambda c: c[3] if len(c) > 3 else 0.0,
                 reverse=True,
             )
             top_n = candidates_scored[:8]  # wider net — sharpness sort may bury the right person
