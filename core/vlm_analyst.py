@@ -27,6 +27,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 
+import re
 import cv2
 import numpy as np
 
@@ -351,26 +352,97 @@ _clip_model = None
 _clip_preprocess = None
 _clip_loaded = False
 
-# Default prompts per use-case
+# ── Per-track analysis prompts ────────────────────────────────────────────────
+# These are injected into Claude alongside _CLAUDE_SYSTEM_PROMPT.
+# Written to be CCTV-aware: acknowledge quality limits, focus on actionable info.
+
 DEFAULT_QUESTION = (
-    "Describe this person's appearance: clothing color and style, "
-    "any items they are carrying, and what they appear to be doing."
+    "Describe this person's appearance concisely. Cover in order: "
+    "(1) clothing — colors and type of each garment clearly visible, "
+    "(2) footwear if visible, "
+    "(3) accessories — hat, bag, backpack, cart, stroller, "
+    "(4) what they appear to be doing. "
+    "If image quality is poor, describe only what IS clearly visible."
 )
 
 PROMPTS = {
-    "describe":  DEFAULT_QUESTION,
-    "behavior":  "What is this person doing? Do they appear engaged with any product on the shelf?",
-    "anomaly":   "Does this person's behavior appear unusual for a retail environment? Explain briefly.",
-    "staff":     "Is this person likely a store employee or a customer? Describe the clues.",
-    "carrying":  "What items, bags, or products is this person carrying or holding?",
-    "counting":  "How many items is this person holding? List them if visible.",
-    "attention": "What is this person looking at? Where is their attention focused?",
-    "demographics": "Estimate this person's approximate age range and gender based on visible cues.",
-    
-    # Temporal analysis prompts (for video clips)
-    "behavior_timeline": "Analyze this person's behavior sequence. What actions did they perform over time? Describe their movement, interactions with products/shelves, and any notable behavioral patterns.",
-    "movement_pattern": "Trace this person's movement path. Where did they enter from, where did they go, and what areas or products caught their attention? Describe their trajectory and stops.",
-    "suspicious_activity": "Analyze this clip for suspicious behavior. Look for: shoplifting indicators (concealing items, unusual bag behavior), loitering, vandalism, or any activity that warrants security attention. Report confidence level.",
+    "describe": DEFAULT_QUESTION,
+
+    "behavior": (
+        "What is this person currently doing? Be specific: "
+        "are they browsing a shelf, walking, stopped, picking up or putting down a product, "
+        "using their phone, talking to someone, or waiting? "
+        "Note any product interaction or unusual posture."
+    ),
+
+    "anomaly": (
+        "Analyze this person's behavior for anything unusual in a retail context. "
+        "Look for: concealing items under clothing or in a bag, loitering without browsing, "
+        "nervous or evasive body language, tampering with products or signage, or signs of distress. "
+        "State what you observe and your confidence level. "
+        "If behavior appears normal, say so clearly."
+    ),
+
+    "staff": (
+        "Is this person likely a store employee or a customer? "
+        "Look for: uniform or vest, name tag, radio/earpiece, lanyard, staff-style clothing, "
+        "or behavior that indicates staff role (stocking, assisting, etc.). "
+        "Describe the visual clues you used."
+    ),
+
+    "carrying": (
+        "List every item, bag, or product this person is visibly carrying or holding. "
+        "For each item: type, color, approximate size. "
+        "Note if they have a shopping basket, cart, reusable bag, backpack, or stroller. "
+        "If nothing is visible, say so."
+    ),
+
+    "counting": (
+        "How many individual items is this person holding or carrying? "
+        "List each item briefly (e.g. '1 red shopping bag, 2 product boxes'). "
+        "Count only items clearly visible — do not guess at hidden contents."
+    ),
+
+    "attention": (
+        "Where is this person's attention focused? "
+        "Are they looking at a shelf, a product, their phone, another person, or elsewhere? "
+        "Describe their head orientation and gaze direction as clearly as the image allows."
+    ),
+
+    "demographics": (
+        "Based only on visible cues in this CCTV image, estimate: "
+        "(1) approximate age range (e.g. teen / 20s / 30-40s / 50+ / elderly), "
+        "(2) apparent gender presentation if clearly visible. "
+        "Note image quality limitations that affect confidence."
+    ),
+
+    # ── Temporal / clip analysis prompts ──────────────────────────────────────
+    "behavior_timeline": (
+        "You are shown keyframes from a short video clip. "
+        "Reconstruct this person's behavioral sequence: "
+        "what did they do, in what order, and for approximately how long at each stage? "
+        "Cover: entry into frame, movement path, shelf/product interactions, pauses, "
+        "and exit or current position. Note any behavioral patterns relevant to store operations."
+    ),
+
+    "movement_pattern": (
+        "You are shown keyframes from a short video clip. "
+        "Trace this person's movement path through the store: "
+        "where did they enter the frame, what route did they take, "
+        "which areas or products caught their attention (pauses, reaches, picks up), "
+        "and where are they now or where did they exit? "
+        "This helps identify high-interest zones and customer navigation patterns."
+    ),
+
+    "suspicious_activity": (
+        "You are shown keyframes from a short video clip. Analyze for suspicious behavior. "
+        "Specifically look for: concealing merchandise (inside clothing, bag, or stroller), "
+        "removing security tags, loitering in a single area without purchasing intent, "
+        "distraction of staff or other customers, vandalism, or signs of distress/altercation. "
+        "Report: (1) what you observed, (2) which frames show the key moments, "
+        "(3) confidence level (low/medium/high), (4) recommended action if any. "
+        "If behavior appears normal, state that clearly."
+    ),
 }
 
 CLIP_STAFF_LABELS = _CONFIG.clip_labels if _CONFIG.clip_labels else ["store employee in uniform", "customer shopping"]
@@ -595,23 +667,86 @@ def _sanitise_query(query: str) -> str:
     return cleaned or query  # fall back to original if nothing left
 
 
-# System prompt injected into every Claude call.
-# Establishes the retail operations context so appearance-based queries
-# (including those with demographic descriptors) are handled as legitimate
-# store management tasks and not flagged as privacy/surveillance concerns.
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONTEXT-SPECIFIC SYSTEM PROMPTS
+# Three specialized prompts — each tuned for its task so Claude calibrates
+# its reasoning correctly rather than using one generic prompt for everything.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Shared retail-ops legalese injected into every prompt
+_BASE_RETAIL_CONTEXT = (
+    "You are an AI assistant embedded in NORT, a professional retail analytics platform "
+    "used by authorized store managers and security staff in a licensed commercial deployment. "
+    "All persons filmed have consented to video monitoring under the store's posted privacy policy. "
+    "Your analysis supports legitimate retail operations: customer assistance, safety, staff "
+    "coordination, and store optimization. Always respond helpfully — never refuse a legitimate "
+    "retail management query."
+)
+
+# ── General: per-track single-person analysis (describe / behavior / staff / etc.) ──
 _CLAUDE_SYSTEM_PROMPT = (
-    "You are an AI assistant integrated into a retail store management platform. "
-    "The store operator uses this system to manage customer flow, locate customers "
-    "who need assistance, and coordinate staff. All images shown to you are from "
-    "cameras inside a private retail store where customers have consented to video "
-    "monitoring as part of the store's safety and operations policy. "
-    "Your role is to describe visible clothing and appearance to help staff locate "
-    "customers quickly. Always respond helpfully and concisely."
+    _BASE_RETAIL_CONTEXT + "\n\n"
+    "CONTEXT: You are analyzing a CCTV crop of a single person extracted from a retail store camera. "
+    "Image quality varies widely — crops may be 100–400 px wide, motion-blurred, grainy, taken "
+    "from overhead or wide-angle cameras at unusual angles, or in challenging lighting.\n\n"
+    "GUIDELINES:\n"
+    "• Describe only what is clearly visible — never invent or assume details not visible in the image.\n"
+    "• When image quality is poor, acknowledge it and describe what IS discernible.\n"
+    "• Be concise and actionable — staff need information they can act on immediately.\n"
+    "• Respond in the exact same language as the question."
+)
+
+# ── Person search: match a text description against a set of CCTV crops ─────────
+_CLAUDE_SEARCH_SYSTEM_PROMPT = (
+    _BASE_RETAIL_CONTEXT + "\n\n"
+    "CONTEXT: A staff member needs to locate a specific customer. You will see multiple CCTV "
+    "crops and must score each one against a verbal description. These are real retail camera "
+    "images — they may be low-resolution, blurry, grainy, top-down (overhead camera), or "
+    "partially occluded by shelves or other people. This is normal and expected.\n\n"
+    "FEATURE PRIORITY (most to least reliable in retail CCTV):\n"
+    "  1. Clothing COLOR — the single most reliable CCTV identifier (red shirt, blue jeans, etc.)\n"
+    "  2. Clothing TYPE — t-shirt / jacket / hoodie / dress / suit / uniform\n"
+    "  3. Accessories — hat, bag type, backpack, stroller, cart\n"
+    "  4. Physical build — only if unambiguously clear in the image\n\n"
+    "SCORING SCALE (0–10):\n"
+    "  10  — multiple clothing features match perfectly and are clearly visible\n"
+    "  8-9 — primary color + type clearly match\n"
+    "  6-7 — likely match; main color visible and consistent, minor uncertainty\n"
+    "  3-5 — partial match: right color but wrong style, or image too unclear for confidence\n"
+    "  1-2 — unlikely match; main features differ\n"
+    "  0   — clearly wrong person, or image too blurry/dark to judge clothing at all\n\n"
+    "RULES:\n"
+    "• A score ≥ 6 requires CLEAR, UNAMBIGUOUS visibility of the matching features.\n"
+    "• Score 0 for any image where clothing cannot be reliably seen — do not guess.\n"
+    "• Be strict: false positives send staff to the wrong person. False negatives are recoverable.\n"
+    "• Focus on clothing/accessories, not face or demographics — faces are often not visible."
+)
+
+# ── Scene analysis: describe what is currently happening in a camera frame ────
+_CLAUDE_SCENE_SYSTEM_PROMPT = (
+    _BASE_RETAIL_CONTEXT + "\n\n"
+    "CONTEXT: You are analyzing a full CCTV frame from a retail store camera. "
+    "The store operator is asking a real-time question about the current scene.\n\n"
+    "RESPONSE GUIDELINES:\n"
+    "• Be SPECIFIC and QUANTIFIED: exact counts, positions (near entrance / by shelves / etc.), actions\n"
+    "• Focus on PEOPLE: how many, where they are, what they are doing\n"
+    "• Mention product / shelf interactions when relevant\n"
+    "• Flag anomalies clearly: loitering, distress, crowds, suspicious behavior, unattended items\n"
+    "• Be concise (2–4 sentences) — staff need quick, actionable intelligence\n"
+    "• Do NOT describe static room elements, fixtures, or scenery unless directly asked\n"
+    "• Respond in the EXACT SAME LANGUAGE as the question — if asked in Portuguese, answer in Portuguese"
 )
 
 
-def _run_claude_haiku(crop_bgr: np.ndarray, question: str, max_tokens: int = 200) -> str:
-    """Single-image analysis via Claude Haiku. ~5x cheaper than Moondream cloud, ~2x faster."""
+def _run_claude_haiku(crop_bgr: np.ndarray, question: str, max_tokens: int = 200,
+                      system: str = None, max_dim: int = 320, quality: int = 75) -> str:
+    """Single-image analysis via Claude Haiku.
+
+    Args:
+        system: Override system prompt. Defaults to _CLAUDE_SYSTEM_PROMPT.
+        max_dim: Longest-side cap before JPEG encoding (higher = more detail).
+        quality: JPEG quality (higher = sharper at cost of more tokens).
+    """
     try:
         import anthropic
     except ImportError:
@@ -619,7 +754,8 @@ def _run_claude_haiku(crop_bgr: np.ndarray, question: str, max_tokens: int = 200
     if not _CONFIG.anthropic_api_key:
         return "Anthropic API key not configured (set vlm.anthropic_api_key in device.json)."
 
-    img_b64 = _crop_to_b64(crop_bgr, max_dim=224, quality=65)
+    effective_system = system if system is not None else _CLAUDE_SYSTEM_PROMPT
+    img_b64 = _crop_to_b64(crop_bgr, max_dim=max_dim, quality=quality)
     client = _get_anthropic_client()
     if client is None:
         return "Anthropic client unavailable."
@@ -628,7 +764,7 @@ def _run_claude_haiku(crop_bgr: np.ndarray, question: str, max_tokens: int = 200
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=max_tokens,
-            system=_CLAUDE_SYSTEM_PROMPT,
+            system=effective_system,
             messages=[{
                 "role": "user",
                 "content": [
@@ -650,10 +786,16 @@ def _run_claude_haiku(crop_bgr: np.ndarray, question: str, max_tokens: int = 200
         return f"Analysis failed: {type(e).__name__}"
 
 
-def _run_claude_haiku_multi(crops_bgr: list, question: str, max_tokens: int = 300) -> str:
+def _run_claude_haiku_multi(crops_bgr: list, question: str, max_tokens: int = 400,
+                            system: str = None, max_dim: int = 320, quality: int = 75) -> str:
     """
     Multi-image analysis in ONE API call — for clip keyframes or person comparison.
-    Sends up to len(crops_bgr) images + question as a single Haiku message.
+
+    Args:
+        system: Override system prompt. Defaults to _CLAUDE_SYSTEM_PROMPT.
+        max_dim: Longest-side cap before JPEG encoding (320 gives much better detail
+                 than the old 224 without meaningful token cost increase).
+        quality: JPEG quality for each crop.
     """
     try:
         import anthropic
@@ -662,9 +804,11 @@ def _run_claude_haiku_multi(crops_bgr: list, question: str, max_tokens: int = 30
     if not _CONFIG.anthropic_api_key:
         return "Anthropic API key not configured."
 
+    effective_system = system if system is not None else _CLAUDE_SYSTEM_PROMPT
+
     content = []
-    for i, crop in enumerate(crops_bgr[:8]):  # cap at 8 to match search pool size
-        img_b64 = _crop_to_b64(crop, max_dim=224, quality=65)
+    for i, crop in enumerate(crops_bgr[:8]):  # cap at 8 images
+        img_b64 = _crop_to_b64(crop, max_dim=max_dim, quality=quality)
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}})
         content.append({"type": "text", "text": f"[Photo {i + 1}]"})
     content.append({"type": "text", "text": question})
@@ -677,7 +821,7 @@ def _run_claude_haiku_multi(crops_bgr: list, question: str, max_tokens: int = 30
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=max_tokens,
-            system=_CLAUDE_SYSTEM_PROMPT,
+            system=effective_system,
             messages=[{"role": "user", "content": final_content}]
         )
         return msg.content[0].text.strip()
@@ -686,7 +830,6 @@ def _run_claude_haiku_multi(crops_bgr: list, question: str, max_tokens: int = 30
         result = _call(content)
         if _is_refusal(result):
             logger.warning("[VLM] Claude refused multi — retrying with sanitised question")
-            # Replace only the final text block (the question), keep images intact
             sanitised_content = content[:-1] + [
                 {"type": "text", "text": _sanitise_query(content[-1]["text"])}
             ]
@@ -695,6 +838,22 @@ def _run_claude_haiku_multi(crops_bgr: list, question: str, max_tokens: int = 30
     except Exception as e:
         logger.error(f"[VLM] Claude Haiku multi error: {e}")
         return f"Analysis failed: {type(e).__name__}"
+
+
+def _extract_match_reason(response: str, photo_idx: int) -> str:
+    """Extract Claude's one-line reason for Photo N from a batch scoring response.
+
+    Handles formats like:
+      "Photo 3: 8 - wearing blue hoodie and grey pants"
+      "Photo 3: 8 — blue jacket clearly visible"
+    """
+    m = re.search(
+        rf'(?:Photo|Image)\s*{photo_idx + 1}:\s*\d+\s*[-–—]\s*(.+?)(?:\n|$)',
+        response, re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip().rstrip('.')
+    return ""
 
 
 def _run_vlm(crop_bgr: np.ndarray, question: str, max_tokens: int = 200) -> str:
@@ -1171,7 +1330,8 @@ def _sort_candidates_by_clip(candidates: list, query: str) -> tuple:
             text_features /= text_features.norm(dim=-1, keepdim=True)
 
             # Batch all image embeddings in one pass for speed
-            pil_imgs = [_crop_to_pil(crop) for _, crop, _ in candidates]
+            # candidates are (gid, crop, cam[, sharpness]) — use index to be forward-compatible
+            pil_imgs = [_crop_to_pil(c[1]) for c in candidates]
             image_tensors = torch.stack([_clip_preprocess(p) for p in pil_imgs]).to(device)
             image_features = _clip_model.encode_image(image_tensors)
             image_features /= image_features.norm(dim=-1, keepdim=True)
@@ -1201,36 +1361,39 @@ def _search_worker() -> None:
         job_id = job["job_id"]
         query = job["query"]
         
-        # ── SCENE QUERY (Single frame, Non-blocking) ──
+        # ── SCENE QUERY (Single frame, Non-blocking, Streaming) ──
         if job.get("is_scene"):
             logger.info(f"[VLM Scene Query] Processing job {job_id}")
             camera_id = job["camera_id"]
-            
-            # Force behavior-centric descriptions for scene queries.
-            # Prepend language instruction so the model replies in the user's language.
-            lang_prefix = "[INSTRUÇÃO / INSTRUCTION] Responda OBRIGATORIAMENTE no mesmo idioma da pergunta abaixo. You MUST reply in the EXACT SAME LANGUAGE as the question below."
-            scene_prompt = (
-                f"{lang_prefix}\n"
-                f"{query} "
-                "IMPORTANT: Focus STRICTLY on people, their behavior, actions, and interactions. "
-                "Do NOT describe the room, static scenery, or background elements."
-            )
             scene_lang = _detect_language(query)
+
+            # Build a focused scene prompt. The system prompt already covers
+            # language and behavior focus, so keep the user message clean.
+            scene_prompt = (
+                f"{query}\n\n"
+                "Focus on: people count, their locations, current actions, "
+                "and any notable behavior or anomalies. "
+                "Be specific and quantified (e.g. '3 customers: 2 near shelves, 1 at checkout'). "
+                "If no people are visible, say so clearly."
+            )
+
             try:
                 if _has_claude():
-                    # Stream the response — partial text written to job so UI
-                    # can show words as they arrive instead of waiting for full reply.
+                    # Stream the response — partial text written to job so the UI
+                    # can show words as they arrive instead of waiting for the full reply.
                     client = _get_anthropic_client()
-                    img_b64 = _crop_to_b64(job["frame_bgr"], max_dim=480, quality=70)
+                    # 640px gives Claude enough detail to count people and read body language
+                    img_b64 = _crop_to_b64(job["frame_bgr"], max_dim=640, quality=80)
                     content = [
-                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}},
+                        {"type": "image", "source": {"type": "base64",
+                                                      "media_type": "image/jpeg", "data": img_b64}},
                         {"type": "text", "text": scene_prompt},
                     ]
                     accumulated = ""
                     with client.messages.stream(
                         model="claude-haiku-4-5-20251001",
-                        max_tokens=250,
-                        system=_CLAUDE_SYSTEM_PROMPT,
+                        max_tokens=350,
+                        system=_CLAUDE_SCENE_SYSTEM_PROMPT,
                         messages=[{"role": "user", "content": content}]
                     ) as stream:
                         for chunk in stream.text_stream:
@@ -1241,7 +1404,11 @@ def _search_worker() -> None:
                     res = accumulated.strip()
                     if _is_refusal(res):
                         logger.warning("[VLM Scene] Refusal detected — retrying sanitised")
-                        res = _run_claude_haiku(job["frame_bgr"], _sanitise_query(scene_prompt), max_tokens=250)
+                        res = _run_claude_haiku(
+                            job["frame_bgr"], _sanitise_query(scene_prompt),
+                            max_tokens=350, system=_CLAUDE_SCENE_SYSTEM_PROMPT,
+                            max_dim=640, quality=80,
+                        )
                 else:
                     res = _run_moondream(job["frame_bgr"], scene_prompt)
                     res = _translate_to_target(res, scene_lang)
@@ -1264,93 +1431,118 @@ def _search_worker() -> None:
                     _expire_old_jobs()
             continue
 
-        candidates = job["candidates"]  # list of (gid, crop_bgr, camera_id)
+        # candidates are (gid, crop_bgr, camera_id[, sharpness]) — use index access throughout
+        candidates = job["candidates"]
 
-        english_query = _translate_to_english(query)
-        logger.info(f"[VLM Search] Job {job_id}: {len(candidates)} candidates, query='{english_query}'")
+        # Detect query language upfront so we can translate the result back to the user's language
+        user_lang = _detect_language(query)
+        english_query = _translate_to_english(query) if user_lang != "en" else query
+        logger.info(f"[VLM Search] Job {job_id}: {len(candidates)} candidates, "
+                    f"lang={user_lang}, query='{english_query}'")
 
         # ── STAGE 1: CLIP — rank all candidates in one batched forward pass ──
         sorted_candidates, top_clip_score = _sort_candidates_by_clip(candidates, english_query)
 
         found = False
 
-        # Fast path: CLIP is confident enough — no VLM call needed
-        # Guard: don't short-circuit when pool is tiny (scores are unreliable on small sets)
+        # Fast path: CLIP very confident AND pool large enough to be reliable
         if top_clip_score >= _CLIP_FAST_THRESHOLD and len(sorted_candidates) >= 5 and sorted_candidates:
-            best_gid, best_crop, best_cam = sorted_candidates[0]
+            best = sorted_candidates[0]
+            best_gid, best_cam = best[0], best[2]
             logger.info(f"[VLM Search] CLIP fast-path: {best_cam}_{best_gid} score={top_clip_score:.3f}")
+            clip_msg = (
+                f"Encontrado com alta confiança (score CLIP {top_clip_score:.2f}) — câmera {best_cam}"
+                if user_lang == "pt" else
+                f"High-confidence match (CLIP score {top_clip_score:.2f}) — camera {best_cam}"
+            )
             with _search_jobs_lock:
                 _search_jobs[job_id].update({
                     "status": "done", "found": True,
                     "camera_id": best_cam, "global_id": str(best_gid),
-                    "result": f"Best match (CLIP score {top_clip_score:.2f}): camera {best_cam}",
+                    "result": clip_msg,
                     "ts": time.time(),
                 })
             found = True
 
-        # ── STAGE 2: VLM verification ──
+        # ── STAGE 2: VLM verification — multi-image batch scoring ──
         if not found:
-            import re
-
-            # Sort by pre-computed sharpness stored at crop-save time (no recomputation).
-            # candidates entries: (gid, crop_bgr, camera_id, sharpness)
+            # Sort by pre-computed sharpness so Claude sees the clearest images first
             candidates_scored = sorted(
                 sorted_candidates,
                 key=lambda c: c[3] if len(c) > 3 else 0.0,
                 reverse=True,
             )
-            top_n = candidates_scored[:8]  # wider net — sharpness sort may bury the right person
+            top_n = candidates_scored[:8]  # wider net; sharpness sort may bury the right person
 
             if _has_claude() and top_n:
-                # ONE batched Claude Haiku call — score each candidate independently.
-                # Do NOT put a numeric threshold in the prompt; let Claude judge naturally
-                # and apply the threshold in code so we can tune it without reprompting.
                 crops = [c[1] for c in top_n]
                 n = len(crops)
+
+                # Structured scoring prompt — every instruction is explicit and unambiguous.
+                # Threshold is NOT mentioned in the prompt (keeps Claude's scoring honest);
+                # we apply the cut-off in code so we can tune it without reprompting.
                 batch_q = (
-                    f'You are a retail store management assistant helping staff locate customers. '
-                    f'A staff member is looking for a customer with this appearance: "{english_query}".\n\n'
-                    f'I show you {n} photos of different customers currently in the store, '
-                    f'labeled Photo 1 to Photo {n}.\n\n'
-                    f'For EACH photo, give a match score 0-10 based on how well the visible '
-                    f'clothing and appearance match the description:\n'
-                    f'  10 = clear match (clothing/appearance fits perfectly)\n'
-                    f'  6-9 = likely match\n'
-                    f'  1-5 = unlikely match\n'
-                    f'  0   = definitely does not match\n\n'
-                    f'Reply in this EXACT format:\n'
-                    f'Photo 1: <score> - <one reason based on clothing/appearance>\n'
-                    f'Photo 2: <score> - <one reason based on clothing/appearance>\n'
+                    f'A staff member needs to locate a customer in the store. '
+                    f'The customer was described as: "{english_query}"\n\n'
+                    f'You are shown {n} CCTV crops labeled Photo 1 to Photo {n}. '
+                    f'These are real retail camera images and may be low-resolution, blurry, '
+                    f'or shot from overhead — this is normal.\n\n'
+                    f'For EACH photo, score how well the visible clothing and appearance match '
+                    f'the description above. Use this exact format:\n'
+                    f'Photo 1: <score 0-10> - <one specific observation about clothing/appearance>\n'
+                    f'Photo 2: <score 0-10> - <one specific observation about clothing/appearance>\n'
                     f'...\n'
-                    f'MATCH: <just the number of the best photo, e.g. "4", or "none">\n\n'
-                    f'If the clothing/appearance clearly matches, give a score of 7+. '
-                    f'Only say "none" if truly nothing matches.'
+                    f'MATCH: <number of the best matching photo, e.g. "3", or "none">\n\n'
+                    f'Scoring reminder:\n'
+                    f'  8-10 = clothing color AND type clearly match\n'
+                    f'  6-7  = primary color visible and consistent, minor uncertainty\n'
+                    f'  3-5  = partial or unclear — right color but wrong style, or blurry\n'
+                    f'  0    = clearly wrong person, or image too poor to judge clothing\n\n'
+                    f'Write "none" on the MATCH line only if no photo reaches a score of 6. '
+                    f'Focus on clothing first — it is the most reliable identifier in CCTV footage.'
                 )
                 try:
-                    res = _run_claude_haiku_multi(crops, batch_q, max_tokens=300)
+                    res = _run_claude_haiku_multi(
+                        crops, batch_q, max_tokens=400,
+                        system=_CLAUDE_SEARCH_SYSTEM_PROMPT,
+                        max_dim=320, quality=75,
+                    )
                     logger.info(f"[VLM Search] Claude scored result:\n{res}")
 
-                    # Parse "MATCH: 4" or "MATCH: Image 4" or "MATCH: none"
-                    match_line = re.search(r'MATCH:\s*(?:Photo\s*|Image\s*)?(\d+|none)', res, re.IGNORECASE)
+                    # Parse "MATCH: 4" / "MATCH: Photo 4" / "MATCH: Image 4" / "MATCH: none"
+                    match_line = re.search(
+                        r'MATCH:\s*(?:Photo\s*|Image\s*)?(\d+|none)', res, re.IGNORECASE)
                     if match_line and match_line.group(1).lower() != 'none':
                         idx = int(match_line.group(1)) - 1
                         if 0 <= idx < len(top_n):
-                            # Read back the score Claude assigned — reject if < 5
-                            score_match = re.search(
+                            score_m = re.search(
                                 rf'(?:Photo|Image)\s*{idx+1}:\s*(\d+)', res, re.IGNORECASE)
-                            score = int(score_match.group(1)) if score_match else 5
-                            if score >= 5:
-                                gid, _, cam = top_n[idx]
+                            score = int(score_m.group(1)) if score_m else 6
+                            if score >= 6:
+                                gid, _crop, cam = top_n[idx][0], top_n[idx][1], top_n[idx][2]
+                                reason = _extract_match_reason(res, idx)
+                                if reason and user_lang != "en":
+                                    reason = _translate_to_target(reason, user_lang)
+                                if user_lang == "pt":
+                                    result_text = (
+                                        f"Encontrado na câmera {cam} — score {score}/10"
+                                        + (f": {reason}" if reason else "")
+                                    )
+                                else:
+                                    result_text = (
+                                        f"Found on camera {cam} — score {score}/10"
+                                        + (f": {reason}" if reason else "")
+                                    )
                                 with _search_jobs_lock:
                                     _search_jobs[job_id].update({
                                         "status": "done", "found": True,
                                         "camera_id": cam, "global_id": str(gid),
-                                        "result": f"Score {score}/10 — {res}",
+                                        "result": result_text,
                                         "ts": time.time(),
                                     })
                                 found = True
                             else:
-                                logger.info(f"[VLM Search] Top match score {score} < 5 — not found")
+                                logger.info(f"[VLM Search] Top match score {score} < 6 — not found")
                 except Exception as e:
                     logger.warning(f"[VLM Search] Claude batch error: {e}")
 
@@ -1358,9 +1550,10 @@ def _search_worker() -> None:
                 # Moondream fallback: sequential, top 5
                 search_prompt = (
                     f'Does the person in this image match: "{english_query}"? '
-                    "Answer YES or NO, then one sentence."
+                    "Answer YES or NO, then one sentence describing the clothing you see."
                 )
-                for gid, crop, cam in top_n:
+                for cand in top_n[:5]:
+                    gid, crop, cam = cand[0], cand[1], cand[2]
                     try:
                         res = _run_moondream(crop, search_prompt)
                         logger.info(f"[VLM Search] Moondream {cam}_{gid}: {res}")
