@@ -1147,33 +1147,52 @@ def _search_worker() -> None:
             top_n = candidates_scored[:5]
 
             if _has_claude() and top_n:
-                # ONE batched Claude Haiku call — all top candidates in one request
+                # ONE batched Claude Haiku call — score each candidate independently
+                # so Claude doesn't feel forced to pick when nobody matches.
                 crops = [c[1] for c in top_n]
                 n = len(crops)
                 batch_q = (
-                    f'I need to find a specific person in a retail store. '
-                    f'I am looking for: "{english_query}". '
-                    f'I am showing you {n} surveillance camera images labeled Image 1 to Image {n}, '
-                    f'each showing a different person detected in the store. '
-                    f'Which image number shows a person that best matches the description? '
-                    f'Reply with just the image number (e.g. "3") or "none" if nobody matches. '
-                    f'Then one short sentence explaining why.'
+                    f'You are a precise surveillance analyst. '
+                    f'I am looking for a person matching this description: "{english_query}".\n\n'
+                    f'I show you {n} surveillance images, each of a DIFFERENT person in the store, '
+                    f'labeled Image 1 to Image {n}.\n\n'
+                    f'For EACH image, give a match score 0-10 where:\n'
+                    f'  10 = definitely this person\n'
+                    f'  5-9 = possible match\n'
+                    f'  0-4 = does not match\n\n'
+                    f'Reply in this EXACT format (one line per image):\n'
+                    f'Image 1: <score> - <one reason>\n'
+                    f'Image 2: <score> - <one reason>\n'
+                    f'...\n'
+                    f'MATCH: <image number with highest score, or "none" if all scores are below 6>\n\n'
+                    f'Be strict. Only report a MATCH if you are genuinely confident. '
+                    f'It is better to say "none" than to guess wrong.'
                 )
                 try:
-                    res = _run_claude_haiku_multi(crops, batch_q, max_tokens=100)
-                    logger.info(f"[VLM Search] Claude batch result: {res}")
-                    match = re.search(r'\b([1-5])\b', res)
-                    if match:
-                        idx = int(match.group(1)) - 1
+                    res = _run_claude_haiku_multi(crops, batch_q, max_tokens=200)
+                    logger.info(f"[VLM Search] Claude scored result:\n{res}")
+
+                    # Parse "MATCH: 3" or "MATCH: none"
+                    match_line = re.search(r'MATCH:\s*([1-5]|none)', res, re.IGNORECASE)
+                    if match_line and match_line.group(1).lower() != 'none':
+                        idx = int(match_line.group(1)) - 1
                         if 0 <= idx < len(top_n):
-                            gid, _, cam = top_n[idx]
-                            with _search_jobs_lock:
-                                _search_jobs[job_id].update({
-                                    "status": "done", "found": True,
-                                    "camera_id": cam, "global_id": str(gid),
-                                    "result": res, "ts": time.time(),
-                                })
-                            found = True
+                            # Also check the score for that image — reject if < 6
+                            score_match = re.search(
+                                rf'Image {idx+1}:\s*(\d+)', res, re.IGNORECASE)
+                            score = int(score_match.group(1)) if score_match else 0
+                            if score >= 6:
+                                gid, _, cam = top_n[idx]
+                                with _search_jobs_lock:
+                                    _search_jobs[job_id].update({
+                                        "status": "done", "found": True,
+                                        "camera_id": cam, "global_id": str(gid),
+                                        "result": f"Score {score}/10 — {res}",
+                                        "ts": time.time(),
+                                    })
+                                found = True
+                            else:
+                                logger.info(f"[VLM Search] Top match score {score} < 6 — treating as not found")
                 except Exception as e:
                     logger.warning(f"[VLM Search] Claude batch error: {e}")
 
