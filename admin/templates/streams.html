@@ -2314,7 +2314,25 @@
       const query = (document.getElementById('sqInput').value || '').trim();
       const isGlobal = document.getElementById('sqGlobal').checked;
       if (!query) return;
-      if (!isGlobal && !currentCamera) return;
+
+      // For scene queries: try to extract a camera reference from the text
+      // e.g. "camera 1", "câmera 2", "cam3", "camera_5" → "camera_1"
+      let targetCamera = currentCamera;
+      if (!isGlobal) {
+        const camMatch = query.match(/\b(?:c[aâ]mera?|cam)[_\s-]?(\d+)\b/i);
+        if (camMatch) {
+          targetCamera = 'camera_' + camMatch[1];
+        }
+        if (!targetCamera) {
+          // No camera selected and none mentioned — show a helpful error
+          const resultEl = document.getElementById('sqResult');
+          const textEl = document.getElementById('sqText');
+          resultEl.style.display = 'block';
+          textEl.textContent = '⚠️ Select a camera first, or mention one (e.g. "camera 1, o que está acontecendo?")';
+          resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          return;
+        }
+      }
 
       const btn = document.getElementById('sqBtn');
       const resultEl = document.getElementById('sqResult');
@@ -2325,7 +2343,7 @@
       btn.classList.add('loading');
       resultEl.style.display = 'block';
       textEl.textContent = '';
-      camLbl.textContent = isGlobal ? '{{ t("vlm.all_cameras", "ALL CAMERAS") }}' : currentCamera;
+      camLbl.textContent = isGlobal ? '{{ t("vlm.all_cameras", "ALL CAMERAS") }}' : targetCamera;
 
       // Loading indicator: elapsed seconds so the user knows something is happening
       const _startTs = Date.now();
@@ -2410,7 +2428,7 @@
 
       try {
         const endpoint = isGlobal ? '/api/vlm/global_query' : '/api/vlm/scene_query';
-        const payload = isGlobal ? { query } : { camera_id: currentCamera, query };
+        const payload = isGlobal ? { query } : { camera_id: targetCamera, query };
 
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -2448,11 +2466,8 @@
         _scanningActive = false;
         textEl.textContent = '\u26a0\ufe0f {{ t("vlm.network_error_prefix", "Network error: ") }}' + e.message;
       } finally {
-        // Only reset button if we didn't hand off to the async poller
-        if (!isGlobal) {
-          btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
-          btn.classList.remove('loading');
-        }
+        // Button is reset inside _pollSearchResult when the job finishes.
+        // Don't reset it here — the async poller is still running.
       }
     }
 
