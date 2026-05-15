@@ -505,6 +505,47 @@ def _has_claude() -> bool:
     return bool(_CONFIG.anthropic_api_key)
 
 
+# ── Refusal detection & query sanitisation ────────────────────────────────────
+
+_REFUSAL_PHRASES = (
+    "i can't help",
+    "i cannot help",
+    "i'm unable to",
+    "i am unable to",
+    "privacy",
+    "safety concern",
+    "inappropriate",
+    "identify individuals",
+    "i won't",
+    "i will not",
+    "not able to assist",
+    "decline to",
+    "against my",
+)
+
+def _is_refusal(text: str) -> bool:
+    """Return True if Claude's response looks like a content refusal."""
+    low = text.lower()
+    return any(p in low for p in _REFUSAL_PHRASES)
+
+
+# Demographic/identity words that trigger safety filters.
+# On retry we strip these and keep only the clothing/appearance terms.
+_DEMO_WORDS = re.compile(
+    r'\b(black|white|asian|hispanic|latin[ao]?|arab|indian|african|caucasian'
+    r'|man|woman|boy|girl|male|female|homem|mulher|menino|menina'
+    r'|pessoa|person|people|individuals?)\b',
+    re.IGNORECASE,
+)
+
+def _sanitise_query(query: str) -> str:
+    """Strip demographic/identity terms, keep clothing and appearance words."""
+    cleaned = _DEMO_WORDS.sub('', query)
+    # Collapse extra spaces
+    cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip(' ,.-')
+    return cleaned or query  # fall back to original if nothing left
+
+
 # System prompt injected into every Claude call.
 # Establishes the retail operations context so appearance-based queries
 # (including those with demographic descriptors) are handled as legitimate
@@ -531,7 +572,8 @@ def _run_claude_haiku(crop_bgr: np.ndarray, question: str, max_tokens: int = 200
 
     img_b64 = _crop_to_b64(crop_bgr, max_dim=224, quality=65)
     client = anthropic.Anthropic(api_key=_CONFIG.anthropic_api_key)
-    try:
+
+    def _call(q: str) -> str:
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=max_tokens,
@@ -540,11 +582,18 @@ def _run_claude_haiku(crop_bgr: np.ndarray, question: str, max_tokens: int = 200
                 "role": "user",
                 "content": [
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}},
-                    {"type": "text", "text": question},
+                    {"type": "text", "text": q},
                 ]
             }]
         )
         return msg.content[0].text.strip()
+
+    try:
+        result = _call(question)
+        if _is_refusal(result):
+            logger.warning("[VLM] Claude refused — retrying with sanitised query")
+            result = _call(_sanitise_query(question))
+        return result
     except Exception as e:
         logger.error(f"[VLM] Claude Haiku error: {e}")
         return f"Analysis failed: {type(e).__name__}"
@@ -570,14 +619,26 @@ def _run_claude_haiku_multi(crops_bgr: list, question: str, max_tokens: int = 30
     content.append({"type": "text", "text": question})
 
     client = anthropic.Anthropic(api_key=_CONFIG.anthropic_api_key)
-    try:
+
+    def _call(final_content: list) -> str:
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=max_tokens,
             system=_CLAUDE_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": content}]
+            messages=[{"role": "user", "content": final_content}]
         )
         return msg.content[0].text.strip()
+
+    try:
+        result = _call(content)
+        if _is_refusal(result):
+            logger.warning("[VLM] Claude refused multi — retrying with sanitised question")
+            # Replace only the final text block (the question), keep images intact
+            sanitised_content = content[:-1] + [
+                {"type": "text", "text": _sanitise_query(content[-1]["text"])}
+            ]
+            result = _call(sanitised_content)
+        return result
     except Exception as e:
         logger.error(f"[VLM] Claude Haiku multi error: {e}")
         return f"Analysis failed: {type(e).__name__}"
