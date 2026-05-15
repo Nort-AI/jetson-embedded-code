@@ -4239,7 +4239,8 @@ def api_vlm_crop(track_id: str):
         # Grab the raw crop for pose and invalidate the stale pose cache
         with _va._track_crops_lock:
             entry = _va._track_crops.get(str(track_id))
-            crop_for_pose = entry["crop"].copy() if entry else None
+            # Use latest_crop (most recent frame) for pose — same as get_crop_jpeg
+            crop_for_pose = (entry.get("latest_crop") or entry["crop"]).copy() if entry else None
             if entry:
                 entry["pose_jpeg"] = None   # discard stale skeleton
                 entry["pose_ts"]   = 0.0    # mark as not yet computed

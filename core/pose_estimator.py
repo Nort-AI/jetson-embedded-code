@@ -35,8 +35,9 @@ logger = logging.getLogger(__name__)
 # ── Lazy-load sentinels ────────────────────────────────────────────────────────
 _LOAD_FAILED = object()   # distinct from None (= not tried yet)
 
-_mp_model      = None
+_mp_model      = None   # lazily initialised; set to _LOAD_FAILED on import error
 _mp_lock       = threading.Lock()
+_MP_COMPLEXITY = 2      # model_complexity used to build _mp_model — change forces reload
 
 _yolo_model    = None
 _yolo_lock     = threading.Lock()
@@ -81,10 +82,10 @@ def _get_mp():
             import mediapipe as mp
             _mp_model = mp.solutions.pose.Pose(
                 static_image_mode=True,
-                model_complexity=1,
+                model_complexity=2,        # full accuracy (was 1); ~30% slower but far better keypoints
                 smooth_landmarks=False,
-                min_detection_confidence=0.45,
-                min_tracking_confidence=0.45,
+                min_detection_confidence=0.4,
+                min_tracking_confidence=0.4,
             )
             logger.info("[Pose] MediaPipe BlazePose loaded — Apache 2.0, commercial use OK")
         except Exception as e:
@@ -132,13 +133,33 @@ def _no_detection_jpeg(img: np.ndarray) -> bytes | None:
 
 
 def _upscale(crop_bgr: np.ndarray):
-    """Upscale tiny crops so the model has enough resolution."""
+    """Upscale tiny crops and add contextual border padding.
+
+    MediaPipe BlazePose needs the full body visible with some surrounding
+    context to reliably initialise its body-prior.  Two improvements vs the
+    old code:
+      1. Minimum short-side raised from 192 → 256 px for better keypoint
+         localisation on typical CCTV crops.
+      2. After scaling, add a 10 % border on all sides (filled with the mean
+         edge colour so the model doesn't see a hard black cut-off).  This
+         gives the hip/ankle detectors the context they need when the crop
+         is tightly bounded to the person.
+    """
     h, w = crop_bgr.shape[:2]
-    scale = max(1.0, 192 / min(h, w))
+    scale = max(1.0, 256 / min(h, w))
     if scale > 1.0:
         nh, nw = int(h * scale), int(w * scale)
-        return cv2.resize(crop_bgr, (nw, nh), interpolation=cv2.INTER_LINEAR)
-    return crop_bgr
+        crop_bgr = cv2.resize(crop_bgr, (nw, nh), interpolation=cv2.INTER_LINEAR)
+        h, w = nh, nw
+
+    # Add 10 % border so body extremities aren't cut at the crop edge
+    pad_y = max(8, int(h * 0.10))
+    pad_x = max(8, int(w * 0.10))
+    # Use replicate border (mirrors edge pixels) rather than black — avoids
+    # creating an artificial background that confuses body segmentation
+    return cv2.copyMakeBorder(
+        crop_bgr, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REPLICATE
+    )
 
 
 def _compute_angles_and_posture(kp_dict: dict, min_conf: float):

@@ -212,12 +212,18 @@ def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str,
         # ── Multi-crop pool: keep the N sharpest crops ever seen for this person ──
         # Storing the latest crop only causes search to use blurry/far/back-view images
         # when a sharp close-up was captured moments earlier. This fixes that.
+        #
+        # IMPORTANT: Reset the pool when the previous observation is stale (> 3 s gap).
+        # Without this, spatio-temporal recovery assigns a new person to an old global_id
+        # and the old person's sharper crops pollute the pool, causing the wrong face to
+        # appear when the operator clicks the new person in the UI panel.
         _POOL_SIZE = 3
-        prev_pool = prev.get("all_crops", [])
+        prev_ts   = prev.get("ts", 0.0)
+        prev_pool = [] if (now - prev_ts) > 3.0 else prev.get("all_crops", [])
         new_pool = prev_pool + [{"crop": crop_bgr.copy(), "sharpness": _sharpness}]
         new_pool.sort(key=lambda x: x["sharpness"], reverse=True)
         new_pool = new_pool[:_POOL_SIZE]
-        best = new_pool[0]  # sharpest crop ever seen for this person
+        best = new_pool[0]  # sharpest crop in current presence window
 
         # ── Zone dwell tracking + trail ──────────────────────────────────────
         # trail entries: (camera_id, zone_name, entry_ts, exit_ts|None)
@@ -237,10 +243,11 @@ def save_crop(global_id: str, crop_bgr: np.ndarray, camera_id: str,
             new_zone_entry_ts = prev_zone_entry if prev_zone == zone else now
 
         _track_crops[key] = {
-            "crop":          best["crop"],      # sharpest ever — backward compat
-            "sharpness":     best["sharpness"], # sharpest ever
-            "all_crops":     new_pool,          # full pool for multi-view VLM search
-            "ts":            now,               # timestamp of most recent observation
+            "crop":          best["crop"],         # sharpest in window — used by VLM search
+            "latest_crop":   crop_bgr.copy(),      # most recent frame — used by UI panel
+            "sharpness":     best["sharpness"],
+            "all_crops":     new_pool,             # full pool for multi-view VLM search
+            "ts":            now,                  # timestamp of most recent observation
             "cam":           camera_id,
             "crop_bounds":   crop_bounds,
             # Zone / dwell / journey
@@ -341,7 +348,13 @@ def get_config() -> VLMConfig:
 
 
 def get_crop_jpeg(global_id: str, quality: int = 85) -> Optional[bytes]:
-    """Return the latest stored crop for a track as JPEG bytes, or None."""
+    """Return the most-recent crop for a track as JPEG bytes, or None.
+
+    Uses ``latest_crop`` (always the newest frame) rather than ``crop``
+    (sharpest-ever in the current window) so the operator panel always shows
+    the person they just clicked on, not a sharper historical frame from a
+    previous person who held the same global_id.
+    """
     if not _CONFIG.enabled:
         return None
     key = str(global_id)
@@ -349,7 +362,9 @@ def get_crop_jpeg(global_id: str, quality: int = 85) -> Optional[bytes]:
         entry = _track_crops.get(key)
         if entry is None:
             return None
-        crop = entry["crop"].copy()
+        # Prefer latest_crop (added in current session); fall back to crop for
+        # entries saved before this field existed (e.g. pre-restart state).
+        crop = (entry.get("latest_crop") or entry["crop"]).copy()
     try:
         ok, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, quality])
         return buf.tobytes() if ok else None
