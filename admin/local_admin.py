@@ -4862,16 +4862,26 @@ def api_stream_alerts():
                 pass
 
         q = _ae.get_alert_queue()
+        # CRITICAL: must use get_nowait() + _gsleep(), NOT q.get(timeout=N).
+        # gevent WSGIServer runs without monkey.patch_all(), so queue.Queue.get(timeout=N)
+        # uses threading.Condition.wait(N) → blocks the gevent hub OS thread for N seconds,
+        # freezing ALL concurrent requests (MJPEG streams, /api/status, etc.).
+        # Pattern mirrors /api/stream/tracks: poll with get_nowait() + cooperative sleep.
+        import queue as _q_mod
+        last_keepalive = _time.time()
         while True:
             try:
-                # Non-blocking get with a timeout so we can send keepalives
                 try:
-                    event = q.get(timeout=25)
+                    event = q.get_nowait()
                     yield f"data: {_json.dumps(_asdict(event))}\n\n"
-                except Exception:
-                    # timeout — send keepalive comment so proxy doesn't close connection
+                except _q_mod.Empty:
+                    pass  # no alerts ready — continue loop
+                # Send keepalive every 25 s so browser/proxy don't close connection
+                now = _time.time()
+                if now - last_keepalive >= 25:
                     yield ": keepalive\n\n"
-                _gsleep(0)  # cooperative yield
+                    last_keepalive = now
+                _gsleep(0.5)  # cooperative yield — check for new alerts every 500ms
             except GeneratorExit:
                 break
             except Exception as e:
