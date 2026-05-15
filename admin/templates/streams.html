@@ -2386,30 +2386,29 @@
               btn.textContent = '{{ t("vlm.ask_ai", "Ask AI ✦") }}';
               btn.classList.remove('loading');
 
+              const elapsed = (((Date.now() - _startTs) || 0) / 1000).toFixed(1);
+
               if (data.error || data.found === false) {
-                textEl.textContent = '\u26a0\ufe0f ' + (data.error || data.result || '{{ t("vlm.not_found", "Not found.") }}');
+                const msg = data.error || data.result || '{{ t("vlm.not_found", "Not found.") }}';
+                textEl.textContent = '\u26a0\ufe0f ' + msg;
                 if (!data.found && !data.error) camLbl.textContent = '{{ t("vlm.none", "NONE") }}';
-                textEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                showAIResponse('\u26a0\ufe0f ' + msg, camLbl.textContent, elapsed);
               } else {
                 const answer = data.result || '{{ t("vlm.no_answer", "(no answer)") }}';
-                textEl.textContent = '';
-                textEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                let ci = 0;
-                const typeInterval = setInterval(() => {
-                  if (ci >= answer.length) { clearInterval(typeInterval); return; }
-                  textEl.textContent += answer[ci++];
-                }, 12);
-                camLbl.textContent = data.camera_id || currentCamera;
-                if (data.found && data.camera_id) {
-                  if (data.camera_id !== currentCamera) {
+                const camLabel = data.camera_id || currentCamera;
+                camLbl.textContent = camLabel;
+                textEl.textContent = answer;   // also keep in sidebar (no typewriter there)
+
+                // Show in prominent modal overlay \u2014 main display path
+                showAIResponse(answer, camLabel, elapsed);
+
+                // Person-search only: switch camera to where the person was found
+                if (data.global_id) {
+                  if (data.camera_id && data.camera_id !== currentCamera) {
                     const tabBox = document.getElementById('btn_' + data.camera_id);
                     if (tabBox) setCamera(data.camera_id, tabBox);
                   }
-                  if (data.global_id) {
-                    setTimeout(() => {
-                      openVlmPanel(data.global_id);
-                    }, 100);
-                  }
+                  setTimeout(() => openVlmPanel(data.global_id), 200);
                 }
               }
               return;
@@ -3360,6 +3359,60 @@
         </button>`;
       document.body.appendChild(c);
     });
+
+    // ── AI Response Modal ──────────────────────────────────────────────────────
+    // Creates or reuses a full-screen overlay to show VLM responses.
+    // Called whenever a scene query or search result arrives.
+    function showAIResponse(text, camLabel, elapsedSec) {
+      let modal = document.getElementById('aiResponseModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'aiResponseModal';
+        modal.style.cssText = [
+          'position:fixed', 'inset:0', 'z-index:9999',
+          'display:flex', 'align-items:center', 'justify-content:center',
+          'background:rgba(0,0,0,0.72)', 'backdrop-filter:blur(6px)',
+          'padding:24px', 'cursor:pointer',
+        ].join(';');
+        modal.addEventListener('click', e => {
+          if (e.target === modal) modal.style.display = 'none';
+        });
+        document.body.appendChild(modal);
+      }
+      modal.innerHTML = `
+        <div style="
+          background:var(--bg-card,#1a1f2e);border:1px solid var(--primary,#06b6d4);
+          border-radius:14px;padding:28px 32px;max-width:680px;width:100%;
+          box-shadow:0 0 40px rgba(6,182,212,.25);cursor:default;position:relative;
+          max-height:80vh;overflow-y:auto;" onclick="event.stopPropagation()">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--primary,#06b6d4);
+              display:inline-block;animation:pulse 1.5s infinite alternate;flex-shrink:0;"></span>
+            <span style="font-size:.7rem;font-weight:700;text-transform:uppercase;
+              letter-spacing:.08em;color:var(--primary,#06b6d4);">AI · ${camLabel || 'response'}</span>
+            ${elapsedSec ? `<span style="font-size:.65rem;color:var(--fg-muted,#888);margin-left:auto;">${elapsedSec}s</span>` : ''}
+            <button onclick="document.getElementById('aiResponseModal').style.display='none'"
+              style="background:none;border:none;color:var(--fg-muted,#888);font-size:1.2rem;
+              cursor:pointer;padding:0 0 0 8px;line-height:1;margin-left:auto;">✕</button>
+          </div>
+          <div id="aiResponseText" style="
+            font-size:.95rem;color:var(--fg,#e2e8f0);line-height:1.75;
+            white-space:pre-wrap;"></div>
+          <div style="margin-top:18px;font-size:.68rem;color:var(--fg-muted,#666);text-align:right;">
+            click outside or ✕ to close
+          </div>
+        </div>`;
+      modal.style.display = 'flex';
+
+      // Typewriter into the modal text div
+      const out = document.getElementById('aiResponseText');
+      out.textContent = '';
+      let ci = 0;
+      const ti = setInterval(() => {
+        if (ci >= text.length) { clearInterval(ti); return; }
+        out.textContent += text[ci++];
+      }, 10);
+    }
 
     async function submitGlobalVlmPrompt() {
       const input = document.getElementById('vlm-prompt-input');
