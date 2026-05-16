@@ -1283,11 +1283,16 @@
       max-height: 260px; overflow-y: auto;
     }
 
-    /* ── Chat Panel ── */
+    /* ── Chat Panel (standalone card, always visible) ── */
     #chatPanel {
-      border-top: 1px solid var(--border);
-      margin-top: 4px;
-      padding-top: 10px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-top: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.15);
+      /* leave space for the floating prompt bar at bottom */
+      margin-bottom: 80px;
     }
     #chatPanelHeader {
       display: flex; align-items: center; gap: 6px;
@@ -2005,16 +2010,6 @@
                 " onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter=''">{{
                   t('vlm.ask_ai', 'Ask AI ✦') }}</button>
               </div>
-              <!-- Chat log: persistent scrollable Q&A history -->
-              <div id="chatPanel">
-                <div id="chatPanelHeader">
-                  <span class="chat-pulse"></span>
-                  Store Intelligence Chat
-                </div>
-                <div id="chatLog">
-                  <div id="chatPlaceholder">Ask anything — people, zones, trends, alerts…</div>
-                </div>
-              </div>
               <!-- Ghost elements for legacy JS compat (never visible) -->
               <div id="sqResult" style="display:none;"><span id="sqCam"></span><div id="sqText"></div></div>
             </div>
@@ -2038,6 +2033,17 @@
                 <div class="gallery-strip" id="galleryStrip">
                   <div class="gallery-empty" id="galleryEmpty">No one tracked yet.</div>
                 </div>
+              </div>
+            </div>
+
+            <!-- ── Store Intelligence Chat ─────────────────────────────────── -->
+            <div id="chatPanel">
+              <div id="chatPanelHeader">
+                <span class="chat-pulse"></span>
+                Store Intelligence Chat
+              </div>
+              <div id="chatLog">
+                <div id="chatPlaceholder">Ask anything — people, zones, trends, alerts…</div>
               </div>
             </div>
           </div>
