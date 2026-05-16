@@ -238,51 +238,83 @@ def draw_selection_hud(
     frame_counter: int = 0,
 ) -> None:
     """
-    Draw a pulsing selection highlight around a selected person.
+    Draw a selection highlight around a selected person.
 
-    Replaces _draw_selection_highlight in camera_processor.py.
-    Uses a double-ring: outer cyan (pulsing alpha) + inner gold (solid).
-    A  ◆ LOCKED  badge is drawn above the top-left corner.
+    Visual language matches draw_hud_box exactly:
+      • Same double-layer corner brackets (no full rectangle ring).
+      • Same dark translucent pill chip, but right-aligned above the box
+        so it does not overlap the G:ID chip drawn by draw_hud_box.
+      • Soft pulsing glow (narrow pad, does not obscure normal corners).
+      • Accent colour: bright white — visually distinct from any per-person
+        neon hue without introducing a second conflicting palette.
     """
     x1, y1, x2, y2 = [int(v) for v in bbox]
     h_frame, w_frame = frame.shape[:2]
     x1 = max(0, x1); y1 = max(0, y1)
     x2 = min(w_frame, x2); y2 = min(h_frame, y2)
+    box_w = x2 - x1
 
-    gold   = (0, 200, 255)    # BGR gold
-    cyan   = (255, 220, 0)    # BGR cyan
+    # Bright white — stands out from every per-person neon hue
+    accent = (255, 255, 255)
 
-    # Outer glow: alpha pulses between 0.20 and 0.55 using frame_counter
-    pulse_alpha = 0.20 + 0.18 * abs(np.sin(frame_counter * 0.08))
-    _blend_rect(frame, x1 - 6, y1 - 6, x2 + 6, y2 + 6, cyan, pulse_alpha)
+    # ── 1. Narrow pulsing glow (3 px pad — does not obscure normal corners) ───
+    pulse_alpha = 0.12 + 0.10 * abs(np.sin(frame_counter * 0.08))
+    _blend_rect(frame, x1 - 3, y1 - 3, x2 + 3, y2 + 3, accent, pulse_alpha)
 
-    # Inner solid ring
-    cv2.rectangle(frame, (x1 - 2, y1 - 2), (x2 + 2, y2 + 2), gold, 2, cv2.LINE_AA)
+    # ── 2. Double-layer corner brackets (same pattern as draw_hud_box) ────────
+    corner_len  = max(16, min(32, int(box_w * 0.22)))
+    outer_thick = 2
+    inner_thick = 5   # matches the neon inner bracket weight
+    _gap        = 5
 
-    # Corner accents (gold, thicker)
-    clen = max(14, min(28, int((x2 - x1) * 0.15)))
-    for px, py, sdx, sdy in [(x1, y1, 1, 1), (x2, y1, -1, 1),
-                               (x1, y2, 1, -1), (x2, y2, -1, -1)]:
-        cv2.line(frame, (px, py), (px + sdx * clen, py),          gold, 3, cv2.LINE_AA)
-        cv2.line(frame, (px, py), (px,               py + sdy * clen), gold, 3, cv2.LINE_AA)
+    def _sel_corner(p, dx, dy):
+        outer_c = (180, 180, 180)
+        cv2.line(frame, p,
+                 (p[0] + dx * (corner_len + _gap), p[1]),
+                 outer_c, outer_thick, cv2.LINE_AA)
+        cv2.line(frame, p,
+                 (p[0], p[1] + dy * (corner_len + _gap)),
+                 outer_c, outer_thick, cv2.LINE_AA)
+        ip = (p[0] + dx * _gap, p[1] + dy * _gap)
+        cv2.line(frame, ip,
+                 (ip[0] + dx * corner_len, ip[1]),
+                 accent, inner_thick, cv2.LINE_AA)
+        cv2.line(frame, ip,
+                 (ip[0], ip[1] + dy * corner_len),
+                 accent, inner_thick, cv2.LINE_AA)
 
-    # ◆ LOCKED badge
-    badge_txt  = " LOCKED"
-    b_font     = cv2.FONT_HERSHEY_SIMPLEX
-    b_scale    = 0.52
-    b_thick    = 1
-    (bw, bh), _ = cv2.getTextSize(badge_txt, b_font, b_scale, b_thick)
-    bp         = 5
-    bx1        = x1
-    bx2        = min(w_frame, x1 + bw + bp * 2 + 14)
-    by2        = max(bh + bp * 2 + 2, y1 - 4)
-    by1        = by2 - bh - bp * 2
+    _sel_corner((x1, y1), +1, +1)
+    _sel_corner((x2, y1), -1, +1)
+    _sel_corner((x1, y2), +1, -1)
+    _sel_corner((x2, y2), -1, -1)
 
-    if by1 >= 0 and by2 > by1 and bx2 > bx1:
-        cv2.rectangle(frame, (bx1, by1), (bx2, by2), gold, -1)
-        cv2.putText(frame, "◆" + badge_txt,
-                    (bx1 + bp, by2 - bp),
-                    b_font, b_scale, (10, 10, 10), b_thick, cv2.LINE_AA)
+    # ── 3. LOCKED chip — same dark-pill style as draw_hud_box, right-aligned ──
+    #   Positioned above the top-right corner so it does not overlap the
+    #   G:ID chip that draw_hud_box places above the top-left corner.
+    badge_txt  = "LOCKED"
+    font       = cv2.FONT_HERSHEY_DUPLEX   # matches draw_hud_box exactly
+    font_scale = 0.50
+    font_thick = 1
+    (tw, th), _ = cv2.getTextSize(badge_txt, font, font_scale, font_thick)
+
+    chip_pad = 5
+    chip_h   = th + chip_pad * 2
+    chip_w   = tw + chip_pad * 2 + 6    # +6 for left accent stripe
+    chip_y1  = max(0, y1 - chip_h - 4)
+    chip_y2  = chip_y1 + chip_h
+    chip_x2  = x2                        # right-aligned to box right edge
+    chip_x1  = max(0, x2 - chip_w)
+
+    if chip_y2 > chip_y1 and chip_x2 > chip_x1:
+        _blend_rect(frame, chip_x1, chip_y1, chip_x2, chip_y2, (10, 10, 10), alpha=0.85)
+        # white accent stripe on the left edge of the chip
+        cv2.line(frame,
+                 (chip_x1 + 2, chip_y1 + 2),
+                 (chip_x1 + 2, chip_y2 - 2),
+                 accent, 3)
+        cv2.putText(frame, badge_txt,
+                    (chip_x1 + 8, chip_y2 - chip_pad),
+                    font, font_scale, (230, 230, 230), font_thick, cv2.LINE_AA)
 
 
 def clear_track_state(global_id) -> None:
