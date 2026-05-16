@@ -1111,6 +1111,12 @@ class CameraProcessor:
                     crossing_indicator = ""
                     if attrs["crossing_status"] == "entered":
                         crossing_indicator = " ->"
+                        # Notify alert engine for visitor_surge rule
+                        try:
+                            from core import alert_engine as _ae
+                            _ae.notify_entry(self.camera_id)
+                        except Exception:
+                            pass
                     elif attrs["crossing_status"] == "exited":
                         crossing_indicator = " <-"
 
