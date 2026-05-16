@@ -223,12 +223,12 @@
       </div>
     </div>
 
-    <!-- Row 2: Zone occupancy stacked bar (full width) -->
+    <!-- Row 2: Zone occupancy line chart (full width) -->
     <div class="grid-1 card">
       <div class="card-header">
         <div>
           <div class="card-title">📊 Zone Occupancy Along the Day</div>
-          <div class="card-desc">Unique visitors per zone per hour — stacked</div>
+          <div class="card-desc">Unique visitors per zone per hour — one line per zone</div>
         </div>
         <div id="zone-legend" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;"></div>
       </div>
@@ -382,30 +382,46 @@
     }
 
     const labels = Array.from({length:24}, (_,i) => i%3===0 ? String(i).padStart(2,'0')+':00' : '');
-    const datasets = zones.map((z, i) => ({
-      label: z,
-      data: zoneHourly[z],
-      backgroundColor: PALETTE[i%PALETTE.length] + 'cc',
-      borderColor:     PALETTE[i%PALETTE.length],
-      borderWidth: 0, borderRadius: 2,
-      stack: 'zones',
-    }));
+    const datasets = zones.map((z, i) => {
+      const col = PALETTE[i % PALETTE.length];
+      return {
+        label: z,
+        data:  zoneHourly[z],
+        borderColor:     col,
+        backgroundColor: col + '22',   // faint fill under each line
+        borderWidth: 2.5,
+        tension: 0.4,
+        fill: false,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointBackgroundColor: col,
+      };
+    });
 
-    legendEl.innerHTML = zones.map((z,i) =>
-      `<span style="display:flex;align-items:center;gap:4px;font-size:.72rem;color:${axC()}">
-         <span style="width:10px;height:10px;border-radius:2px;background:${PALETTE[i%PALETTE.length]};flex-shrink:0"></span>${z}
+    legendEl.innerHTML = zones.map((z, i) =>
+      `<span style="display:flex;align-items:center;gap:5px;font-size:.72rem;color:${axC()}">
+         <span style="width:22px;height:3px;border-radius:2px;background:${PALETTE[i%PALETTE.length]};flex-shrink:0"></span>${z}
        </span>`
     ).join('');
 
     _charts['zs'] = new Chart(ctx, {
-      type: 'bar',
+      type: 'line',
       data: { labels, datasets },
       options: {
-        responsive:true, maintainAspectRatio:false, animation:false,
-        plugins:{ legend:{display:false}, tooltip:{ mode:'index', intersect:false }},
-        scales:{
-          x:{stacked:true, grid:{color:gridC()}, ticks:{color:axC(),font:{size:10}}},
-          y:{stacked:true, beginAtZero:true, grid:{color:gridC()}, ticks:{color:axC(),precision:0,font:{size:10}}},
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            mode: 'index', intersect: false,
+            callbacks: {
+              title: items => String(items[0].dataIndex).padStart(2,'0') + ':00 – ' + String(items[0].dataIndex+1).padStart(2,'0') + ':00',
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: gridC() }, ticks: { color: axC(), font: { size: 10 } } },
+          y: { beginAtZero: true, grid: { color: gridC() }, ticks: { color: axC(), precision: 0, font: { size: 10 } } },
         }
       }
     });
