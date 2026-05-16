@@ -1203,6 +1203,84 @@ def api_status():
     })
 
 
+@app.route("/api/dashboard/analytics")
+@requires_auth
+def api_dashboard_analytics():
+    """Analytics data polled by the dashboard every 60 s.
+
+    Returns:
+      hourly_traffic   — list of {hour, label, count} for today (24 entries)
+      zone_occupancy   — live list of {zone, count, pct}, sorted descending
+      today_total      — unique visitors today
+      yesterday_total  — unique visitors yesterday
+      vs_yesterday_pct — % change (None if no yesterday data)
+      last_hour_total  — visitors in the last 60 min
+    """
+    import time as _t
+    from core import analytics_query as _aq
+    from core import vlm_analyst as _vl
+
+    # ── Hourly traffic today ───────────────────────────────────────────────
+    try:
+        hourly_raw = _aq.query_hourly_traffic()        # {hour_int: count}
+    except Exception:
+        hourly_raw = {}
+    hourly = [
+        {"hour": h, "label": f"{h:02d}:00", "count": int(hourly_raw.get(h, 0))}
+        for h in range(24)
+    ]
+
+    # ── Totals + day-on-day comparison ────────────────────────────────────
+    try:
+        today_total = int(_aq.query_today_total())
+    except Exception:
+        today_total = 0
+    try:
+        yesterday_total = int(_aq.query_yesterday_total())
+    except Exception:
+        yesterday_total = 0
+    vs_yesterday_pct = (
+        round((today_total - yesterday_total) / yesterday_total * 100, 1)
+        if yesterday_total > 0 else None
+    )
+
+    # ── Last hour ─────────────────────────────────────────────────────────
+    try:
+        last_hour_total = int(_aq.query_last_hour_total())
+    except Exception:
+        last_hour_total = 0
+
+    # ── Live zone occupancy (from in-memory tracker) ───────────────────────
+    zone_counts: dict = {}
+    try:
+        now = _t.time()
+        with _vl._track_crops_lock:
+            for entry in _vl._track_crops.values():
+                if now - entry.get("ts", 0) < 30:          # seen in last 30 s
+                    zone = (entry.get("zone") or "").strip() or "Unknown"
+                    zone_counts[zone] = zone_counts.get(zone, 0) + 1
+    except Exception:
+        pass
+    total_in_zones = sum(zone_counts.values()) or 1
+    zone_occupancy = sorted(
+        [
+            {"zone": z, "count": c, "pct": round(c / total_in_zones * 100)}
+            for z, c in zone_counts.items()
+        ],
+        key=lambda x: x["count"],
+        reverse=True,
+    )
+
+    return jsonify({
+        "hourly_traffic":   hourly,
+        "zone_occupancy":   zone_occupancy,
+        "today_total":      today_total,
+        "yesterday_total":  yesterday_total,
+        "vs_yesterday_pct": vs_yesterday_pct,
+        "last_hour_total":  last_hour_total,
+    })
+
+
 @app.route("/api/notifications/<notif_id>/dismiss", methods=["POST"])
 @requires_auth
 def dismiss_notification(notif_id: str):

@@ -891,6 +891,36 @@
     .chart-wrap {
       height: 160px;
     }
+    .chart-wrap-tall {
+      height: 210px;
+    }
+
+    /* ── Zone occupancy bars ─────────────────────────────── */
+    .zone-list {
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .zone-row {
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .zone-row-header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: .82rem;
+    }
+    .zone-name { font-weight: 600; color: var(--fg); }
+    .zone-count { font-size: .75rem; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+    .zone-bar-track {
+      height: 7px; background: rgba(255,255,255,.06);
+      border-radius: 4px; overflow: hidden;
+    }
+    .zone-bar-fill {
+      height: 100%; border-radius: 4px;
+      background: linear-gradient(90deg, #6366f1, #24B6FC);
+      transition: width .5s ease;
+    }
+    .zone-empty {
+      font-size: .8rem; color: var(--fg-muted); text-align: center;
+      padding: 24px 0; font-style: italic; opacity: .6;
+    }
 
     /* ── Footer ──────────────────────────────────────────── */
     
@@ -1439,6 +1469,20 @@
           <div class="kpi-value" id="kpi-cameras">{{ active_cameras }} / {{ total_cameras }}</div>
           <div class="kpi-sub"><span class="text-muted">{{ t('dashboard.today_stats.cameras_sub') }}</span></div>
         </div>
+
+        <div class="kpi-card">
+          <div class="kpi-accent-bar bar-blue"></div>
+          <div class="kpi-label"><span class="kpi-icon">⏱</span>Last Hour</div>
+          <div class="kpi-value" id="kpi-last-hour">—</div>
+          <div class="kpi-sub"><span class="text-muted">visitors in last 60 min</span></div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-accent-bar bar-green"></div>
+          <div class="kpi-label"><span class="kpi-icon">📅</span>Yesterday</div>
+          <div class="kpi-value" id="kpi-yesterday">—</div>
+          <div class="kpi-sub" id="kpi-vs-yesterday"><span class="text-muted">vs today</span></div>
+        </div>
       </div>
 
       <!-- Main Grid -->
@@ -1512,6 +1556,45 @@
         </div>
       </div>
 
+      <!-- ── Analytics Row ──────────────────────────────────────────────── -->
+      <div class="grid-2" style="margin-top:0;">
+
+        <!-- Hourly Traffic Today -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <span class="card-icon">📈</span> Hourly Traffic — Today
+              </div>
+              <div class="card-desc">Unique visitors per hour, from midnight</div>
+            </div>
+            <span id="hourly-updated" style="font-size:.68rem;color:var(--fg-muted);"></span>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap-tall"><canvas id="hourlyChart"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Live Zone Occupancy -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <span class="card-icon">🗺</span> Zone Occupancy — Live
+              </div>
+              <div class="card-desc">People tracked per zone right now (last 30 s)</div>
+            </div>
+            <span id="zone-total" style="font-size:.75rem;font-weight:700;color:var(--primary);"></span>
+          </div>
+          <div class="card-body">
+            <div class="zone-list" id="zoneList">
+              <div class="zone-empty">No zone data yet — tracking will populate this.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
       <!-- Device Operations -->
       <div class="controls-bar">
         <div class="controls-info">
@@ -1573,6 +1656,103 @@
       { label: 'RAM', data: {{ ram_hist | safe }}, borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,0.08)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 0 },
       { label: 'GPU', data: {{ gpu_hist | safe }}, borderColor: '#F0A500', backgroundColor: 'rgba(240,165,0,0.08)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 0 }
     ]}, options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { labels: { color: '#7A9CAF', font: { size: 11, family: 'Inter' }, boxWidth: 10 } } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#546A7B', maxTicksLimit: 5, font: { size: 10 } } }, y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#546A7B', stepSize: 25, font: { size: 10 } } } } }});
+
+    // ── Hourly Traffic Chart ─────────────────────────────────────────────
+    const _hourlyLabels = Array.from({length:24}, (_,i) => i%3===0 ? String(i).padStart(2,'0')+':00' : '');
+    const _hourlyData   = new Array(24).fill(0);
+    const _isDark = () => document.documentElement.getAttribute('data-theme') !== 'light';
+    const _axisColor  = () => _isDark() ? '#546A7B' : '#8899aa';
+    const _gridColor  = () => _isDark() ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.05)';
+
+    const hourlyCtx = document.getElementById('hourlyChart').getContext('2d');
+    const hourlyChart = new Chart(hourlyCtx, {
+      type: 'bar',
+      data: {
+        labels: _hourlyLabels,
+        datasets: [{
+          label: 'Visitors',
+          data: _hourlyData,
+          backgroundColor: 'rgba(99,102,241,0.55)',
+          borderColor:     'rgba(99,102,241,0.9)',
+          borderWidth: 1,
+          borderRadius: 3,
+          hoverBackgroundColor: 'rgba(36,182,252,0.7)',
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => {
+                const h = items[0].dataIndex;
+                return String(h).padStart(2,'0') + ':00 – ' + String(h+1).padStart(2,'0') + ':00';
+              },
+              label: (item) => ' ' + item.raw + ' visitors',
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: _gridColor() }, ticks: { color: _axisColor(), font: { size: 10 } } },
+          y: { beginAtZero: true, grid: { color: _gridColor() }, ticks: { color: _axisColor(), precision: 0, font: { size: 10 } } }
+        }
+      }
+    });
+
+    // ── Analytics Refresh (hourly traffic + zone occupancy + extra KPIs) ──
+    function refreshAnalytics() {
+      fetch('/api/dashboard/analytics').then(r => r.json()).then(d => {
+
+        // Hourly chart
+        if (d.hourly_traffic) {
+          hourlyChart.data.datasets[0].data = d.hourly_traffic.map(h => h.count);
+          hourlyChart.update('none');
+          const upd = document.getElementById('hourly-updated');
+          if (upd) upd.textContent = 'updated ' + new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+        }
+
+        // Zone occupancy bars
+        const zoneList = document.getElementById('zoneList');
+        if (zoneList && d.zone_occupancy) {
+          const total = d.zone_occupancy.reduce((s, z) => s + z.count, 0);
+          const zTot = document.getElementById('zone-total');
+          if (zTot) zTot.textContent = total + ' tracked';
+
+          if (d.zone_occupancy.length === 0) {
+            zoneList.innerHTML = '<div class="zone-empty">No zone data yet — tracking will populate this.</div>';
+          } else {
+            const COLORS = ['#6366f1','#24B6FC','#3fb950','#F0A500','#f472b6','#34d399'];
+            zoneList.innerHTML = d.zone_occupancy.map((z, i) => `
+              <div class="zone-row">
+                <div class="zone-row-header">
+                  <span class="zone-name">${z.zone}</span>
+                  <span class="zone-count">${z.count} person${z.count!==1?'s':''} &nbsp;·&nbsp; ${z.pct}%</span>
+                </div>
+                <div class="zone-bar-track">
+                  <div class="zone-bar-fill" style="width:${z.pct}%;background:${COLORS[i%COLORS.length]};"></div>
+                </div>
+              </div>`).join('');
+          }
+        }
+
+        // Extra KPIs
+        const lhEl = document.getElementById('kpi-last-hour');
+        if (lhEl) lhEl.textContent = d.last_hour_total ?? '—';
+
+        const ydEl = document.getElementById('kpi-yesterday');
+        if (ydEl) ydEl.textContent = d.yesterday_total >= 0 ? d.yesterday_total : '—';
+
+        const vsEl = document.getElementById('kpi-vs-yesterday');
+        if (vsEl && d.vs_yesterday_pct !== null && d.vs_yesterday_pct !== undefined) {
+          const up = d.vs_yesterday_pct >= 0;
+          vsEl.innerHTML = `<span class="${up ? 'delta-up' : 'delta-down'}">${up ? '▲' : '▼'} ${Math.abs(d.vs_yesterday_pct)}%</span> vs yesterday`;
+        }
+
+      }).catch(() => {});
+    }
+    refreshAnalytics();
+    setInterval(refreshAnalytics, 60000);   // refresh every 60 s
 
     function dismissNotif(id, btn) {
       const card = document.getElementById('notif-' + id);
