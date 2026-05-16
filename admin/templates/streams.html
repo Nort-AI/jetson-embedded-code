@@ -1902,6 +1902,60 @@
                 <button id="dvrLiveBtn" onclick="dvrGoLive()">⏩ {{ t('streams.live', 'LIVE') }}</button>
                 <div id="dvrLiveIndicator"><span class="dot"></span>{{ t('streams.live', 'LIVE') }}</div>
               </div>
+
+              <!-- VLM person panel — lives inside viewContainer so height:100% = feed height only -->
+              <div id="vlmBackdrop" onclick="closeVlmPanel()"></div>
+              <div id="vlmPanel">
+                <div class="vlm-header">
+                  <div class="vlm-header-title">
+                    <span class="ai-dot"></span>
+                    AI Analysis
+                  </div>
+                  <button class="vlm-close" onclick="closeVlmPanel()" title="Close">✕</button>
+                </div>
+                <div class="vlm-body">
+                  <!-- Side-by-side: plain crop (left) + pose overlay (right) -->
+                  <div class="vlm-crop-row" id="vlmCropRow">
+                    <div class="vlm-crop-wrap" id="vlmCropWrap">
+                      <img id="vlmCrop" src="" alt="Person crop">
+                    </div>
+                    <div class="vlm-crop-wrap" id="vlmPoseWrap" style="display:none;">
+                      <img id="vlmPoseImg" src="" alt="Pose overlay">
+                    </div>
+                  </div>
+                  <div id="poseAngles" style="display:none; font-size:0.72rem; color:var(--fg-muted);
+                       margin-bottom:10px; line-height:1.7; padding:6px 8px;
+                       background:rgba(0,0,0,.2); border-radius:6px;"></div>
+
+                  <div class="vlm-track-info" id="vlmTrackInfo"></div>
+
+                  <!-- VLM analysis controls — hidden, elements kept in DOM so JS refs stay valid -->
+                  <div style="display:none;" aria-hidden="true">
+                    <select id="vlmMode">
+                      <option value="describe">describe</option>
+                      <option value="behavior">behavior</option>
+                      <option value="carrying">carrying</option>
+                      <option value="staff">staff</option>
+                      <option value="staff_clip">staff_clip</option>
+                      <option value="anomaly">anomaly</option>
+                      <option value="behavior_timeline">behavior_timeline</option>
+                      <option value="movement_pattern">movement_pattern</option>
+                      <option value="suspicious_activity">suspicious_activity</option>
+                    </select>
+                    <div id="timeRangeSelector">
+                      <button class="vlm-time-btn active" data-seconds="3" onclick="setTimeRange(3)">3s</button>
+                      <button class="vlm-time-btn" data-seconds="1" onclick="setTimeRange(1)">1s</button>
+                      <button class="vlm-time-btn" data-seconds="5" onclick="setTimeRange(5)">5s</button>
+                      <button class="vlm-time-btn" data-seconds="10" onclick="setTimeRange(10)">10s</button>
+                    </div>
+                    <textarea id="vlmQuestion"></textarea>
+                    <div id="videoClipPreview"><div id="clipFrames"></div></div>
+                    <button id="vlmRunBtn" onclick="runVlmAnalysis()">Analyze</button>
+                    <div id="vlmStatus"></div>
+                    <div id="vlmResult"></div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- ── AI Scene Query Bar ────────────────────────────────────── -->
@@ -2049,62 +2103,6 @@
           </div>
 
 
-          <div id="vlmBackdrop" onclick="closeVlmPanel()"></div>
-          <div id="vlmPanel">
-            <div class="vlm-header">
-              <div class="vlm-header-title">
-                <span class="ai-dot"></span>
-                AI Analysis
-              </div>
-              <button class="vlm-close" onclick="closeVlmPanel()" title="Close">✕</button>
-            </div>
-            <div class="vlm-body">
-              <!-- Side-by-side: plain crop (left) + pose overlay (right) -->
-              <div class="vlm-crop-row" id="vlmCropRow">
-                <div class="vlm-crop-wrap" id="vlmCropWrap">
-                  <img id="vlmCrop" src="" alt="Person crop">
-                </div>
-                <div class="vlm-crop-wrap" id="vlmPoseWrap" style="display:none;">
-                  <img id="vlmPoseImg" src="" alt="Pose overlay">
-                </div>
-              </div>
-              <div id="poseAngles" style="display:none; font-size:0.72rem; color:var(--fg-muted);
-                   margin-bottom:10px; line-height:1.7; padding:6px 8px;
-                   background:rgba(0,0,0,.2); border-radius:6px;"></div>
-
-              <div class="vlm-track-info" id="vlmTrackInfo"></div>
-
-              <!-- VLM analysis controls — hidden, elements kept in DOM so JS refs stay valid -->
-              <div style="display:none;" aria-hidden="true">
-                <div>
-                  <select id="vlmMode">
-                    <option value="describe">describe</option>
-                    <option value="behavior">behavior</option>
-                    <option value="carrying">carrying</option>
-                    <option value="staff">staff</option>
-                    <option value="staff_clip">staff_clip</option>
-                    <option value="anomaly">anomaly</option>
-                    <option value="behavior_timeline">behavior_timeline</option>
-                    <option value="movement_pattern">movement_pattern</option>
-                    <option value="suspicious_activity">suspicious_activity</option>
-                  </select>
-                </div>
-                <div id="timeRangeSelector">
-                  <button class="vlm-time-btn active" data-seconds="3" onclick="setTimeRange(3)">3s</button>
-                  <button class="vlm-time-btn" data-seconds="1" onclick="setTimeRange(1)">1s</button>
-                  <button class="vlm-time-btn" data-seconds="5" onclick="setTimeRange(5)">5s</button>
-                  <button class="vlm-time-btn" data-seconds="10" onclick="setTimeRange(10)">10s</button>
-                </div>
-                <textarea id="vlmQuestion"></textarea>
-                <div id="videoClipPreview">
-                  <div id="clipFrames"></div>
-                </div>
-                <button id="vlmRunBtn" onclick="runVlmAnalysis()">Analyze</button>
-                <div id="vlmStatus"></div>
-                <div id="vlmResult"></div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
