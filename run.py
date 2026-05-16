@@ -1,12 +1,28 @@
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
+# ── Silence C++ library noise BEFORE any imports that trigger it ──────────────
+# MediaPipe / absl / glog — suppress all C++ INFO/WARNING/ERROR output
+os.environ.setdefault("GLOG_minloglevel",      "3")   # 0=INFO 1=WARN 2=ERROR 3=FATAL
+os.environ.setdefault("GLOG_logtostderr",      "0")
+os.environ.setdefault("MEDIAPIPE_DISABLE_GPU_INFERENCE", "0")
+# TensorFlow Lite C++ runtime
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL",  "3")   # 0=ALL 1=INFO 2=WARN 3=ERROR
+os.environ.setdefault("TF_CPP_MIN_VLOG_LEVEL", "0")
+# ONNX Runtime / cpuinfo noise ("Error in cpuinfo: prctl(PR_SVE_GET_VL) failed")
+os.environ.setdefault("ORT_LOGGING_LEVEL",     "3")   # 0=VERBOSE … 3=WARNING 4=ERROR
+
 import sys
 import warnings
 
-# Completely silence spammy PyTorch/Vision/ReID deprecation and environment warnings
+# ── Python-level warning filters ─────────────────────────────────────────────
+# Silence spammy PyTorch/Vision/ReID deprecation and environment warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchreid|torchvision")
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch|torchreid")
+# ByteTrack deprecation notice from supervision (v0.28+ removes it in v0.30)
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*ByteTrack.*deprecated.*")
+# Google api_core Python version deprecation (shows on every run on 3.10)
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.api_core")
 
 import threading
 import cv2

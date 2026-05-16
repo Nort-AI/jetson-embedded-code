@@ -46,10 +46,10 @@ try:
     # baseline interval.  Discard one reading now so that _poll_performance gets
     # accurate data from its very first real sample (~2 s later).
     psutil.cpu_percent()
-    print(f"[perf-init] psutil OK  ram={psutil.virtual_memory().percent:.1f}%", flush=True)
+    _log.debug("[perf-init] psutil OK  ram=%.1f%%", psutil.virtual_memory().percent)
 except ImportError:
     psutil = None
-    print("[perf-init] psutil NOT installed — cpu/ram will read 0", flush=True)
+    _log.debug("[perf-init] psutil NOT installed — cpu/ram will read 0")
 
 # ── Globals set by main.py ────────────────────────────────────────────────────
 DEVICE_ID    = "unknown"
@@ -881,9 +881,10 @@ def _poll_performance():
             _gpu_hist.append(gpu if isinstance(gpu, (int, float)) else 0)
             _time_hist.append(now_str)
             _iter += 1
-            # Print first few readings so startup issues are always visible
+            # Log first few readings so startup baseline is always captured
             if _iter <= 3:
-                print(f"[perf] iter={_iter}  cpu={cpu:.1f}%  ram={ram:.1f}%  gpu={gpu:.1f}%", flush=True)
+                _log.debug("[perf] iter=%d  cpu=%.1f%%  ram=%.1f%%  gpu=%.1f%%",
+                           _iter, cpu, ram, gpu)
         except Exception as _e:
             _log.error("[perf] poll error (thread stays alive): %s", _e, exc_info=True)
         time.sleep(2)
@@ -5550,6 +5551,27 @@ def start_local_admin(port: int = 8080):
 
         _gevent_access_log = _AccessLog()
         _gevent_error_log  = _ErrorLog()
+
+        # ── Patch gevent hub to silence SSL greenlet crash tracebacks ─────────
+        # error_log= only covers HTTP-layer errors.  When the TLS handshake is
+        # rejected (self-signed cert not trusted by client), the greenlet crashes
+        # with an ssl.SSLError and gevent's Hub.handle_error writes a full
+        # traceback to sys.stderr BEFORE our error_log is ever consulted.
+        # Monkey-patching handle_error drops those crashes silently; the client
+        # just gets a connection reset, which is the correct behavior.
+        try:
+            import ssl as _ssl_mod
+            import gevent.hub as _ghub
+            _orig_hub_handle_error = _ghub.Hub.handle_error
+
+            def _filtered_hub_handle_error(self, context, type, value, tb):
+                if type is not None and issubclass(type, _ssl_mod.SSLError):
+                    return   # expected noise — client didn't trust the self-signed cert
+                _orig_hub_handle_error(self, context, type, value, tb)
+
+            _ghub.Hub.handle_error = _filtered_hub_handle_error
+        except Exception:
+            pass  # never break startup over a cosmetic filter
 
         if has_tls:
             server = _WSGIServer(

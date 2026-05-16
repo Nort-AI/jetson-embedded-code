@@ -307,7 +307,7 @@ def _pose_worker_loop() -> None:
     Import is done per-crop so the thread survives import failures and recovers
     automatically once ultralytics is installed (after a server restart).
     """
-    print("[PoseWorker] Thread started.", flush=True)
+    logger.info("[Pose] Background pose worker started.")
     while True:
         _pose_wake_event.wait(timeout=10.0)
         _pose_wake_event.clear()
