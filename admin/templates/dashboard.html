@@ -1480,132 +1480,40 @@
       </div>
       {% endif %}
 
-      <!-- KPI Row -->
+      <!-- ── KPI Row (4 live metrics) ── -->
       <div class="kpi-grid">
         <div class="kpi-card">
           <div class="kpi-accent-bar bar-blue"></div>
-          <div class="kpi-label"><span class="kpi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>{{ t('dashboard.today_stats.occ_label') }}</div>
+          <div class="kpi-label"><span class="kpi-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>{{ t('dashboard.today_stats.occ_label') }}</div>
           <div class="kpi-value" id="kpi-occ">{{ current_occupancy }}</div>
           <div class="kpi-sub"><span class="delta-up">▲</span> {{ t('dashboard.today_stats.occ_sub') }}</div>
         </div>
-
         <div class="kpi-card">
           <div class="kpi-accent-bar bar-green"></div>
           <div class="kpi-label"><span class="kpi-icon">↗</span>{{ t('dashboard.today_stats.visitors') }}</div>
           <div class="kpi-value" id="kpi-visitors">{{ visitors_today if visitors_today >= 0 else '—' }}</div>
-          <div class="kpi-sub"><span class="delta-up">▲</span> {{ t('dashboard.today_stats.visitors_sub') }}</div>
+          <div class="kpi-sub" id="kpi-vs-yesterday"><span class="text-muted">{{ t('dashboard.today_stats.visitors_sub') }}</span></div>
         </div>
-
         <div class="kpi-card">
           <div class="kpi-accent-bar bar-purple"></div>
           <div class="kpi-label"><span class="kpi-icon">⏱</span>{{ t('dashboard.today_stats.peak_hour') }}</div>
           <div class="kpi-value" id="kpi-peak">{{ peak_hour }}</div>
           <div class="kpi-sub"><span class="text-muted">{{ t('dashboard.today_stats.peak_sub') }}</span></div>
         </div>
-
         <div class="kpi-card">
           <div class="kpi-accent-bar bar-yellow"></div>
-          <div class="kpi-label"><span class="kpi-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></span>{{ t('dashboard.today_stats.active_cameras') }}</div>
+          <div class="kpi-label"><span class="kpi-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></span>{{ t('dashboard.today_stats.active_cameras') }}</div>
           <div class="kpi-value" id="kpi-cameras">{{ active_cameras }} / {{ total_cameras }}</div>
           <div class="kpi-sub"><span class="text-muted">{{ t('dashboard.today_stats.cameras_sub') }}</span></div>
         </div>
-
-        <div class="kpi-card">
-          <div class="kpi-accent-bar bar-blue"></div>
-          <div class="kpi-label"><span class="kpi-icon">⏱</span>Last Hour</div>
-          <div class="kpi-value" id="kpi-last-hour">—</div>
-          <div class="kpi-sub"><span class="text-muted">visitors in last 60 min</span></div>
-        </div>
-
-        <div class="kpi-card">
-          <div class="kpi-accent-bar bar-green"></div>
-          <div class="kpi-label"><span class="kpi-icon">📅</span>Yesterday</div>
-          <div class="kpi-value" id="kpi-yesterday">—</div>
-          <div class="kpi-sub" id="kpi-vs-yesterday"><span class="text-muted">vs today</span></div>
-        </div>
       </div>
 
-      <!-- Main Grid -->
+      <!-- ── Row 1: Hourly Traffic + Live Zone Occupancy ── -->
       <div class="grid-2">
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></span> {{ t('kpi.camera_pipeline') }}</div>
-              <div class="card-desc">{{ t('kpi.realtime_status') }}</div>
-            </div>
-          </div>
-          <div class="card-body">
-            <table>
-              <thead>
-                <tr>
-                  <th>{{ t('dashboard.cameras.id') }}</th>
-                  <th>{{ t('dashboard.cameras.status') }}</th>
-                  <th style="text-align:right;">{{ t('dashboard.cameras.fps') }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for cam_id, cam in cameras.items() %}
-                <tr>
-                  <td>
-                    <div class="cam-name"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg> {{ cam_id }}</div>
-                  </td>
-                  <td>{% if cam.active %}<span class="pill pill-ok"><span class="dot"></span>{{
-                      t('dashboard.cameras.active') }}</span>{% else
-                    %}<span class="pill pill-err"><span class="dot"></span>{{ t('dashboard.cameras.inactive')
-                      }}</span>{% endif %}</td>
-                  <td style="text-align:right; font-variant-numeric:tabular-nums; font-weight:700;">{{ cam.fps }}</td>
-                </tr>
-                {% else %}<tr>
-                  <td colspan="3" style="text-align:center; padding:32px 0; color:var(--fg-muted);">{{
-                    t('dashboard.cameras.no_cameras') }}</td>
-                </tr>{% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title"><span class="card-icon">⚡</span> {{ t('dashboard.system_health.title') }}</div>
-              <div class="card-desc">{{ t('dashboard.system_health.desc') }}</div>
-            </div>
-          </div>
-          <div class="card-body">
-            <div class="chart-wrap" style="margin-bottom:14px;"><canvas id="perfChart"></canvas></div>
-            <div class="stat-list">
-              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.cpu') }}</span><span
-                  class="stat-val"><span class="pbar"><span class="pbar-fill {{ cpu_class }}" id="bar-cpu"
-                      style="width:{{ cpu_pct }}%"></span></span><span id="txt-cpu">{{ cpu_pct }}%</span></span></div>
-              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.ram') }}</span><span
-                  class="stat-val"><span class="pbar"><span class="pbar-fill {{ ram_class }}" id="bar-ram"
-                      style="width:{{ ram_pct }}%"></span></span><span id="txt-ram">{{ ram_pct }}%</span></span></div>
-              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.gpu') }}</span><span
-                  class="stat-val"><span class="pbar"><span class="pbar-fill {{ gpu_class }}" id="bar-gpu"
-                      style="width:{{ gpu_pct }}%"></span></span><span id="txt-gpu">{{ gpu_pct }}%</span></span></div>
-              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.disk') }}</span><span
-                  class="stat-val"><span class="pbar"><span class="pbar-fill {{ disk_class }}"
-                      style="width:{{ disk_pct }}%"></span></span><span
-                    class="{{ 'text-ok' if disk_class == 'ok' else ('text-warn' if disk_class == 'warn' else 'text-err') }}">{{
-                    disk_pct }}%</span></span></div>
-              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.uptime') }}</span><span
-                  class="stat-val text-ok">{{ uptime
-                  }}</span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Analytics Row ──────────────────────────────────────────────── -->
-      <div class="grid-2" style="margin-top:0;">
-
-        <!-- Hourly Traffic Today -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">
-                <span class="card-icon">📈</span> Hourly Traffic — Today
-              </div>
+              <div class="card-title"><span class="card-icon">📈</span> Hourly Traffic — Today</div>
               <div class="card-desc">Unique visitors per hour, from midnight</div>
             </div>
             <span id="hourly-updated" style="font-size:.68rem;color:var(--fg-muted);"></span>
@@ -1614,14 +1522,10 @@
             <div class="chart-wrap-tall"><canvas id="hourlyChart"></canvas></div>
           </div>
         </div>
-
-        <!-- Live Zone Occupancy -->
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title">
-                <span class="card-icon">🗺</span> Zone Occupancy — Live
-              </div>
+              <div class="card-title"><span class="card-icon">🗺</span> Zone Occupancy — Live</div>
               <div class="card-desc">People tracked per zone right now (last 30 s)</div>
             </div>
             <span id="zone-total" style="font-size:.75rem;font-weight:700;color:var(--primary);"></span>
@@ -1632,62 +1536,20 @@
             </div>
           </div>
         </div>
-
       </div>
 
-      <!-- ── Historical Analytics ─────────────────────────────────────── -->
-      <div class="section-divider">
-        <div class="section-divider-line"></div>
-        <div class="section-divider-label">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          Historical Analytics
-        </div>
-        <div class="section-divider-line"></div>
-      </div>
-
-      <!-- Analytics toolbar: date picker -->
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-        <label style="font-size:.78rem;color:var(--fg-muted);font-weight:500;">Date:</label>
-        <input type="date" class="date-picker" id="an-datePicker">
-        <button onclick="loadAnalytics()" style="background:var(--primary);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit;">Refresh</button>
-        <span id="an-updated" style="font-size:.68rem;color:var(--fg-muted);margin-left:4px;"></span>
-      </div>
-
-      <!-- Historical KPI row -->
-      <div class="analytics-kpi-grid">
-        <div class="kpi-card">
-          <div class="kpi-accent-bar bar-purple"></div>
-          <div class="kpi-label">👥 Total Visitors</div>
-          <div class="kpi-value" id="an-kpi-total">—</div>
-          <div class="kpi-sub" id="an-kpi-vs-yd">vs yesterday</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-accent-bar bar-blue"></div>
-          <div class="kpi-label">⏱ Peak Hour</div>
-          <div class="kpi-value" id="an-kpi-peak">—</div>
-          <div class="kpi-sub">busiest hour</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-accent-bar bar-green"></div>
-          <div class="kpi-label">🗺 Top Zone</div>
-          <div class="kpi-value" id="an-kpi-top-zone" style="font-size:1.1rem;padding-top:6px">—</div>
-          <div class="kpi-sub">most visited</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-accent-bar bar-yellow"></div>
-          <div class="kpi-label">⏳ Avg Dwell</div>
-          <div class="kpi-value" id="an-kpi-avg-dwell">—</div>
-          <div class="kpi-sub">min per zone visit</div>
-        </div>
-      </div>
-
-      <!-- Row: store hourly line + zone donut -->
+      <!-- ── Row 2: Store Occupancy Line + Zone Distribution (with date filter) ── -->
       <div class="grid-2">
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title"><span class="card-icon">📈</span> Store Occupancy — Hourly</div>
-              <div class="card-desc">Unique tracked persons per hour of day</div>
+              <div class="card-title"><span class="card-icon">📊</span> Store Occupancy — Historical</div>
+              <div class="card-desc">Unique tracked persons per hour</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+              <input type="date" class="date-picker" id="an-datePicker" style="font-size:.72rem;padding:3px 8px;">
+              <button onclick="loadAnalytics()" style="background:var(--primary);color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:.72rem;font-weight:600;cursor:pointer;font-family:inherit;">Go</button>
+              <span id="an-updated" style="font-size:.65rem;color:var(--fg-muted);white-space:nowrap;"></span>
             </div>
           </div>
           <div class="card-body"><div class="ch-lg"><canvas id="an-storeHourlyChart"></canvas></div></div>
@@ -1703,11 +1565,11 @@
         </div>
       </div>
 
-      <!-- Full-width: zone multi-line occupancy -->
+      <!-- ── Row 3: Zone Occupancy Along Day (full width) ── -->
       <div class="card" style="margin-bottom:16px;">
         <div class="card-header">
           <div>
-            <div class="card-title"><span class="card-icon">📊</span> Zone Occupancy Along the Day</div>
+            <div class="card-title"><span class="card-icon">📉</span> Zone Occupancy Along the Day</div>
             <div class="card-desc">Unique visitors per zone per hour — one line per zone</div>
           </div>
           <div id="an-zone-legend" class="an-zone-legend"></div>
@@ -1715,7 +1577,7 @@
         <div class="card-body"><div class="ch-lg"><canvas id="an-zoneStackedChart"></canvas></div></div>
       </div>
 
-      <!-- Row: dwell bars + demographics -->
+      <!-- ── Row 4: Dwell Time + Demographics ── -->
       <div class="grid-2">
         <div class="card">
           <div class="card-header">
@@ -1730,13 +1592,63 @@
           <div class="card-header">
             <div>
               <div class="card-title"><span class="card-icon">👤</span> Demographics</div>
-              <div class="card-desc">Gender and age distribution today</div>
+              <div class="card-desc">Gender and age distribution</div>
             </div>
           </div>
           <div class="card-body" style="display:flex;gap:10px;align-items:center;justify-content:space-around;">
             <div style="width:130px;height:130px"><canvas id="an-genderChart"></canvas></div>
             <div style="width:130px;height:130px"><canvas id="an-ageChart"></canvas></div>
             <div id="an-demoLegend" style="font-size:.75rem;display:flex;flex-direction:column;gap:6px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Row 5: Camera Pipeline + System Health ── -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></span> {{ t('kpi.camera_pipeline') }}</div>
+              <div class="card-desc">{{ t('kpi.realtime_status') }}</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead>
+                <tr>
+                  <th>{{ t('dashboard.cameras.id') }}</th>
+                  <th>{{ t('dashboard.cameras.status') }}</th>
+                  <th style="text-align:right;">{{ t('dashboard.cameras.fps') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for cam_id, cam in cameras.items() %}
+                <tr>
+                  <td><div class="cam-name"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px;"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>{{ cam_id }}</div></td>
+                  <td>{% if cam.active %}<span class="pill pill-ok"><span class="dot"></span>{{ t('dashboard.cameras.active') }}</span>{% else %}<span class="pill pill-err"><span class="dot"></span>{{ t('dashboard.cameras.inactive') }}</span>{% endif %}</td>
+                  <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;">{{ cam.fps }}</td>
+                </tr>
+                {% else %}<tr><td colspan="3" style="text-align:center;padding:32px 0;color:var(--fg-muted);">{{ t('dashboard.cameras.no_cameras') }}</td></tr>{% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title"><span class="card-icon">⚡</span> {{ t('dashboard.system_health.title') }}</div>
+              <div class="card-desc">{{ t('dashboard.system_health.desc') }}</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap" style="margin-bottom:14px;"><canvas id="perfChart"></canvas></div>
+            <div class="stat-list">
+              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.cpu') }}</span><span class="stat-val"><span class="pbar"><span class="pbar-fill {{ cpu_class }}" id="bar-cpu" style="width:{{ cpu_pct }}%"></span></span><span id="txt-cpu">{{ cpu_pct }}%</span></span></div>
+              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.ram') }}</span><span class="stat-val"><span class="pbar"><span class="pbar-fill {{ ram_class }}" id="bar-ram" style="width:{{ ram_pct }}%"></span></span><span id="txt-ram">{{ ram_pct }}%</span></span></div>
+              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.gpu') }}</span><span class="stat-val"><span class="pbar"><span class="pbar-fill {{ gpu_class }}" id="bar-gpu" style="width:{{ gpu_pct }}%"></span></span><span id="txt-gpu">{{ gpu_pct }}%</span></span></div>
+              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.disk') }}</span><span class="stat-val"><span class="pbar"><span class="pbar-fill {{ disk_class }}" style="width:{{ disk_pct }}%"></span></span><span class="{{ 'text-ok' if disk_class == 'ok' else ('text-warn' if disk_class == 'warn' else 'text-err') }}">{{ disk_pct }}%</span></span></div>
+              <div class="stat-row"><span class="stat-lbl">{{ t('dashboard.system_health.uptime') }}</span><span class="stat-val text-ok">{{ uptime }}</span></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1880,19 +1792,6 @@
                 </div>
               </div>`).join('');
           }
-        }
-
-        // Extra KPIs
-        const lhEl = document.getElementById('kpi-last-hour');
-        if (lhEl) lhEl.textContent = d.last_hour_total ?? '—';
-
-        const ydEl = document.getElementById('kpi-yesterday');
-        if (ydEl) ydEl.textContent = d.yesterday_total >= 0 ? d.yesterday_total : '—';
-
-        const vsEl = document.getElementById('kpi-vs-yesterday');
-        if (vsEl && d.vs_yesterday_pct !== null && d.vs_yesterday_pct !== undefined) {
-          const up = d.vs_yesterday_pct >= 0;
-          vsEl.innerHTML = `<span class="${up ? 'delta-up' : 'delta-down'}">${up ? '▲' : '▼'} ${Math.abs(d.vs_yesterday_pct)}%</span> vs yesterday`;
         }
 
       }).catch(() => {});
@@ -2053,16 +1952,20 @@
     }
 
     function anUpdateKPIs(d) {
+      // Update the unified live KPI row with historical data when a past date is selected
       const el = id => document.getElementById(id);
-      el('an-kpi-total').textContent = d.today_total ?? '—';
+      const dp = document.getElementById('an-datePicker');
+      const isToday = !dp || dp.value === new Date().toISOString().slice(0,10);
+      // Only override live visitors/peak if viewing a past date (avoids conflicts with refreshKPIs)
+      if (!isToday) {
+        const vEl = el('kpi-visitors'); if (vEl) vEl.textContent = d.today_total ?? '—';
+        const pEl = el('kpi-peak'); if (pEl) pEl.textContent = d.peak_hour !== null ? String(d.peak_hour).padStart(2,'0')+':00' : '—';
+      }
       if (d.vs_yesterday_pct !== null && d.vs_yesterday_pct !== undefined) {
         const up = d.vs_yesterday_pct >= 0;
-        el('an-kpi-vs-yd').innerHTML = `<span class="${up?'delta-up':'delta-down'}">${up?'▲':'▼'} ${Math.abs(d.vs_yesterday_pct)}%</span> vs yesterday (${d.yesterday_total})`;
+        const vsEl = el('kpi-vs-yesterday');
+        if (vsEl) vsEl.innerHTML = `<span class="${up?'delta-up':'delta-down'}">${up?'▲':'▼'} ${Math.abs(d.vs_yesterday_pct)}%</span> vs yesterday`;
       }
-      el('an-kpi-peak').textContent = d.peak_hour !== null ? String(d.peak_hour).padStart(2,'0')+':00' : '—';
-      el('an-kpi-top-zone').textContent = d.top_zone || '—';
-      const overall = d.avg_dwell&&d.avg_dwell.length ? (d.avg_dwell.reduce((s,x)=>s+x.avg_min,0)/d.avg_dwell.length).toFixed(1) : null;
-      el('an-kpi-avg-dwell').textContent = overall ? overall+'m' : '—';
     }
 
     async function loadAnalytics() {
