@@ -1354,14 +1354,7 @@ def api_analytics_data():
 @app.route("/analytics")
 @requires_auth
 def analytics_page():
-    from system import config as cfg
-    store_id = getattr(cfg, "STORE_ID", "store")
-    return render_template_string(
-        open(os.path.join(os.path.dirname(__file__), "templates", "analytics.html"),
-             encoding="utf-8").read(),
-        store_id=store_id,
-        t=t,
-    )
+    return redirect("/")
 
 
 @app.route("/api/notifications/<notif_id>/dismiss", methods=["POST"])

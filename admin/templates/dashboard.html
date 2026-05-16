@@ -922,6 +922,46 @@
       padding: 24px 0; font-style: italic; opacity: .6;
     }
 
+    /* ── Analytics section ───────────────────────────────── */
+    .section-divider {
+      display: flex; align-items: center; gap: 14px;
+      margin: 28px 0 18px;
+    }
+    .section-divider-line {
+      flex: 1; height: 1px; background: var(--border);
+    }
+    .section-divider-label {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--fg-muted);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .analytics-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media(max-width:1100px){ .analytics-kpi-grid { grid-template-columns: repeat(2,1fr); } }
+    .ch-md { height: 220px; }
+    .ch-lg { height: 260px; }
+    .ch-sm { height: 170px; }
+    .dwell-list { display: flex; flex-direction: column; gap: 12px; }
+    .dwell-row-header { display: flex; justify-content: space-between; font-size: .82rem; margin-bottom: 4px; }
+    .dwell-zone { font-weight: 600; }
+    .dwell-val { color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+    .bar-track { height: 8px; background: rgba(255,255,255,.06); border-radius: 4px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 4px; transition: width .6s ease; }
+    html[data-theme="light"] .bar-track { background: rgba(0,0,0,.06); }
+    .date-picker {
+      background: rgba(255,255,255,.06); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--fg); padding: 5px 10px; font-size: .78rem;
+      font-family: inherit; cursor: pointer;
+    }
+    .date-picker:focus { outline: none; border-color: var(--primary); }
+    html[data-theme="light"] .date-picker { background: #fff; }
+    .empty-msg { text-align: center; font-size: .82rem; color: var(--fg-muted); font-style: italic; padding: 32px 16px; opacity: .6; }
+    .an-zone-legend { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
     /* ── Footer ──────────────────────────────────────────── */
     
         /* ── Footer (canonical - matches dashboard) ── */
@@ -1298,13 +1338,6 @@
         </svg>
         <span>{{ t('nav.streams') }}</span>
       </a>
-      <a href="/analytics" class="nav-link">
-        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-        </svg>
-        <span>{{ t('nav.analytics') }}</span>
-      </a>
       <a href="/cameras" class="nav-link">
         <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1602,6 +1635,112 @@
 
       </div>
 
+      <!-- ── Historical Analytics ─────────────────────────────────────── -->
+      <div class="section-divider">
+        <div class="section-divider-line"></div>
+        <div class="section-divider-label">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Historical Analytics
+        </div>
+        <div class="section-divider-line"></div>
+      </div>
+
+      <!-- Analytics toolbar: date picker -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <label style="font-size:.78rem;color:var(--fg-muted);font-weight:500;">Date:</label>
+        <input type="date" class="date-picker" id="an-datePicker">
+        <button onclick="loadAnalytics()" style="background:var(--primary);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit;">Refresh</button>
+        <span id="an-updated" style="font-size:.68rem;color:var(--fg-muted);margin-left:4px;"></span>
+      </div>
+
+      <!-- Historical KPI row -->
+      <div class="analytics-kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-accent-bar bar-purple"></div>
+          <div class="kpi-label">👥 Total Visitors</div>
+          <div class="kpi-value" id="an-kpi-total">—</div>
+          <div class="kpi-sub" id="an-kpi-vs-yd">vs yesterday</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-accent-bar bar-blue"></div>
+          <div class="kpi-label">⏱ Peak Hour</div>
+          <div class="kpi-value" id="an-kpi-peak">—</div>
+          <div class="kpi-sub">busiest hour</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-accent-bar bar-green"></div>
+          <div class="kpi-label">🗺 Top Zone</div>
+          <div class="kpi-value" id="an-kpi-top-zone" style="font-size:1.1rem;padding-top:6px">—</div>
+          <div class="kpi-sub">most visited</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-accent-bar bar-yellow"></div>
+          <div class="kpi-label">⏳ Avg Dwell</div>
+          <div class="kpi-value" id="an-kpi-avg-dwell">—</div>
+          <div class="kpi-sub">min per zone visit</div>
+        </div>
+      </div>
+
+      <!-- Row: store hourly line + zone donut -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title"><span class="card-icon">📈</span> Store Occupancy — Hourly</div>
+              <div class="card-desc">Unique tracked persons per hour of day</div>
+            </div>
+          </div>
+          <div class="card-body"><div class="ch-lg"><canvas id="an-storeHourlyChart"></canvas></div></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title"><span class="card-icon">🍩</span> Zone Distribution</div>
+              <div class="card-desc">Share of total visitors per zone</div>
+            </div>
+          </div>
+          <div class="card-body"><div class="ch-lg"><canvas id="an-zoneDonutChart"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Full-width: zone multi-line occupancy -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title"><span class="card-icon">📊</span> Zone Occupancy Along the Day</div>
+            <div class="card-desc">Unique visitors per zone per hour — one line per zone</div>
+          </div>
+          <div id="an-zone-legend" class="an-zone-legend"></div>
+        </div>
+        <div class="card-body"><div class="ch-lg"><canvas id="an-zoneStackedChart"></canvas></div></div>
+      </div>
+
+      <!-- Row: dwell bars + demographics -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title"><span class="card-icon">⏳</span> Avg Dwell Time per Zone</div>
+              <div class="card-desc">Minutes — median and average per zone visit</div>
+            </div>
+          </div>
+          <div class="card-body" id="an-dwellBody"><div class="empty-msg">No dwell data yet.</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title"><span class="card-icon">👤</span> Demographics</div>
+              <div class="card-desc">Gender and age distribution today</div>
+            </div>
+          </div>
+          <div class="card-body" style="display:flex;gap:10px;align-items:center;justify-content:space-around;">
+            <div style="width:130px;height:130px"><canvas id="an-genderChart"></canvas></div>
+            <div style="width:130px;height:130px"><canvas id="an-ageChart"></canvas></div>
+            <div id="an-demoLegend" style="font-size:.75rem;display:flex;flex-direction:column;gap:6px;"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Device Operations -->
       <div class="controls-bar">
         <div class="controls-info">
@@ -1794,6 +1933,162 @@
       document.documentElement.setAttribute('data-theme', next);
       localStorage.setItem('nort-theme', next);
     }
+    // ── Analytics Charts ─────────────────────────────────────────────────
+    const AN_PALETTE = [
+      '#6366f1','#24B6FC','#10b981','#f59e0b',
+      '#f472b6','#34d399','#fb923c','#a78bfa',
+      '#38bdf8','#4ade80','#fbbf24','#f87171',
+    ];
+    const _anIsDark  = () => document.documentElement.getAttribute('data-theme') !== 'light';
+    const _anAxC     = () => _anIsDark() ? '#546A7B' : '#8899aa';
+    const _anGridC   = () => _anIsDark() ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)';
+
+    let _anCharts = {};
+    function _anDestroy(id) { if (_anCharts[id]) { _anCharts[id].destroy(); delete _anCharts[id]; } }
+
+    function anBuildStoreHourly(data) {
+      _anDestroy('sh');
+      const ctx = document.getElementById('an-storeHourlyChart').getContext('2d');
+      const labels = data.map((_,i) => i%3===0 ? String(i).padStart(2,'0')+':00' : '');
+      _anCharts['sh'] = new Chart(ctx, {
+        type:'line', data:{ labels, datasets:[{ label:'Visitors', data,
+          borderColor:'#6366f1', backgroundColor:'rgba(99,102,241,0.12)',
+          borderWidth:2.5, tension:0.4, fill:true, pointRadius:3, pointBackgroundColor:'#6366f1' }]},
+        options:{ responsive:true, maintainAspectRatio:false, animation:false,
+          plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+            title: items => String(items[0].dataIndex).padStart(2,'0')+':00 – '+String(items[0].dataIndex+1).padStart(2,'0')+':00',
+            label: i => ' '+i.raw+' visitors' }}},
+          scales:{ x:{grid:{color:_anGridC()},ticks:{color:_anAxC(),font:{size:10}}},
+            y:{beginAtZero:true,grid:{color:_anGridC()},ticks:{color:_anAxC(),precision:0,font:{size:10}}} } }
+      });
+    }
+
+    function anBuildZoneDonut(zoneTotals) {
+      _anDestroy('zd');
+      const ctx = document.getElementById('an-zoneDonutChart').getContext('2d');
+      const zones = Object.keys(zoneTotals), vals = zones.map(z=>zoneTotals[z]);
+      if (!zones.length) { ctx.canvas.closest('.card-body').innerHTML='<div class="empty-msg">No zone data.</div>'; return; }
+      _anCharts['zd'] = new Chart(ctx, {
+        type:'doughnut', data:{ labels:zones, datasets:[{ data:vals,
+          backgroundColor:zones.map((_,i)=>AN_PALETTE[i%AN_PALETTE.length]),
+          borderColor:_anIsDark()?'#161b27':'#fff', borderWidth:3, hoverOffset:6 }]},
+        options:{ responsive:true, maintainAspectRatio:false, animation:false, cutout:'60%',
+          plugins:{ legend:{position:'right',labels:{color:_anAxC(),font:{size:11},boxWidth:12,padding:12}},
+            tooltip:{callbacks:{label:i=>' '+i.label+': '+i.raw+' ('+Math.round(i.raw/vals.reduce((a,b)=>a+b,0)*100)+'%)'}}}}
+      });
+    }
+
+    function anBuildZoneStacked(zoneHourly) {
+      _anDestroy('zs');
+      const ctx = document.getElementById('an-zoneStackedChart').getContext('2d');
+      const zones = Object.keys(zoneHourly);
+      const legendEl = document.getElementById('an-zone-legend');
+      if (!zones.length) {
+        ctx.canvas.closest('.card-body').innerHTML='<div class="empty-msg">No zone data. Configure zones in Settings.</div>';
+        legendEl.innerHTML=''; return;
+      }
+      const labels = Array.from({length:24},(_,i)=>i%3===0?String(i).padStart(2,'0')+':00':'');
+      const datasets = zones.map((z,i)=>{
+        const col=AN_PALETTE[i%AN_PALETTE.length];
+        return { label:z, data:zoneHourly[z], borderColor:col, backgroundColor:col+'22',
+          borderWidth:2.5, tension:0.4, fill:false, pointRadius:3, pointHoverRadius:5, pointBackgroundColor:col };
+      });
+      legendEl.innerHTML = zones.map((z,i)=>
+        `<span style="display:flex;align-items:center;gap:5px;font-size:.72rem;color:${_anAxC()}">
+           <span style="width:22px;height:3px;border-radius:2px;background:${AN_PALETTE[i%AN_PALETTE.length]};flex-shrink:0"></span>${z}
+         </span>`).join('');
+      _anCharts['zs'] = new Chart(ctx, {
+        type:'line', data:{labels, datasets},
+        options:{ responsive:true, maintainAspectRatio:false, animation:false,
+          interaction:{mode:'index',intersect:false},
+          plugins:{ legend:{display:false}, tooltip:{mode:'index',intersect:false,
+            callbacks:{title:items=>String(items[0].dataIndex).padStart(2,'0')+':00 – '+String(items[0].dataIndex+1).padStart(2,'0')+':00'}}},
+          scales:{ x:{grid:{color:_anGridC()},ticks:{color:_anAxC(),font:{size:10}}},
+            y:{beginAtZero:true,grid:{color:_anGridC()},ticks:{color:_anAxC(),precision:0,font:{size:10}}} } }
+      });
+    }
+
+    function anBuildDwellBars(avgDwell) {
+      const body = document.getElementById('an-dwellBody');
+      if (!avgDwell||!avgDwell.length) { body.innerHTML='<div class="empty-msg">No dwell data yet.</div>'; return; }
+      const maxAvg = Math.max(...avgDwell.map(d=>d.avg_min));
+      body.innerHTML = '<div class="dwell-list">'+avgDwell.map((d,i)=>`
+        <div>
+          <div class="dwell-row-header">
+            <span class="dwell-zone">${d.zone}</span>
+            <span class="dwell-val">avg ${d.avg_min} min &nbsp;·&nbsp; median ${d.median_min} min &nbsp;·&nbsp; ${d.count} visits</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${Math.round(d.avg_min/maxAvg*100)}%;background:${AN_PALETTE[i%AN_PALETTE.length]}"></div></div>
+            <span style="font-size:.75rem;font-weight:700;color:${AN_PALETTE[i%AN_PALETTE.length]};min-width:48px;text-align:right">${d.avg_min}m</span>
+          </div>
+        </div>`).join('')+'</div>';
+    }
+
+    function anBuildDemoCharts(genderSplit, ageSplit) {
+      _anDestroy('gen'); _anDestroy('age');
+      const legendEl = document.getElementById('an-demoLegend');
+      function mkDonut(canvasId, splitObj, cid) {
+        const ctx2 = document.getElementById(canvasId).getContext('2d');
+        const labels = Object.keys(splitObj), vals = Object.values(splitObj);
+        if (!labels.length) return;
+        _anCharts[cid] = new Chart(ctx2, {
+          type:'doughnut', data:{ labels, datasets:[{ data:vals,
+            backgroundColor:labels.map((_,i)=>AN_PALETTE[i%AN_PALETTE.length]),
+            borderColor:_anIsDark()?'#161b27':'#fff', borderWidth:2, hoverOffset:4 }]},
+          options:{ responsive:true, maintainAspectRatio:false, animation:false, cutout:'62%',
+            plugins:{ legend:{display:false}, tooltip:{callbacks:{label:i=>' '+i.label+': '+i.raw}} }}
+        });
+      }
+      mkDonut('an-genderChart', genderSplit, 'gen');
+      mkDonut('an-ageChart',    ageSplit,    'age');
+      const allLabels = [
+        ...Object.keys(genderSplit).map((l,i)=>({l,c:AN_PALETTE[i%AN_PALETTE.length]})),
+        ...Object.keys(ageSplit).map((l,i)=>({l,c:AN_PALETTE[(i+Object.keys(genderSplit).length)%AN_PALETTE.length]})),
+      ];
+      legendEl.innerHTML = allLabels.map(({l,c})=>
+        `<span style="display:flex;align-items:center;gap:4px;color:${_anAxC()}">
+           <span style="width:9px;height:9px;border-radius:50%;background:${c};flex-shrink:0"></span>${l}
+         </span>`).join('');
+    }
+
+    function anUpdateKPIs(d) {
+      const el = id => document.getElementById(id);
+      el('an-kpi-total').textContent = d.today_total ?? '—';
+      if (d.vs_yesterday_pct !== null && d.vs_yesterday_pct !== undefined) {
+        const up = d.vs_yesterday_pct >= 0;
+        el('an-kpi-vs-yd').innerHTML = `<span class="${up?'delta-up':'delta-down'}">${up?'▲':'▼'} ${Math.abs(d.vs_yesterday_pct)}%</span> vs yesterday (${d.yesterday_total})`;
+      }
+      el('an-kpi-peak').textContent = d.peak_hour !== null ? String(d.peak_hour).padStart(2,'0')+':00' : '—';
+      el('an-kpi-top-zone').textContent = d.top_zone || '—';
+      const overall = d.avg_dwell&&d.avg_dwell.length ? (d.avg_dwell.reduce((s,x)=>s+x.avg_min,0)/d.avg_dwell.length).toFixed(1) : null;
+      el('an-kpi-avg-dwell').textContent = overall ? overall+'m' : '—';
+    }
+
+    async function loadAnalytics() {
+      const date = document.getElementById('an-datePicker').value;
+      const url = '/api/analytics/data' + (date ? '?date='+date : '');
+      try {
+        const d = await fetch(url).then(r=>r.json());
+        anUpdateKPIs(d);
+        anBuildStoreHourly(d.store_hourly || new Array(24).fill(0));
+        anBuildZoneDonut(d.zone_totals || {});
+        anBuildZoneStacked(d.zone_hourly || {});
+        anBuildDwellBars(d.avg_dwell || []);
+        anBuildDemoCharts(d.gender_split || {}, d.age_split || {});
+        const upd = document.getElementById('an-updated');
+        if (upd) upd.textContent = 'updated '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      } catch(e) { console.error('[Analytics]', e); }
+    }
+
+    // Init analytics date picker + load
+    (() => {
+      const dp = document.getElementById('an-datePicker');
+      if (dp) dp.value = new Date().toISOString().slice(0,10);
+      loadAnalytics();
+      setInterval(loadAnalytics, 300000);
+    })();
+
     function toggleSidebar() {
       const sb = document.querySelector('.sidebar');
       sb.classList.toggle('collapsed');
