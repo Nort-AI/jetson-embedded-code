@@ -5513,13 +5513,57 @@ def start_local_admin(port: int = 8080):
         # in the heartbeat thread.  gevent WSGIServer handles concurrent greenlets
         # for MJPEG streams without any monkey-patching.
         _log.info("[Admin] Using gevent WSGIServer (async MJPEG streaming)")
+
+        # ── Custom gevent loggers ─────────────────────────────────────────────
+        # gevent writes its access log and error log directly to sys.stderr,
+        # bypassing NORT's logger and mixing raw text with structured log lines.
+        # These wrappers route both through _log so everything stays in one stream.
+        #
+        # The error_log additionally suppresses SSLV3_ALERT_CERTIFICATE_UNKNOWN
+        # tracebacks — those are *expected* noise from clients that don't trust
+        # the self-signed cert (curl without -k, browser first-visit, scanners).
+        # They are NOT bugs and there is nothing to fix.
+
+        _SSL_NOISE_TOKENS = (
+            "SSLError", "ssl/tls alert", "certificate unknown",
+            "SSLV3_ALERT", "SSL_ERROR", "do_handshake", "wrap_socket",
+            "_handle_and_close_when_done", "gevent._gevent_cgreenlet",
+            "gevent.baseserver", "failed with SSLError",
+        )
+
+        class _AccessLog:
+            def write(self, msg):
+                msg = msg.rstrip()
+                if msg:
+                    _log.debug(msg)          # access lines at DEBUG — quiet by default
+            def flush(self): pass
+
+        class _ErrorLog:
+            def write(self, msg):
+                msg = msg.rstrip()
+                if not msg:
+                    return
+                if any(tok in msg for tok in _SSL_NOISE_TOKENS):
+                    return                   # suppress expected TLS handshake noise
+                _log.warning(msg)           # real gevent errors → WARNING
+            def flush(self): pass
+
+        _gevent_access_log = _AccessLog()
+        _gevent_error_log  = _ErrorLog()
+
         if has_tls:
             server = _WSGIServer(
                 ("0.0.0.0", port), app,
                 keyfile=key_path, certfile=cert_path,
+                log=_gevent_access_log,
+                error_log=_gevent_error_log,
             )
         else:
-            server = _WSGIServer(("0.0.0.0", port), app)
+            server = _WSGIServer(
+                ("0.0.0.0", port), app,
+                log=_gevent_access_log,
+                error_log=_gevent_error_log,
+            )
         server.serve_forever()
         return
     except ImportError:
