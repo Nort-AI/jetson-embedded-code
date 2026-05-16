@@ -275,6 +275,198 @@ def query_last_hour_total(camera_id: Optional[str] = None) -> int:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# CSV-BASED ZONE + DWELL ANALYTICS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import csv as _csv
+from collections import defaultdict as _defaultdict
+
+_CSV_FIELDNAMES = [
+    "client_id", "store_id", "camera_id", "timestamp", "track_id", "global_id",
+    "x1", "y1", "x2", "y2", "zone", "gender", "age_category",
+    "store_occupancy", "has_entered", "first_zone_after_entry", "crossing_status",
+]
+
+
+def _read_csv_day(date_str: Optional[str] = None) -> list:
+    """Read tracking_log.csv rows for a given date (YYYY-MM-DD, default today).
+    Returns list of dicts.  Skips malformed rows silently."""
+    target = date_str or datetime.now().strftime("%Y-%m-%d")
+    rows = []
+    if not os.path.exists(_CSV_FILE):
+        return rows
+    try:
+        with open(_CSV_FILE, "r", newline="", encoding="utf-8", errors="replace") as f:
+            reader = _csv.DictReader(f, fieldnames=_CSV_FIELDNAMES)
+            for row in reader:
+                ts = row.get("timestamp", "")
+                if ts and ts[:10] == target:
+                    rows.append(row)
+    except Exception as e:
+        logger.debug(f"[Analytics] CSV read error: {e}")
+    return rows
+
+
+def _clean_zone(z: Optional[str]) -> Optional[str]:
+    if not z:
+        return None
+    z = z.strip()
+    return None if z.lower() in ("", "unknown", "none", "null") else z
+
+
+def query_zone_hourly_distribution(date_str: Optional[str] = None) -> dict:
+    """Returns {zone: [h0..h23 unique-visitor-counts]} from tracking_log.csv.
+
+    Each count = distinct global_ids (or camera+track fallback) observed in
+    that zone during that clock hour.
+    """
+    def _run():
+        rows   = _read_csv_day(date_str)
+        buckets: dict = {}   # (zone, hour) -> set of person ids
+        for row in rows:
+            zone = _clean_zone(row.get("zone"))
+            if not zone:
+                continue
+            ts = row.get("timestamp", "")
+            try:
+                hour = int(ts[11:13])
+            except Exception:
+                continue
+            pid = row.get("global_id") or (row.get("camera_id", "") + "_" + row.get("track_id", ""))
+            if not pid:
+                continue
+            key2 = (zone, hour)
+            if key2 not in buckets:
+                buckets[key2] = set()
+            buckets[key2].add(pid)
+
+        zones = sorted({z for z, _ in buckets})
+        return {z: [len(buckets.get((z, h), set())) for h in range(24)] for z in zones}
+
+    return _cached(f"zone_hourly_{date_str or 'today'}", _run)
+
+
+def query_zone_totals_today(date_str: Optional[str] = None) -> dict:
+    """Returns {zone: unique_visitor_count} for the given day."""
+    def _run():
+        rows = _read_csv_day(date_str)
+        buckets: dict = {}
+        for row in rows:
+            zone = _clean_zone(row.get("zone"))
+            if not zone:
+                continue
+            pid = row.get("global_id") or (row.get("camera_id", "") + "_" + row.get("track_id", ""))
+            if not pid:
+                continue
+            if zone not in buckets:
+                buckets[zone] = set()
+            buckets[zone].add(pid)
+        return {z: len(s) for z, s in buckets.items()}
+
+    return _cached(f"zone_totals_{date_str or 'today'}", _run)
+
+
+def query_avg_dwell_by_zone(date_str: Optional[str] = None) -> list:
+    """Returns [{zone, avg_min, median_min, count}] sorted by avg_min desc.
+
+    Dwell = max(timestamp) − min(timestamp) for each (person, zone) pair today.
+    Capped at 90 min and minimum 10 s to remove noise.
+    """
+    def _run():
+        rows = _read_csv_day(date_str)
+        visits: dict = {}   # (pid, zone) -> [ts_str, ...]
+        for row in rows:
+            zone = _clean_zone(row.get("zone"))
+            if not zone:
+                continue
+            ts = row.get("timestamp", "")
+            if not ts or len(ts) < 19:
+                continue
+            pid = row.get("global_id") or (row.get("camera_id", "") + "_" + row.get("track_id", ""))
+            if not pid:
+                continue
+            k = (pid, zone)
+            if k not in visits:
+                visits[k] = []
+            visits[k].append(ts)
+
+        zone_dwells: dict = {}
+        for (pid, zone), timestamps in visits.items():
+            if len(timestamps) < 2:
+                continue
+            try:
+                t0 = datetime.fromisoformat(min(timestamps))
+                t1 = datetime.fromisoformat(max(timestamps))
+                dm = (t1 - t0).total_seconds() / 60.0
+                if 0.17 <= dm <= 90:          # 10 s – 90 min
+                    if zone not in zone_dwells:
+                        zone_dwells[zone] = []
+                    zone_dwells[zone].append(dm)
+            except Exception:
+                continue
+
+        result = []
+        for zone, dwells in sorted(zone_dwells.items()):
+            if not dwells:
+                continue
+            avg = sum(dwells) / len(dwells)
+            s   = sorted(dwells)
+            med = s[len(s) // 2]
+            result.append({
+                "zone":       zone,
+                "avg_min":    round(avg, 1),
+                "median_min": round(med, 1),
+                "count":      len(dwells),
+            })
+        result.sort(key=lambda x: x["avg_min"], reverse=True)
+        return result
+
+    return _cached(f"avg_dwell_{date_str or 'today'}", _run)
+
+
+def query_gender_split(date_str: Optional[str] = None) -> dict:
+    """Returns {gender_str: count} from spatial_log.db for the given day."""
+    def _run():
+        start_ms, end_ms = _midnight_ts(date_str)
+        conn = _get_conn()
+        if conn is None:
+            return {}
+        try:
+            rows = conn.execute(
+                "SELECT gender, COUNT(DISTINCT track_id || '_' || camera_id) "
+                "FROM positions WHERE ts BETWEEN ? AND ? GROUP BY gender",
+                (start_ms, end_ms),
+            ).fetchall()
+            return {r[0]: r[1] for r in rows}
+        except Exception as e:
+            logger.debug(f"[Analytics] gender_split: {e}")
+            return {}
+
+    return _cached(f"gender_{date_str or 'today'}", _run)
+
+
+def query_age_split(date_str: Optional[str] = None) -> dict:
+    """Returns {age_group_str: count} from spatial_log.db for the given day."""
+    def _run():
+        start_ms, end_ms = _midnight_ts(date_str)
+        conn = _get_conn()
+        if conn is None:
+            return {}
+        try:
+            rows = conn.execute(
+                "SELECT age_group, COUNT(DISTINCT track_id || '_' || camera_id) "
+                "FROM positions WHERE ts BETWEEN ? AND ? GROUP BY age_group",
+                (start_ms, end_ms),
+            ).fetchall()
+            return {r[0]: r[1] for r in rows}
+        except Exception as e:
+            logger.debug(f"[Analytics] age_split: {e}")
+            return {}
+
+    return _cached(f"age_{date_str or 'today'}", _run)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # NATURAL LANGUAGE ANSWER BUILDER
 # ═══════════════════════════════════════════════════════════════════════════════
 

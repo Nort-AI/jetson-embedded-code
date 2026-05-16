@@ -1281,6 +1281,89 @@ def api_dashboard_analytics():
     })
 
 
+@app.route("/api/analytics/data")
+@requires_auth
+def api_analytics_data():
+    """Full analytics dataset for the /analytics page.  Cached at the query layer (5 min).
+
+    Returns:
+      store_hourly       — [24 ints] distinct tracked persons per hour today
+      zone_hourly        — {zone: [24 ints]} unique visitors per zone per hour
+      zone_totals        — {zone: int} unique visitors per zone today
+      avg_dwell          — [{zone, avg_min, median_min, count}]
+      gender_split       — {gender: count}
+      age_split          — {age_group: count}
+      today_total        — int
+      yesterday_total    — int
+      vs_yesterday_pct   — float|null
+      peak_hour          — int|null
+      top_zone           — str|null
+    """
+    from core import analytics_query as _aq
+
+    date_str = request.args.get("date")   # optional ?date=YYYY-MM-DD
+
+    try: store_hourly_dict = _aq.query_hourly_traffic(date_str=date_str)
+    except Exception: store_hourly_dict = {}
+    store_hourly = [int(store_hourly_dict.get(h, 0)) for h in range(24)]
+
+    try: zone_hourly = _aq.query_zone_hourly_distribution(date_str)
+    except Exception: zone_hourly = {}
+
+    try: zone_totals = _aq.query_zone_totals_today(date_str)
+    except Exception: zone_totals = {}
+
+    try: avg_dwell = _aq.query_avg_dwell_by_zone(date_str)
+    except Exception: avg_dwell = []
+
+    try: gender_split = _aq.query_gender_split(date_str)
+    except Exception: gender_split = {}
+
+    try: age_split = _aq.query_age_split(date_str)
+    except Exception: age_split = {}
+
+    try: today_total = int(_aq.query_today_total())
+    except Exception: today_total = 0
+
+    try: yesterday_total = int(_aq.query_yesterday_total())
+    except Exception: yesterday_total = 0
+
+    vs_yesterday_pct = (
+        round((today_total - yesterday_total) / yesterday_total * 100, 1)
+        if yesterday_total > 0 else None
+    )
+
+    peak_h, _ = _aq.query_peak_hour() if store_hourly else (None, 0)
+    top_zone = max(zone_totals, key=zone_totals.get) if zone_totals else None
+
+    return jsonify({
+        "store_hourly":     store_hourly,
+        "zone_hourly":      zone_hourly,
+        "zone_totals":      zone_totals,
+        "avg_dwell":        avg_dwell,
+        "gender_split":     gender_split,
+        "age_split":        age_split,
+        "today_total":      today_total,
+        "yesterday_total":  yesterday_total,
+        "vs_yesterday_pct": vs_yesterday_pct,
+        "peak_hour":        peak_h,
+        "top_zone":         top_zone,
+    })
+
+
+@app.route("/analytics")
+@requires_auth
+def analytics_page():
+    from system import config as cfg
+    store_id = getattr(cfg, "STORE_ID", "store")
+    return render_template_string(
+        open(os.path.join(os.path.dirname(__file__), "templates", "analytics.html"),
+             encoding="utf-8").read(),
+        store_id=store_id,
+        t=t,
+    )
+
+
 @app.route("/api/notifications/<notif_id>/dismiss", methods=["POST"])
 @requires_auth
 def dismiss_notification(notif_id: str):
