@@ -1284,7 +1284,7 @@ def api_dashboard_analytics():
 @app.route("/api/analytics/data")
 @requires_auth
 def api_analytics_data():
-    """Full analytics dataset for the /analytics page.  Cached at the query layer (5 min).
+    """Full analytics dataset for the dashboard historical charts. Cached at the query layer (5 min).
 
     Returns:
       store_hourly       — [24 ints] distinct tracked persons per hour today
@@ -1350,11 +1350,6 @@ def api_analytics_data():
         "top_zone":         top_zone,
     })
 
-
-@app.route("/analytics")
-@requires_auth
-def analytics_page():
-    return redirect("/")
 
 
 @app.route("/api/notifications/<notif_id>/dismiss", methods=["POST"])
