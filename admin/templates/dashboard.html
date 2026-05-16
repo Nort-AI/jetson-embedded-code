@@ -1442,14 +1442,14 @@
       <div class="toast-container">
         {% if error_msg %}
         <div class="toast toast-err" onclick="this.remove()">
-          <div class="toast-icon">✗</div>
+          <div class="toast-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
           <div class="toast-content">{{ error_msg }}</div>
           <div class="toast-close">×</div>
         </div>
         {% endif %}
         {% if flash_msg %}
         <div class="toast toast-ok" onclick="this.remove()">
-          <div class="toast-icon">✓</div>
+          <div class="toast-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
           <div class="toast-content">{{ flash_msg }}</div>
           <div class="toast-close">×</div>
         </div>
@@ -1490,13 +1490,13 @@
         </div>
         <div class="kpi-card">
           <div class="kpi-accent-bar bar-green"></div>
-          <div class="kpi-label"><span class="kpi-icon">↗</span>{{ t('dashboard.today_stats.visitors') }}</div>
+          <div class="kpi-label"><span class="kpi-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></span>{{ t('dashboard.today_stats.visitors') }}</div>
           <div class="kpi-value" id="kpi-visitors">{{ visitors_today if visitors_today >= 0 else '—' }}</div>
           <div class="kpi-sub" id="kpi-vs-yesterday"><span class="text-muted">{{ t('dashboard.today_stats.visitors_sub') }}</span></div>
         </div>
         <div class="kpi-card">
           <div class="kpi-accent-bar bar-purple"></div>
-          <div class="kpi-label"><span class="kpi-icon">⏱</span>{{ t('dashboard.today_stats.peak_hour') }}</div>
+          <div class="kpi-label"><span class="kpi-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>{{ t('dashboard.today_stats.peak_hour') }}</div>
           <div class="kpi-value" id="kpi-peak">{{ peak_hour }}</div>
           <div class="kpi-sub"><span class="text-muted">{{ t('dashboard.today_stats.peak_sub') }}</span></div>
         </div>
@@ -1513,7 +1513,7 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title"><span class="card-icon">📈</span> Hourly Traffic — Today</div>
+              <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span> Hourly Traffic — Today</div>
               <div class="card-desc">Unique visitors per hour, from midnight</div>
             </div>
             <span id="hourly-updated" style="font-size:.68rem;color:var(--fg-muted);"></span>
@@ -1525,7 +1525,7 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title"><span class="card-icon">🗺</span> Zone Occupancy — Live</div>
+              <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span> Zone Occupancy — Live</div>
               <div class="card-desc">People tracked per zone right now (last 30 s)</div>
             </div>
             <span id="zone-total" style="font-size:.75rem;font-weight:700;color:var(--primary);"></span>
@@ -1543,7 +1543,7 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title"><span class="card-icon">📊</span> Store Occupancy — Historical</div>
+              <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg></span> Store Occupancy — Historical</div>
               <div class="card-desc">Unique tracked persons per hour</div>
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
@@ -1557,7 +1557,7 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title"><span class="card-icon">🍩</span> Zone Distribution</div>
+              <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></span> Zone Distribution</div>
               <div class="card-desc">Share of total visitors per zone</div>
             </div>
           </div>
@@ -1569,7 +1569,7 @@
       <div class="card" style="margin-bottom:16px;">
         <div class="card-header">
           <div>
-            <div class="card-title"><span class="card-icon">📉</span> Zone Occupancy Along the Day</div>
+            <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span> Zone Occupancy Along the Day</div>
             <div class="card-desc">Unique visitors per zone per hour — one line per zone</div>
           </div>
           <div id="an-zone-legend" class="an-zone-legend"></div>
@@ -1582,7 +1582,7 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title"><span class="card-icon">⏳</span> Avg Dwell Time per Zone</div>
+              <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> Avg Dwell Time per Zone</div>
               <div class="card-desc">Minutes — median and average per zone visit</div>
             </div>
           </div>
@@ -1591,7 +1591,7 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title"><span class="card-icon">👤</span> Demographics</div>
+              <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span> Demographics</div>
               <div class="card-desc">Gender and age distribution</div>
             </div>
           </div>
@@ -1636,7 +1636,7 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title"><span class="card-icon">⚡</span> {{ t('dashboard.system_health.title') }}</div>
+              <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg></span> {{ t('dashboard.system_health.title') }}</div>
               <div class="card-desc">{{ t('dashboard.system_health.desc') }}</div>
             </div>
           </div>
@@ -1660,17 +1660,15 @@
           <div class="controls-sub">{{ t('dashboard.controls.desc', url=(API_URL if API_URL else 'API')) }}
           </div>
         </div>
-        <form method="POST" action="/action/upload" style="margin:0;"><button type="submit" class="btn btn-outline">☁
-            {{ t('dashboard.controls.sync') }}</button></form>
-        <form method="POST" action="/action/restart" style="margin:0;"><button type="submit" class="btn btn-danger">↻
-            {{ t('dashboard.controls.restart') }}</button></form>
+        <form method="POST" action="/action/upload" style="margin:0;"><button type="submit" class="btn btn-outline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px;vertical-align:-2px;"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>{{ t('dashboard.controls.sync') }}</button></form>
+        <form method="POST" action="/action/restart" style="margin:0;"><button type="submit" class="btn btn-danger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px;vertical-align:-2px;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>{{ t('dashboard.controls.restart') }}</button></form>
       </div>
 
       <!-- Terminal -->
       <div class="card" style="margin-bottom:16px;">
         <div class="card-header">
           <div>
-            <div class="card-title"><span class="card-icon">⌨</span> {{ t('dashboard.terminal.title') }}</div>
+            <div class="card-title"><span class="card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span> {{ t('dashboard.terminal.title') }}</div>
             <div class="card-desc">{{ t('dashboard.terminal.desc') }}</div>
           </div>
         </div>

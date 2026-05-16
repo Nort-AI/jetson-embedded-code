@@ -783,6 +783,15 @@ def _refresh_kpi_cache():
     while True:
         try:
             visitors, peak = _scan_occupancy_log()
+            if peak == "N/A":
+                # occupancy_log.csv has no data yet — fall back to spatial_log.db
+                try:
+                    from core import analytics_query as _aq
+                    ph, _ = _aq.query_peak_hour()
+                    if ph is not None:
+                        peak = f"{ph:02d}:00–{ph + 1:02d}:00"
+                except Exception:
+                    pass
             _kpi_cache["visitors_today"] = visitors
             _kpi_cache["peak_hour"]      = peak
             _kpi_cache["updated"]        = time.time()
