@@ -34,6 +34,9 @@ import numpy as np
 from system.logger_setup import setup_logger
 logger = setup_logger(__name__)
 
+# ── Cloud model identifier — update here when Anthropic releases a new version ─
+_VLM_MODEL = "claude-haiku-4-5-20251001"
+
 # ── Circuit breaker for cloud API ─────────────────────────────────────────────
 _cloud_consecutive_failures = 0
 _CLOUD_MAX_FAILURES = 5  # Disable cloud after this many consecutive errors
@@ -816,7 +819,7 @@ def _run_claude_haiku(crop_bgr: np.ndarray, question: str, max_tokens: int = 200
 
     def _call(q: str) -> str:
         msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=_VLM_MODEL,
             max_tokens=max_tokens,
             system=effective_system,
             messages=[{
@@ -873,7 +876,7 @@ def _run_claude_haiku_multi(crops_bgr: list, question: str, max_tokens: int = 40
 
     def _call(final_content: list) -> str:
         msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=_VLM_MODEL,
             max_tokens=max_tokens,
             system=effective_system,
             messages=[{"role": "user", "content": final_content}]
@@ -1466,7 +1469,7 @@ def _search_worker() -> None:
                     messages = history_msgs + [{"role": "user", "content": content}]
                     accumulated = ""
                     with client.messages.stream(
-                        model="claude-haiku-4-5-20251001",
+                        model=_VLM_MODEL,
                         max_tokens=350,
                         system=scene_system,
                         messages=messages
@@ -1634,7 +1637,7 @@ def _search_worker() -> None:
 
                     def _do_call(c):
                         msg = client.messages.create(
-                            model="claude-haiku-4-5-20251001",
+                            model=_VLM_MODEL,
                             max_tokens=400,
                             system=_CLAUDE_SEARCH_SYSTEM_PROMPT,
                             messages=[{"role": "user", "content": c}]

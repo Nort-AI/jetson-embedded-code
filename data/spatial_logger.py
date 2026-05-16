@@ -5,6 +5,7 @@ Logs one row per tracked person per N frames. Supports filterable heatmap
 and common-path queries.
 """
 
+import os
 import sqlite3
 from system import config
 import threading
@@ -14,7 +15,7 @@ from typing import Optional
 
 _logger = setup_logger(__name__)
 
-_DB_PATH = "spatial_log.db"
+_DB_PATH = os.path.join(config.BASE_DIR, "spatial_log.db")
 _lock = threading.Lock()
 _conn: Optional[sqlite3.Connection] = None
 
@@ -42,6 +43,22 @@ def init_db(db_path: str = _DB_PATH) -> None:
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_cam   ON positions(camera_id, ts);")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_track ON positions(track_id, ts);")
         _conn.commit()
+
+
+def close_db() -> None:
+    """Commit any pending writes and close the DB connection.
+    Call before os._exit() so WAL is fully checkpointed and no data is lost."""
+    global _conn
+    with _lock:
+        if _conn is not None:
+            try:
+                _conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                _conn.commit()
+                _conn.close()
+            except Exception:
+                pass
+            finally:
+                _conn = None
 
 
 def _ensure_conn() -> sqlite3.Connection:

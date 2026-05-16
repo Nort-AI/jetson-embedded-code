@@ -344,13 +344,16 @@ def check_auth(username, password):
     _ensure_admin_pin()
     if username != 'admin':
         return False
-    from werkzeug.security import check_password_hash
     try:
-        # If it looks like a werkzeug/argon2 hash
+        # Werkzeug modern hashes (scrypt / pbkdf2 / argon2)
         if ADMIN_PIN.startswith(("scrypt:", "pbkdf2:", "argon2:", "$argon2")):
+            from werkzeug.security import check_password_hash
             return check_password_hash(ADMIN_PIN, password)
-        else:
-            return password == ADMIN_PIN
+        # Fallback sha256 hash (used when werkzeug was not available at PIN-creation time)
+        if ADMIN_PIN.startswith("sha256:"):
+            return ADMIN_PIN == "sha256:" + _hashlib.sha256(password.encode()).hexdigest()
+        # Plaintext (should not happen in production, but handle gracefully)
+        return password == ADMIN_PIN
     except Exception:
         return password == ADMIN_PIN
 
@@ -448,7 +451,7 @@ def set_latest_frame(camera_id: str, bgr_frame) -> None:
             _latest_frames[camera_id] = buf.tobytes()
             _last_frame_encode_ts[camera_id] = now
     except Exception as e:
-        print(f"FAILED TO SET LATEST FRAME: {e}")
+        _log.warning("set_latest_frame failed for %s: %s", camera_id, e)
 
 def set_latest_raw_frame(camera_id: str, bgr_frame) -> None:
     """Called from main.py to push the raw BGR frame (no drawings).

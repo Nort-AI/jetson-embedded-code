@@ -224,6 +224,7 @@ class CameraProcessor:
         from core import vlm_analyst as _vlm_analyst_mod
         from core import bbox_renderer as _bbox_renderer_mod
         self._vlm_session    = _vlm_session_mod.get_session(camera_id)
+        self._live_pose_warned = False  # one-shot warning if --live-pose + VLM disabled
         self._vlm_analyst    = _vlm_analyst_mod
         self._bbox_renderer  = _bbox_renderer_mod
         self.logger.info(f"[VLM] Session created for camera '{camera_id}' "
@@ -1192,6 +1193,14 @@ class CameraProcessor:
                     # Uses MediaPipe rendering on the ROI so it looks identical to
                     # the crop panel.  No age check — the person leaving frame removes
                     # their track from detections, so stale data is never reached.
+                    if getattr(config, "LIVE_POSE_ENABLED", False) and not self._vlm_analyst.is_enabled():
+                        if not self._live_pose_warned:
+                            self.logger.warning(
+                                "[LivePose] --live-pose is active but VLM is disabled in device.json "
+                                "(vlm.enabled=false). Pose skeleton overlay will not render. "
+                                "Enable VLM or remove --live-pose to suppress this warning."
+                            )
+                            self._live_pose_warned = True
                     if getattr(config, "LIVE_POSE_ENABLED", False) and self._vlm_analyst.is_enabled():
                         _active = self._vlm_analyst.get_active_target()
                         if _active:
@@ -1425,111 +1434,6 @@ class CameraProcessor:
 
         if tracks_to_remove:
             self.logger.debug(f"Cleaned up {len(tracks_to_remove)} old tracks")
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # VISUALIZATION
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def draw_person_box(
-        self,
-        frame: np.ndarray,
-        bbox: tuple,
-        global_id: int,
-        local_track_id: int,
-        gender: str = "?",
-        age_category: str = "adult",
-        crossing_indicator: str = "",
-        reid_enabled: bool = True,
-    ):
-        """
-        Premium HUD-style person bounding box renderer.
-
-        Visual language
-        ───────────────
-        • Bounding Box      : ultra-thin crisp lines with reinforced thick corners (HUD style).
-        • Floating Banner   : sleek semi-transparent dark banner anchored to top-left.
-        • Identity Accent   : vibrant neon vertical stripe alongside the banner mapping to the person's unique global colour.
-        • Info strip        : semi-transparent bar at bottom of bbox detailing demographics.
-        """
-        x1, y1, x2, y2 = [int(v) for v in bbox]
-        h, w = frame.shape[:2]
-        color = generate_color(global_id)
-        box_w = x2 - x1
-        corner_len = max(10, min(20, int(box_w * 0.18)))
-        thickness = 2
-
-        # ── 1. Bounding Box Corners ──────────────────────────────────────────
-        # Top-left
-        cv2.line(frame, (x1, y1), (x1 + corner_len, y1), color, thickness)
-        cv2.line(frame, (x1, y1), (x1, y1 + corner_len), color, thickness)
-        # Top-right
-        cv2.line(frame, (x2, y1), (x2 - corner_len, y1), color, thickness)
-        cv2.line(frame, (x2, y1), (x2, y1 + corner_len), color, thickness)
-        # Bottom-left
-        cv2.line(frame, (x1, y2), (x1 + corner_len, y2), color, thickness)
-        cv2.line(frame, (x1, y2), (x1, y2 - corner_len), color, thickness)
-        # Bottom-right
-        cv2.line(frame, (x2, y2), (x2 - corner_len, y2), color, thickness)
-        cv2.line(frame, (x2, y2), (x2, y2 - corner_len), color, thickness)
-
-        # ── 2. Top-Left HUD Banner (Dark background + Neon Accent line) ───────
-        prefix = "G:" if reid_enabled else "ID:"
-        header_text = f"{prefix} {global_id}"
-        
-        font_scale = 0.65
-        font = cv2.FONT_HERSHEY_DUPLEX
-        (text_w, text_h), baseline = cv2.getTextSize(header_text, font, font_scale, 1)
-
-        banner_h = text_h + 12
-        banner_w = text_w + 20
-        
-        banner_y1 = max(0, y1 - banner_h - 6)
-        banner_y2 = banner_y1 + banner_h
-        banner_x1 = x1
-        banner_x2 = x1 + banner_w
-        
-        if banner_y2 > banner_y1 and banner_x2 > banner_x1 and banner_x2 <= w:
-            # Solid dark background for maximum legibility against bright scenes
-            roi = frame[banner_y1:banner_y2, banner_x1:banner_x2]
-            dark = np.zeros_like(roi)
-            frame[banner_y1:banner_y2, banner_x1:banner_x2] = cv2.addWeighted(roi, 0.15, dark, 0.85, 0)
-            
-            # Thick colorful accent marking the physical identity
-            cv2.line(frame, (banner_x1 + 2, banner_y1), (banner_x1 + 2, banner_y2), color, 4)
-            
-            # Bright, crisp white identity text (thickness=2)
-            text_x = banner_x1 + 10
-            text_y = banner_y2 - 6
-            cv2.putText(frame, header_text, (text_x, text_y), font, font_scale, (255, 255, 255), 2, cv2.LINE_AA)
-
-        # ── 3. Bottom Info Strip (Gender | Age) ──────────────────────────────
-        strip_h   = 32
-        strip_y1  = max(0, y2 - strip_h)
-        strip_y2  = min(h, y2)
-        strip_x2  = min(w, x2)
-
-        if strip_y2 > strip_y1 and strip_x2 > x1:
-            # Solid dark bottom strip for legibility
-            roi = frame[strip_y1:strip_y2, x1:strip_x2]
-            dark = np.zeros_like(roi)
-            frame[strip_y1:strip_y2, x1:strip_x2] = cv2.addWeighted(roi, 0.20, dark, 0.80, 0)
-
-            gender_icon = "M" if gender.lower() in ("male", "m") else ("F" if gender.lower() in ("female", "f") else "?")
-            info_text = f"[{gender_icon}] {gender} | {age_category}{crossing_indicator}"
-            
-            cv2.putText(
-                frame, info_text,
-                (x1 + 6, strip_y2 - 8),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.70, (255, 255, 255), 2, cv2.LINE_AA,
-            )
-
-        # ── 4. Local-track debug note (tiny, subtle grey) ────────────────────
-        debug_y = min(h - 5, y2 + 14)
-        cv2.putText(
-            frame, f"loc_trk:{local_track_id}",
-            (x1, debug_y),
-            cv2.FONT_HERSHEY_PLAIN, 0.85, (160, 160, 160), 1, cv2.LINE_AA,
-        )
 
     def draw_label(self, frame, bbox, label_text, color):
         """Legacy plain-text label (kept for non-ReID paths)."""

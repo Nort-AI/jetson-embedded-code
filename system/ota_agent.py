@@ -86,8 +86,14 @@ def handle_remote_command(command_data):
         if cmd_type == "RESTART":
             logger.info("Restart command received. Graceful exit for systemd restart...")
             _report_result(command_id, "COMPLETED", None)
-            # Delay slightly to allow result report to finish
-            threading.Timer(2.0, lambda: os._exit(0)).start()
+            def _flush_and_exit():
+                try:
+                    from data import spatial_logger as _sl
+                    _sl.close_db()
+                except Exception:
+                    pass
+                os._exit(0)
+            threading.Timer(2.0, _flush_and_exit).start()
             return  # Don't report twice
 
         elif cmd_type == "CAPTURE_SNAPSHOT":
@@ -130,7 +136,14 @@ def handle_remote_command(command_data):
         elif cmd_type == "RESTART_PIPELINE":
             logger.info("Restarting Pipeline requested...")
             _report_result(command_id, "COMPLETED", None)
-            threading.Timer(2.0, lambda: os._exit(0)).start()
+            def _flush_and_exit_pipeline():
+                try:
+                    from data import spatial_logger as _sl
+                    _sl.close_db()
+                except Exception:
+                    pass
+                os._exit(0)
+            threading.Timer(2.0, _flush_and_exit_pipeline).start()
             return
 
         else:

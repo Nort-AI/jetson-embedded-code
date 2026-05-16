@@ -3,7 +3,10 @@ import time
 import sqlite3
 import requests
 from datetime import datetime
-from google.cloud import storage
+try:
+    from google.cloud import storage as _gcs_storage
+except ImportError:  # google-cloud-storage not installed on this device
+    _gcs_storage = None
 from system import config
 from system.logger_setup import setup_logger
 logger = setup_logger(__name__)
@@ -40,8 +43,11 @@ class SyncManager:
         _gcs_ready = [None]
 
         def _init_gcs():
+            if _gcs_storage is None:
+                _gcs_exc[0] = ImportError("google-cloud-storage not installed")
+                return
             try:
-                _gcs_ready[0] = storage.Client()
+                _gcs_ready[0] = _gcs_storage.Client()
             except Exception as _e:
                 _gcs_exc[0] = _e
 

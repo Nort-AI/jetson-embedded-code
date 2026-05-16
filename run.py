@@ -161,13 +161,15 @@ def _systemd_watchdog_loop(stop_event, interval=10):
         pass  # Never crash the main process over a watchdog failure
 
 
-def _log_rotation_loop(stop_event, interval=300):
+def _log_rotation_loop(stop_event, sync_manager=None, interval=300):
     """
-    Periodically rotates local logs and queues them for sync.
+    Periodically rotates local logs and queues them for the shared SyncManager.
+    Passing sync_manager avoids creating a new SyncManager (and its 5-second
+    GCS init timeout) on every rotation tick.
     """
     while not stop_event.is_set():
         try:
-            uploader.queue_for_upload()
+            uploader.queue_for_upload(sync_manager=sync_manager)
         except Exception as e:
             logger.error(f"Log rotation error: {e}")
         stop_event.wait(interval)
@@ -738,6 +740,13 @@ def main():
     # ── Validate camera sources before loading any heavy models ──────────────
     if not args.setup:
         config.VIDEO_SOURCES = validate_camera_sources(config.VIDEO_SOURCES)
+        if not config.VIDEO_SOURCES:
+            logger.critical(
+                "No accessible camera sources found after validation. "
+                "Check cameras.json and ensure all video files/streams are reachable. "
+                "Aborting startup."
+            )
+            sys.exit(1)
 
     data_handler = DataHandler()
     output_frames = {}
@@ -996,7 +1005,7 @@ def main():
         
         threading.Thread(
             target=_log_rotation_loop,
-            args=(stop_event,),
+            args=(stop_event, sync_manager),
             daemon=True,
             name="LogRotation",
         ).start()

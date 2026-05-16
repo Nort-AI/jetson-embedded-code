@@ -184,7 +184,7 @@ CSV_FILENAME = "tracking_log.csv"
 # sweet spot — TRT FP16 at 640 gives 2-3x the FPS vs 1280 with no
 # meaningful accuracy loss at typical retail camera distances.
 # Use 416 for 4+ camera configs or Orin Nano 8 GB constrained deployments.
-YOLO_IMGSZ = 640   # Jetson-tuned: 640 matches the ONNX model's native input
+# (YOLO_IMGSZ is already set above; this comment block was duplicated — kept for context only)
 YOLO_HALF = True   # FP16 via TRT (handled by TensorrtExecutionProvider)
 
 # Additional GPU optimizations
@@ -217,7 +217,13 @@ def load_cameras() -> dict:
         try:
             with open(_CAMERAS_JSON_PATH, "r") as f:
                 return json.load(f)
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError as _e:
+            import logging as _logging
+            _logging.getLogger(__name__).error(
+                "cameras.json is corrupt (JSON parse error: %s) — "
+                "falling back to hardcoded defaults. Fix or delete the file.", _e
+            )
+        except OSError:
             pass
     # Fallback: create cameras.json from hardcoded defaults
     cameras = {}
@@ -257,8 +263,13 @@ POLYGON_POINTS_FILE = "zones_per_camera.json"
 DRAW_ZONES = True
 
 # --- Shoplifting Detection Settings ---
-SHOPLIFTING_MODEL_PATH = os.path.join(_BASE_DIR, "models", "shoplifting_wights.pt")
+SHOPLIFTING_MODEL_PATH = os.path.join(_BASE_DIR, "models", "shoplifting_weights.pt")
 ENABLE_SHOPLIFTING_DETECTION = False
+
+# ── VLM crop quality gate ─────────────────────────────────────────────────────
+# Minimum bounding-box area (pixels²) before a crop is sent to the VLM.
+# Consistent with VLMConfig.min_crop_area in vlm_analyst.py.
+VLM_MIN_CROP_AREA = 5000
 SHOPLIFTING_DETECTION_INTERVAL = 5  # Run shoplifting detection every N frames
 
 DRAW_ENTRANCE_DEBUG = os.getenv("DRAW_ENTRANCE_DEBUG", "false").lower() == "true"
