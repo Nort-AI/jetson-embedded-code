@@ -650,6 +650,37 @@ class CameraProcessor:
                     # would never get their embeddings updated. OSNet-AIN's attention mechanism handles minor occlusions.
                     skip_thumb = False        
                     is_new_track = track_id not in self.track_attributes
+
+                    # ── ByteTrack ID-reuse guard ──────────────────────────────────────────
+                    # ByteTrack keeps lost tracks in its internal buffer for
+                    # `lost_track_buffer=300` frames before releasing the integer ID.
+                    # At 10 fps that is ~30 s.  Our track_attributes cleanup runs at 60 s,
+                    # so there is a 30–60 s window where a stale entry still exists in
+                    # track_attributes when ByteTrack reassigns the same integer to a
+                    # completely different person.  If we don't detect this, the new
+                    # person silently inherits the OLD global_id — causing an instant
+                    # same-camera same-id collision if the original person is still
+                    # tracked under a different local track_id.
+                    #
+                    # Detection: if the "existing" entry has not been updated for longer
+                    # than ByteTrack's estimated reuse window the ID was recycled.
+                    if not is_new_track:
+                        _now_tc    = time.time()
+                        _fps_est   = self.fps if self.fps > 1.0 else 10.0
+                        _reuse_win = 300.0 / _fps_est   # lost_track_buffer / fps ≈ 30 s
+                        _inactive  = _now_tc - self.track_attributes[track_id].get("last_seen", _now_tc)
+                        if _inactive > _reuse_win:
+                            _stale     = self.track_attributes.pop(track_id)
+                            _stale_gid = _stale.get("global_id")
+                            if self.reid_manager and _stale_gid is not None:
+                                self.reid_manager.note_track_lost(self.camera_id, int(track_id))
+                                self.reid_manager.remove_track(self.camera_id, int(track_id))
+                            self.logger.debug(
+                                f"[SameCamGuard] track_id={track_id} reused by ByteTrack "
+                                f"after {_inactive:.1f}s — cleared stale G:{_stale_gid}"
+                            )
+                            is_new_track = True
+
                     if is_new_track:
                         current_position = (int((x1 + x2) / 2), int(y2))
                         now = time.time()

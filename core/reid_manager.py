@@ -333,10 +333,12 @@ class ReIDManager:
           1. _local_to_global: is this gid mapped to any other track on this camera?
              Entries are cleaned up by remove_track() ~60 s after the track dies,
              so this is a strong signal within the cleanup window.
-          2. last_seen recency (15 s gate): guards against stale _local_to_global
-             entries from very old visits (> 60 s cleanup not yet run).
-             Gate raised from 5 s → 15 s to remain valid when update_embedding
-             runs at low FPS (45 frames / 10 fps = 4.5 s interval).
+          2. last_seen recency (15 s gate): guards against the window between
+             note_track_lost() clearing the _local_to_global entry and the next
+             frame where a different track could claim the same global_id.
+             15 s covers the update_embedding interval (45 frames / 10 fps = 4.5 s)
+             with comfortable headroom.  Cross-camera is NOT affected because
+             we check e.camera_id == camera_id before applying this gate.
         """
         now_m = time.monotonic()
         e = self._gallery.get(gid)
@@ -349,15 +351,13 @@ class ReIDManager:
             if lk_cam == camera_id and lk_tid != exclude_local_id and lk_gid == gid:
                 return True
         # Fallback: gallery entry was recently seen on THIS camera specifically.
-        # We check camera_id on the entry, not the raw last_seen timestamp.
-        # The old code used `last_seen < 15 s` which is updated by ALL cameras —
-        # so a person actively tracked on Camera 2 would permanently block Camera 1
-        # from matching them (Camera 2 kept last_seen fresh).
-        # Fix: only block if the entry's home camera_id matches AND was seen within
-        # a narrow 3-second window (one update_embedding interval).  This covers
-        # the race between ByteTrack dropping a track and remove_track() being called
-        # without falsely blocking legitimate cross-camera or same-camera re-entries.
-        if e.camera_id == camera_id and (now_m - e.last_seen) < 3.0:
+        # Only blocks SAME-camera reuse — cross-camera matching is unaffected
+        # because e.camera_id tracks the last camera that updated the entry.
+        # 15 s is the correct gate: it must exceed the update_embedding interval
+        # (4.5 s at 10 fps) to remain valid between embedding refreshes.
+        # The old value of 3.0 s was shorter than the embedding interval, so the
+        # protection could expire while the track was still actively visible.
+        if e.camera_id == camera_id and (now_m - e.last_seen) < 15.0:
             return True
         return False
 
